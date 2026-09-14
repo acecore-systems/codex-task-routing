@@ -123,10 +123,9 @@ class ChatTransferTestCase(unittest.TestCase):
         self.assertNotIn(invalid, status)
 
     def test_http_boundary_and_verified_save(self) -> None:
-        # Deliberately mismatched loopback requests reset in the tested Windows
-        # environment before application code can read them.
-        # A connected socket pair still exercises the actual HTTP request
-        # parser, handler, close framing, and persistence behavior.
+        # Feed wire bytes to the real HTTP parser and handler in memory.
+        # This keeps local HTTP filters and OS socket EOF behavior out of the
+        # protocol assertions; Browser transport is verified separately.
         server = SimpleNamespace(state=self.state, server_port=32123, completed=False)
         path = f'/transfer/{self.state.token}'
 
@@ -140,30 +139,18 @@ class ChatTransferTestCase(unittest.TestCase):
             frame = [f'{method} {target} HTTP/1.1']
             frame.extend(f'{name}: {value}' for name, value in request_headers.items())
             raw_request = ('\r\n'.join(frame) + '\r\n\r\n').encode('ascii') + body
-            application_socket, client = socket.socketpair()
-            application_socket.settimeout(5)
-            client.settimeout(5)
-            worker = threading.Thread(
-                target=chat_transfer.TransferHandler,
-                args=(application_socket, ('127.0.0.1', 0), server),
-                daemon=True,
+            received = bytearray()
+            connection = SimpleNamespace(
+                makefile=lambda *_args: io.BytesIO(raw_request),
+                sendall=received.extend,
             )
-            worker.start()
-            try:
-                client.sendall(raw_request)
-                received = bytearray()
-                while True:
-                    chunk = client.recv(4096)
-                    if not chunk:
-                        break
-                    received.extend(chunk)
-            finally:
-                client.close()
-            worker.join(timeout=2)
-            application_socket.close()
-            self.assertFalse(worker.is_alive(), 'handler must finish the one connection')
+            chat_transfer.TransferHandler(connection, ('127.0.0.1', 0), server)
             head, separator, body_bytes = bytes(received).partition(b'\r\n\r\n')
             self.assertTrue(separator, 'server must return a complete HTTP response')
+            lengths = [line.split(b':', 1)[1].strip() for line in head.split(b'\r\n')
+                       if line.lower().startswith(b'content-length:')]
+            self.assertEqual(len(lengths), 1)
+            self.assertEqual(len(body_bytes), int(lengths[0]))
             status_line = head.split(b'\r\n', 1)[0].decode('ascii')
             self.assertRegex(status_line, r'^HTTP/1\.0 [1-5]\d\d ')
             self.assertIn(b'\r\nConnection: close\r\n', b'\r\n' + head + b'\r\n')
