@@ -587,6 +587,28 @@ def _guidance_directories(cwd: Path, codex_home: Path | None) -> list[Path]:
     return unique
 
 
+def _active_guidance_file(directory: Path) -> tuple[Path, str] | None:
+    """Return the one non-empty AGENTS file active in a directory.
+
+    Codex gives a non-empty ``AGENTS.override.md`` precedence over the regular
+    file at the same directory level.  An empty override is skipped, so the
+    regular file remains active.  Never scan both files: inactive guidance
+    must not make this policy appear to conflict.
+    """
+
+    for name in ("AGENTS.override.md", "AGENTS.md"):
+        path = directory / name
+        if not os.path.lexists(path) or _is_link_or_reparse(path):
+            continue
+        try:
+            text = _read_limited_utf8(path, MAX_TEMPLATE_BYTES, "local guidance")
+        except RoutingError:
+            continue
+        if text.strip():
+            return path, text
+    return None
+
+
 def detect_routing_conflicts(
     cwd: Path | None = None, *, codex_home: Path | None = None
 ) -> list[str]:
@@ -595,17 +617,13 @@ def detect_routing_conflicts(
     base = _absolute(cwd or Path.cwd())
     conflicts: list[str] = []
     for directory in _guidance_directories(base, codex_home):
-        for name in ("AGENTS.md", "AGENTS.override.md"):
-            path = directory / name
-            if not os.path.lexists(path) or _is_link_or_reparse(path):
-                continue
-            try:
-                text = _read_limited_utf8(path, MAX_TEMPLATE_BYTES, "local guidance")
-            except RoutingError:
-                continue
-            lowered = text.casefold()
-            if "model-routing-policy.md" in lowered or "モデル選定・作業内の委譲" in text:
-                conflicts.append(str(_absolute(path)))
+        active = _active_guidance_file(directory)
+        if active is None:
+            continue
+        path, text = active
+        lowered = text.casefold()
+        if "model-routing-policy.md" in lowered or "モデル選定・作業内の委譲" in text:
+            conflicts.append(str(_absolute(path)))
     return conflicts
 
 
@@ -617,6 +635,26 @@ def _hook_available(plugin_root: Path) -> bool:
         return any(path.is_file() and not _is_link_or_reparse(path) for path in hooks.iterdir())
     except OSError:
         return False
+
+
+def _cache_status(codex_home: Path, policy: Policy) -> tuple[str, Path]:
+    """Inspect the expected cache entry without creating or repairing it."""
+
+    destination = _absolute(codex_home) / CACHE_RELATIVE / policy.content_hash
+    try:
+        # Check every existing parent before classifying an absent destination.
+        # Otherwise a reparse-point cache root would be incorrectly reported as
+        # a harmless cache miss.
+        destination = _assert_safe_ancestors(destination)
+        if not os.path.lexists(destination):
+            return "missing", destination
+        if _is_link_or_reparse(destination) or not destination.is_dir():
+            return "unsafe", destination
+        if _cache_matches_policy(destination, policy):
+            return "valid", destination
+        return "mismatch", destination
+    except (RoutingError, OSError):
+        return "unsafe", destination
 
 
 def status_payload(
@@ -636,12 +674,14 @@ def status_payload(
         # Status must not claim a policy is usable until every bundled template
         # has resolved its recursive config tokens.
         policy.rendered_documents()
-        return {
-            "ok": True,
+        cache_state, cache_path = _cache_status(home, policy)
+        result = {
+            "ok": cache_state in {"missing", "valid"},
             "manifest_version": policy.version,
             "policy_revision": policy.config["policy_revision"],
             "config_hash": policy.config_hash,
             "policy_hash": policy.content_hash,
+            "cache": {"path": str(cache_path), "state": cache_state},
             "override": {
                 "present": policy.override_present,
                 "applied_keys": list(policy.applied_override_keys),
@@ -655,6 +695,9 @@ def status_payload(
             },
             "routing_guidance_conflicts": detect_routing_conflicts(cwd, codex_home=home),
         }
+        if not result["ok"]:
+            result["error"] = "policy cache is unsafe or does not match the effective policy"
+        return result
     except (RoutingError, OSError):
         return {
             "ok": False,

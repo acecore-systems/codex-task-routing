@@ -23,10 +23,10 @@ Acecoreが日常利用で改善している分担原則を既定値として同�
 
 ## 導入
 
-公開済みの版、またはレビューするブランチを選んでから導入します。初版の実装ブランチは `codex/initial-plugin` です。次のコマンドはそのブランチを指定します。
+次のコマンドで `main` の配布版を導入します。複数PCで同じ版を固定する場合は、`main` の代わりに同じcommit SHAまたは公開タグを指定してください。
 
 ```text
-codex plugin marketplace add acecore-systems/codex-task-routing --ref codex/initial-plugin
+codex plugin marketplace add acecore-systems/codex-task-routing --ref main
 codex plugin add codex-task-routing@codex-task-routing
 ```
 

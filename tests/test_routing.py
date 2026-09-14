@@ -289,6 +289,87 @@ class RoutingTestCase(unittest.TestCase):
         for path in expected:
             self.assertIn(path, hook["systemMessage"])
 
+    def test_only_active_agents_file_is_checked_at_each_directory_level(self) -> None:
+        repo = self.base / "repo"
+        nested = repo / "nested" / "work"
+        nested.mkdir(parents=True)
+        (repo / ".git").mkdir()
+        repo_agents = repo / "AGENTS.md"
+        repo_override = repo / "AGENTS.override.md"
+        repo_agents.write_text("model-routing-policy.md\n", encoding="utf-8")
+        self.home.mkdir()
+        home_agents = self.home / "AGENTS.md"
+        home_override = self.home / "AGENTS.override.md"
+        home_agents.write_text("model-routing-policy.md\n", encoding="utf-8")
+
+        # An empty override is skipped, so the regular files are active.
+        repo_override.write_text("\n", encoding="utf-8")
+        home_override.write_text("\n", encoding="utf-8")
+        self.assertEqual(
+            set(routing.detect_routing_conflicts(nested, codex_home=self.home)),
+            {str(repo_agents.resolve()), str(home_agents.resolve())},
+        )
+
+        # A non-empty override suppresses its same-level regular AGENTS file,
+        # even when that inactive file contains routing guidance.
+        repo_override.write_text("project-specific instructions\n", encoding="utf-8")
+        home_override.write_text("global instructions\n", encoding="utf-8")
+        self.assertEqual(
+            routing.detect_routing_conflicts(nested, codex_home=self.home), []
+        )
+
+        # If the active overrides themselves contain routing guidance, only
+        # their paths are reported.
+        repo_override.write_text("モデル選定・作業内の委譲\n", encoding="utf-8")
+        home_override.write_text("model-routing-policy.md\n", encoding="utf-8")
+        self.assertEqual(
+            set(routing.detect_routing_conflicts(nested, codex_home=self.home)),
+            {str(repo_override.resolve()), str(home_override.resolve())},
+        )
+
+    def test_status_reports_cache_state_without_writing_or_exposing_contents(self) -> None:
+        policy = self.policy()
+        cache_path = self.home / "codex-task-routing" / "cache" / policy.content_hash
+        missing = routing.status_payload(
+            plugin_root=self.plugin, codex_home=self.home, cwd=self.base
+        )
+        self.assertTrue(missing["ok"])
+        self.assertEqual(missing["cache"], {"path": str(cache_path.resolve()), "state": "missing"})
+        self.assertFalse(cache_path.exists())
+
+        routing._cache_directory(self.home, policy)
+        valid = routing.status_payload(
+            plugin_root=self.plugin, codex_home=self.home, cwd=self.base
+        )
+        self.assertTrue(valid["ok"])
+        self.assertEqual(valid["cache"]["state"], "valid")
+
+        (cache_path / "effective.md").write_text("edited-cache-secret", encoding="utf-8")
+        mismatch = routing.status_payload(
+            plugin_root=self.plugin, codex_home=self.home, cwd=self.base
+        )
+        self.assertFalse(mismatch["ok"])
+        self.assertEqual(mismatch["cache"], {"path": str(cache_path.resolve()), "state": "mismatch"})
+        self.assertIn("cache", mismatch["error"])
+        self.assertNotIn("edited-cache-secret", json.dumps(mismatch))
+
+    @unittest.skipUnless(hasattr(os, "symlink"), "symlinks are unsupported")
+    def test_status_marks_symlink_cache_entry_unsafe(self) -> None:
+        policy = self.policy()
+        cache_path = self.home / "codex-task-routing" / "cache" / policy.content_hash
+        cache_path.parent.mkdir(parents=True)
+        target = self.base / "cache-target"
+        target.mkdir()
+        try:
+            os.symlink(target, cache_path, target_is_directory=True)
+        except OSError as exc:
+            self.skipTest(str(exc))
+        result = routing.status_payload(
+            plugin_root=self.plugin, codex_home=self.home, cwd=self.base
+        )
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["cache"], {"path": str(cache_path), "state": "unsafe"})
+
     def test_hook_input_accepts_bom_and_rejects_non_string_events(self) -> None:
         old_stdin = sys.stdin
         try:
