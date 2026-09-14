@@ -207,6 +207,22 @@ class ChatGptRouteTestCase(unittest.TestCase):
         with self.assertRaises(chatgpt_route.ChatRouteError):
             chatgpt_route.validate_exchange(old_style_prompt, response)
 
+    def test_historical_bundles_remain_valid_without_regenerating_the_prompt(self) -> None:
+        # Generated with public revisions 6fc3bd3 (0.4) and 71015c7 (0.5),
+        # using fictional inputs; do not regenerate with the current builders.
+        fixtures = Path(__file__).resolve().parent / 'fixtures'
+        for version in ('v1', 'v2'):
+            with self.subTest(version=version):
+                bundle = json.loads((fixtures / f'chat-bundle-{version}.json').read_text(encoding='utf-8'))
+                response = {
+                    'request_id': bundle['request_id'],
+                    'input_sha256': bundle['input_sha256'],
+                    'status': 'completed',
+                    'result': 'Option A meets the deadline.',
+                    'evidence': ['The supplied fictional material states two days against three.'],
+                }
+                self.assertEqual(chatgpt_route.validate_exchange(bundle, response)['status'], 'completed')
+
     def test_handoff_rejects_unknown_partial_invalid_or_excessive_values_without_echoing_secret(self) -> None:
         secret = "handoff-secret-never-in-error"
         invalid_handoffs: list[object] = [

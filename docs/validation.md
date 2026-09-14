@@ -6,7 +6,7 @@
 
 任意のhandoffは必要情報・出典・鮮度・許可ツール・返却形式・停止条件の6項目を厳密に検証し、入力hashへ含めます。旧形式の依頼と0.4・0.5系の処理中bundleの照合を維持し、handoff改変、部分指定、不正型、過大な入力、改変した旧promptは拒否します。設定無効時にChat優先指示を配信しないことと子への非配信も検証します。
 
-Windows/Python 3.13で全79件の単体テスト、パッケージ検査、skill-creatorのスキル検査、文書のJSON例のprepare、git diff --checkを通過しました。
+Windows/Python 3.13で全80件の単体テスト、パッケージ検査、skill-creatorのスキル検査、文書のJSON例のprepare、git diff --checkを通過しました。
 
 変更前の0.5.0では、承認済みの方針レビューを一時Chatの6 Proへ1回送り、回答の回収、依頼IDとhashの照合、送信前後のUIモデル確認まで実施しました。0.6.0の新しいpromptとMCP能力確認の実機実行、実バックエンドID、節約量は未検証です。既存の実機確認を新しいpromptの成功と扱いません。
 
