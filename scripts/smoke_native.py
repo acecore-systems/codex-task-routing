@@ -40,7 +40,10 @@ def main():
     override.parent.mkdir()
     override.write_text(json.dumps({"schema_version": 1, "models": {
         "terra": {"default_effort": "high"}}}), encoding="utf-8")
-    before = {p: p.read_bytes() for p in (guidance, override)}
+    chat_config = home / PLUGIN_NAME / "chatgpt.json"
+    chat_config.write_text(json.dumps({"schema_version": 1, "enabled": True,
+                                     "required_model": "6 Pro", "transport": "codex-app-tools"}), encoding="utf-8")
+    before = {p: p.read_bytes() for p in (guidance, override, chat_config)}
     env = {**os.environ, "CODEX_HOME": str(home),
            "PATH": str(Path(sys.executable).parent) + os.pathsep + os.environ.get("PATH", "")}
     results = []
@@ -87,6 +90,8 @@ def main():
         context = payload["hookSpecificOutput"]
         assert context["hookEventName"] == event
         assert payload.get("continue", True) and "policy hash" in context["additionalContext"]
+        assert ("Opt-in ChatGPT Chat route is enabled" in context["additionalContext"]) == (event == "SessionStart")
+        assert "systemMessage" not in payload, payload.get("systemMessage")
     results.append("installed hook commands produced the official event-specific output for both events")
 
     manifest_path = plugin / ".codex-plugin" / "plugin.json"

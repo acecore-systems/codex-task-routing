@@ -78,6 +78,29 @@ Windows以外では定期実行の登録に未対応です。Codexが終了し�
 
 ## 適用確認と変更
 
+### 通常ChatのGPT-6 Proへ渡す（任意）
+
+0.3.0から、通常Chatの別枠を使う経路を任意で有効にできます。独立した調査・比較・文案・レビューを候補にし、ローカル編集・テストはCodexで進めます。既定は無効で、モデル・effortの既存方針は変わりません。
+
+`<CODEX_HOME>/codex-task-routing/chatgpt.json` に次を保存します。プラグインキャッシュ内には保存しません。
+
+```json
+{
+  "schema_version": 1,
+  "enabled": true,
+  "required_model": "6 Pro",
+  "transport": "codex-app-tools"
+}
+```
+
+新しいタスクのフックに `Opt-in ChatGPT Chat route is enabled` が表示されることを確認します。`enabled` を `false` にすると停止できます。設定を有効にしただけでメッセージは送信されず、接続先の権限も増えません。
+
+この経路には、通常Chatへログイン済みのブラウザ、UIで選択できる `6 Pro`、Codexアプリの会話送受信ツールが必要です。タスクごとに通常Chatを用意し、UIでモデルを確認してから直接送信します。依頼IDと材料hashで回答を照合し、親が内容を受け入れます。モデルAPIキーは使いません。WorkやモデルAPIへの暗黙の切替も行いません。バックエンドのモデルIDは取得できないため、UI表示と実行メタデータを区別します。
+
+初版は本文と既存の承認済みMCPで取得できる資料を扱います。独自MCPサーバーの公開・書き戻し・自動ファイル添付は含みません。通常Chatの生成はChatの枠、親の処理はCodexの枠を使い、接続先サービスやサーバーの費用は別途確認します。[運用手順・制約](plugins/codex-task-routing/skills/task-routing/references/chatgpt.md)
+
+### Codexサブエージェントの設定
+
 リポジトリ直下で実行します。
 
 ```text
