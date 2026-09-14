@@ -12,6 +12,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 import errno
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -1281,6 +1282,40 @@ def _unapplied_hook_response() -> dict[str, Any]:
     }
 
 
+def _chatgpt_context(home: Path, plugin_root: Path) -> str:
+    """Expose opt-in instructions only; never start a chat from a hook."""
+    config = _assert_safe_ancestors(home / "codex-task-routing" / "chatgpt.json")
+    if not os.path.lexists(config):
+        return ""
+    helper = _assert_safe_ancestors(plugin_root / "scripts" / "chatgpt_route.py")
+    spec = importlib.util.spec_from_file_location("chatgpt_route_hook", helper)
+    if spec is None or spec.loader is None:
+        raise RoutingError("ChatGPT route helper unavailable")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    try:
+        settings = module.load_config(home)
+    except ValueError as exc:
+        raise RoutingError("ChatGPT route configuration invalid") from exc
+    if not settings["enabled"]:
+        return ""
+    reference = _assert_safe_ancestors(
+        plugin_root / "skills" / "task-routing" / "references" / "chatgpt.md"
+    )
+    _read_limited_utf8(reference, MAX_TEMPLATE_BYTES, "ChatGPT route instructions")
+    return (
+        "\nOpt-in ChatGPT Chat route is enabled (required UI model: 6 Pro; transport: codex-app-tools). "
+        "This is a user-enabled alternative to standard Codex children for substantial, independent "
+        "research, comparison, drafting and review tasks. Read the route instructions before use: "
+        f"{reference}. "
+        "Use normal Chat only; never Work or a model API. Verify the Chat surface and 6 Pro in the UI "
+        "before dispatch and verify the model after completion; tool replies do not attest a backend model. "
+        "Use an isolated conversation per task, request IDs and input hashes. Missing tools, unknown model "
+        "or quota failure blocks this route; report it, do not silently substitute a billed API or Work. "
+        "Do not route from subagents or start models from hooks. Preserve the parent model and effort."
+    )
+
+
 def hook_payload(
     *,
     event: str,
@@ -1371,17 +1406,29 @@ def hook_payload(
                     "Do not start a new observation from this child. Return bounded run evidence and missing reasons to the parent task's observation record.",
                 ]
             )
+        route_diagnostic = None
+        route_context = ""
+        if event == "SessionStart":
+            try:
+                route_context = _chatgpt_context(home, plugin_root)
+            except (RoutingError, OSError, ImportError, ValueError):
+                route_diagnostic = "ChatGPT route not applied: invalid configuration or unavailable helper. Run chatgpt_route.py status."
         context += "\nUse this single effective policy set. Standard child agents only; do not change the parent model or effort."
+        if route_context:
+            context += "\nException explicitly enabled by the user for the root parent:" + route_context
         if len(context) > MAX_ADDITIONAL_CONTEXT_CHARS:
             raise RoutingError("hook context exceeds the configured limit")
     except (RoutingError, OSError):
         return _unapplied_hook_response()
-    return {
+    result = {
         "hookSpecificOutput": {
             "hookEventName": event,
             "additionalContext": context,
         }
     }
+    if route_diagnostic:
+        result["systemMessage"] = route_diagnostic
+    return result
 
 
 def _parser() -> argparse.ArgumentParser:

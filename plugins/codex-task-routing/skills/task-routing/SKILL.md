@@ -1,11 +1,13 @@
 ---
 name: task-routing
-description: Apply Codex Task Routing when assigning a substantial independent task to a subagent, or inspect and customize this plugin's delegation policy, model and effort settings. Covers research, documents, images, data, operations, and development.
+description: Apply Codex Task Routing for substantial independent tasks, including opt-in normal ChatGPT Chat routing, or inspect and customize delegation policy, model and effort settings. Covers research, documents, images, data, operations, and development.
 ---
 
 # Task routing
 
 Use the effective policy already supplied by this plugin's start hook. Keep the user's chosen parent model and effort. It authorizes choosing suitable standard subagents only within the user's task, available tools, and higher-priority instructions. A child requires a bounded independent task and useful independent work for its direct parent. Short work stays with the current capable agent.
+
+When the hook explicitly reports the opt-in ChatGPT Chat route enabled, the root parent may use [normal Chat routing](references/chatgpt.md) as the user-enabled exception for substantial independent research, comparisons, drafts and reviews. Read that reference before dispatch. Use normal Chat with the required UI model `6 Pro`, never Work or a model API, and match request IDs and input hashes. The helper prepares and validates local data only; actual sending uses available Codex app tools. Missing capability or unknown model blocks this route. Do not route from subagents. If the opt-in is absent or invalid, retain the standard Codex child policy.
 
 If no effective policy was supplied, run `python <plugin-root>/scripts/routing.py status --json`, where plugin-root is two directories above this skill folder. Inspect conflicts and errors before calling the policy active. Do not silently replace existing global or project instructions. Read only the relevant section of the resolved policy and catalog; use the handoff reference when needed. Loading this skill alone does not install or trust its hooks.
 
