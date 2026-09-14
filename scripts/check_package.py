@@ -17,7 +17,7 @@ def check():
     assert not {'hooks', 'mcpServers', 'apps'} & manifest.keys()
     assert re.fullmatch(r'\d+\.\d+\.\d+(?:[+-][\w.-]+)?', manifest['version'])
     assert manifest['author']['name'] == 'Acecore'
-    for name in ['LICENSE', 'scripts/routing.py', 'hooks/hooks.json', 'defaults/config.json', 'skills/task-routing/SKILL.md', 'skills/task-routing/references/configuration.md']:
+    for name in ['LICENSE', 'scripts/routing.py', 'scripts/updater.py', 'scripts/updater_entry.py', 'scripts/install_updater.py', 'hooks/hooks.json', 'defaults/config.json', 'skills/task-routing/SKILL.md', 'skills/task-routing/references/configuration.md']:
         assert (PLUGIN / name).is_file(), name
     hooks = json.loads((PLUGIN / 'hooks/hooks.json').read_text(encoding='utf-8'))['hooks']
     assert set(hooks) == {'SessionStart', 'SubagentStart'}

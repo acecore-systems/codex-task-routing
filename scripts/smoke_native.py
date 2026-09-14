@@ -67,7 +67,8 @@ def main():
 
     cli("marketplace", "add", str(source))
     cli("add", PLUGIN_ID)
-    script = installed_runtime("0.1.0")
+    initial_version = json.loads((plugin / '.codex-plugin/plugin.json').read_text(encoding='utf-8'))['version']
+    script = installed_runtime(initial_version)
     status = run([sys.executable, str(script), "status", "--json"])
     assert status["ok"] and status["override"]["present"]
     assert status["host"]["trust_state"] == "unknown"
@@ -90,11 +91,12 @@ def main():
 
     manifest_path = plugin / ".codex-plugin" / "plugin.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    manifest["version"] = "0.1.1"
+    next_version = initial_version.split('+')[0] + '+codex.native-test'
+    manifest["version"] = next_version
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     cli("add", PLUGIN_ID)
-    updated = run([sys.executable, str(installed_runtime("0.1.1")), "status", "--json"])
-    assert updated["ok"] and updated["manifest_version"] == "0.1.1"
+    updated = run([sys.executable, str(installed_runtime(next_version)), "status", "--json"])
+    assert updated["ok"] and updated["manifest_version"] == next_version
     assert updated["override"]["present"] and updated["policy_hash"] != status["policy_hash"]
     results.append("native reinstall picked up changed version and preserved override")
     cli("remove", PLUGIN_ID)
