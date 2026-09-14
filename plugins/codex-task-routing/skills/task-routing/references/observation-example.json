@@ -1,0 +1,73 @@
+{
+  "state": "completed",
+  "scope": "書式説明用の架空例。子の一部turnのみ取得済み、親の最終turnは進行中。",
+  "measurement": {
+    "state": "partial",
+    "reason": "parent final usage remains unavailable"
+  },
+  "verification": {
+    "reference": "example:existing-verification-result",
+    "reason": null
+  },
+  "rework": "書式説明用。実作業では確認できた手直しを短く記載する。",
+  "runs": [
+    {
+      "run_key": "parent-final",
+      "relationship": "parent",
+      "state": "ongoing",
+      "run_id": null,
+      "run_id_reason": "the parent has no final run identifier yet",
+      "requested": {
+        "model": "gpt-6-astra",
+        "effort": "high",
+        "reason": null
+      },
+      "observed": {
+        "model": null,
+        "effort": null,
+        "evidence_ref": null,
+        "reason": "the final parent turn is still active"
+      },
+      "usage": {
+        "state": "missing",
+        "reason": "final parent turn is still active",
+        "evidence_ref": null,
+        "turn_scope": "full_turn",
+        "input_tokens": null,
+        "cache_input_tokens": null,
+        "output_tokens": null,
+        "reasoning_tokens": null,
+        "unknown_reasons": {}
+      }
+    },
+    {
+      "run_key": "child-implementation",
+      "relationship": "child",
+      "state": "completed",
+      "run_id": "019c0000-0000-7000-8000-000000000001",
+      "run_id_reason": null,
+      "requested": {
+        "model": "gpt-5.6-terra",
+        "effort": "xhigh",
+        "reason": null
+      },
+      "observed": {
+        "model": "gpt-5.6-terra",
+        "effort": "xhigh",
+        "evidence_ref": "example:existing-runtime-settings",
+        "reason": null
+      },
+      "usage": {
+        "state": "measured",
+        "reason": null,
+        "evidence_ref": "example:existing-token-report",
+        "turn_scope": "partial_turn",
+        "input_tokens": 100,
+        "cache_input_tokens": 40,
+        "output_tokens": 30,
+        "reasoning_tokens": 20,
+        "unknown_reasons": {}
+      }
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 {
-  "policy_revision": "2026-09-14",
+  "policy_revision": "2026-09-14-observation-completion",
   "source_sha256": {
     "AGENTS.md": "bd2584d350c204f1ffbc8c005c084fc34360acddf8812557504350820e34be42",
     "model-routing-policy.md": "9335ccec4516bc71b68d01f9304d6e71d3b5efcd77a210476571cd7d060c476c",
@@ -11,6 +11,8 @@
     "remove adoption-history sentence",
     "plugin entrypoint and optional observation helper",
     "remove redundant Japanese effort labels to prevent stale labels after override",
-    "parameterize model ids and supported effort slots; default roundtrip verified"
-  ]
+    "parameterize model ids and supported effort slots; default roundtrip verified",
+    "bounded observation lifecycle with explicit missing usage and unchanged model defaults"
+  ],
+  "source_policy_revision": "2026-09-14"
 }
