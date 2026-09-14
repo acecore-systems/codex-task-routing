@@ -44,11 +44,15 @@ class ChatHookTests(unittest.TestCase):
         self.assertIn("Opt-in ChatGPT Chat route is enabled", parent)
         self.assertIn("transport: browser-temporary", parent)
         self.assertIn("Temporary Chat", parent)
+        self.assertIn("evaluate this Chat route first", parent)
+        self.assertIn("verified tools", parent)
+        self.assertIn("parent must still have useful independent work", parent)
         self.assertIn("never use send_message_to_thread", parent)
         self.assertIn("never Work or a model API", parent)
         self.assertLessEqual(len(parent), routing.MAX_ADDITIONAL_CONTEXT_CHARS)
         child = self.payload("SubagentStart")["hookSpecificOutput"]["additionalContext"]
         self.assertNotIn("Opt-in ChatGPT", child)
+        self.assertNotIn("evaluate this Chat route first", child)
 
     def test_invalid_route_does_not_disable_standard_policy_or_echo_values(self):
         self.settings({"schema_version": 1, "enabled": True, "required_model": "secret-value", "transport": "api"})
