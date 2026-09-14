@@ -17,6 +17,7 @@ Acecoreが日常利用で改善している分担原則を既定値として同�
 
 - Codexのプラグイン、ライフサイクルフック、標準サブエージェントが使えるローカル環境。
 - `python --version` がPython 3.11以上を返すこと。Python標準ライブラリだけを使います。
+- 起動前同期にはCodex CLIとGitが必要です。Windowsの起動ショートカットには同じPythonの`pythonw.exe`とWindows版Codexアプリを使います。
 - 選択したモデル・effortが、そのアカウントと実行環境で利用できること。
 
 最初の検証対象はWindowsとCodex CLIです。設定の要求値を確認しても、実際の子がそのモデルで実行した証明にはなりません。起動時のツールと実行結果を別に確認します。
@@ -40,6 +41,38 @@ codex plugin add codex-task-routing@codex-task-routing
 導入後、CLIの `/hooks` でこのプラグインのフックを確認して信頼し、新しいタスクを開始してください。フックの定義を変更した版は、再確認が必要な場合があります。スキルの検出だけでは常時適用されません。[公式フック仕様](https://learn.chatgpt.com/docs/hooks)
 
 開始・再開・コンパクション時に有効方針を読み込みます。子には短い引継ぎ用のコンテキストと参照先を渡します。フック自体はモデル呼出し・ネットワークアクセス・子の起動を行いません。
+
+### 起動前にmainへ自動同期する
+
+0.2.0以降では、最初に起動入口を一度追加すれば、その入口からCodexを開くたびに登録したGit refへ同期します。`--ref main`で導入した場合はmainを追従し、固定したcommit SHAは維持します。固定版を選ぶ場合は変更されないcommit SHAを推奨します。
+
+Windowsでは、プラグイン導入後にPowerShellで次を実行します。リポジトリを別途クローンする必要はありません。
+
+```powershell
+$routingPlugin = (codex plugin list --marketplace codex-task-routing --json | ConvertFrom-Json).installed |
+    Where-Object pluginId -eq 'codex-task-routing@codex-task-routing'
+python (Join-Path $routingPlugin.source.path 'scripts/install_launcher.py')
+```
+
+スタートメニューに追加される **Codex Task Routing** から起動してください。必要ならこのショートカットをタスクバーにピン留めできます。インストーラーは起動入口だけを作成し、Codexの起動・終了やプラグインの更新は行いません。既存の通常ショートカットから起動した場合は自動同期されません。
+
+リポジトリのcheckoutがある場合は`python scripts/install_launcher.py`でも同じ入口を作れます。Windows以外では`python scripts/install_launcher.py --mode cli`を使い、生成された`bootstrap.py`をPythonで起動します。Windowsでも`--mode cli --no-shortcut`でCLI用に導入できます。
+
+```text
+python <CODEX_HOME>/codex-task-routing/launcher/bootstrap.py --cli -- <Codex CLIの引数>
+```
+
+起動時の動作は次のとおりです。
+
+- Codexが完全に終了していれば、対象marketplaceだけを標準CLIで同期してから起動します。更新確認にモデルを呼びません。
+- Codex・ChatGPTのアプリやCLIがすでに動いている場合、または稼働状態が判別できない場合は、更新を見送って現在の版で起動します。独自に改名された実行ファイルまでは検出しません。
+- 通信・認証・CLIの更新エラーでは、削除や再インストールを試みず起動を続けます。タイムアウト時はランチャーが起動した更新プロセスだけを停止します。
+- 同時に別のランチャーが同期している場合、排他を確保できない場合、タイムアウト後の更新プロセスの停止を確認できない場合は、追加の起動を見送ります。同期中に通常ショートカットや別の端末からCodexを起動することまでは排他できないため、普段の起動入口をこのランチャーにそろえてください。
+- 個別の`overrides.json`、親設定、指示、フックの信頼設定を編集しません。変更されたフックの再確認はCodex標準の`/hooks`で行います。
+
+診断は`<CODEX_HOME>/codex-task-routing/launcher/state/last-sync.json`に短い結果だけを残します。認証情報やCLI出力全文は保存しません。アプリを長時間開いたままの場合、途中の自動更新は行わず、完全終了後の次回起動で追従します。
+
+起動入口はプラグインの版別キャッシュの外に置き、毎回Codexの取得元から現在の同期処理を読みます。薄い起動用bootstrapと予備の同期処理は初回導入時のコピーです。通常の方針・プラグイン・同期処理の更新は追従しますが、この起動インターフェース自体の変更時はインストーラーを再実行してください。解除する場合はショートカットを削除して通常の起動入口へ戻します。
 
 ## 適用確認と変更
 
@@ -71,11 +104,10 @@ python plugins/codex-task-routing/scripts/routing.py render --output-dir outputs
 
 同じ版を再現する場合、両PCの取得元のrefを同じcommit SHAまたは公開タグにそろえ、同じ上書きを用意します。診断のpolicy hashも比較します。モデルの生成結果まで同一になるという意味ではありません。
 
-Gitから導入した場合、現在登録しているrefの更新を取得するコマンドは次のとおりです。
+起動ランチャーを使わず手動更新する場合や0.1.0から移行する場合は、Codexアプリ・CLIをすべて終了してから次を実行します。`upgrade`だけで導入済みプラグインも更新します。
 
 ```text
 codex plugin marketplace upgrade codex-task-routing
-codex plugin add codex-task-routing@codex-task-routing
 ```
 
 異なる版へ切り替えるときは、既存の登録元を確認し、このプラグインを解除してから対象marketplaceの登録を外し、Git refを明示して登録し直します。次の `COMMIT_SHA_OR_TAG` を取得したい版に置き換えます。
@@ -87,7 +119,7 @@ codex plugin marketplace add acecore-systems/codex-task-routing --ref COMMIT_SHA
 codex plugin add codex-task-routing@codex-task-routing
 ```
 
-ローカルの開発ではmanifestのcachebusterまたは版を更新して再導入します。実行中のタスクが自動で同じ版へ切り替わるとは扱わず、新しいタスクで確認します。
+配布ファイルを変更するPRではmanifestの版も更新します。CIは同じ版のまま配布内容が変わることを拒否します。ローカルの開発ではmanifestのcachebusterまたは版を更新して再導入します。更新は旧導入コピーを削除するため、作業中のフックから自己更新しません。起動後の新しいタスクで適用を確認します。
 
 解除は次のとおりです。通常のCodex設定や上書きファイルは残ります。
 
@@ -110,6 +142,6 @@ python scripts/check_package.py
 
 詳細は必要な節だけ読みます。方針の正本は `defaults/config.json`、分類と引継ぎのテンプレートは `defaults/templates/` にあります。既定の元文書は個人パスと適用経路を調整し、意味を保った正本スナップショットと照合しています。
 
-このプラグインは認証・会話履歴・メモリ・契約の利用率を読みません。ローカルの有効方針キャッシュと利用者が指定した成果物だけを書き出します。内部ログ解析や常時計測は含みません。
+このプラグインは認証・会話履歴・メモリ・契約の利用率を読みません。方針フックはローカルの有効方針キャッシュと利用者が指定した成果物を書き出します。任意の起動ランチャーは専用の入口・設定・同期診断を保存し、標準CLIによるmarketplace更新を行います。内部ログ解析や常時計測は含みません。
 
 MIT License · Acecore

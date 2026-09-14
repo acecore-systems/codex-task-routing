@@ -1,4 +1,25 @@
-# 初版の検証
+# 検証記録
+
+## 0.2.0: 起動前のmain追従
+
+2026-09-14、Windows / Python 3.13 / Codex CLI `0.154.0-alpha.6.2`で確認しました。
+
+- Python単体テスト47件が成功。稼働中・検知不能時の更新見送り、更新前の再確認、異常終了で解放されるOSロック、親CLI終了後に残った子プロセスの停止、認証と接続エラーの分類、引数保持、設定保持を含みます。
+- 実際のCodex CLIとローカルGit fixtureを一時Codexホームで使用し、mainの版更新→起動用marker実行、固定commitの維持、取得先が利用できない場合の導入済み版と起動の維持を確認しました。`config.toml`・`AGENTS.md`・`overrides.json`はバイト単位で不変です。
+- 一時フォルダへのWindowsショートカット生成と再実行、リンク先のPython実行ファイル・起動引数、現在のMSIXからのアプリ/CLIパス解決、稼働中のCodex検知を確認しました。
+- ランチャー再導入は完全な世代を作ってから参照を切り替えます。初回・再導入途中の書き込み失敗を注入し、不完全な版を有効にせず再実行できることを確認しました。
+- プラグイン配布ファイルの変更時にmanifest versionも変えるCI検査を追加しました。
+
+```text
+python scripts/smoke_prelaunch.py --output-dir outputs/prelaunch-native
+python scripts/install_launcher.py --codex-home outputs/launcher-test/home --shortcut-dir outputs/launcher-test/menu
+```
+
+前者にはGitとCodex CLIが必要です。HTTPSのfixture URLはプロセス限定のGit設定でローカルリポジトリに向け、ネットワーク・モデル・実アプリを使いません。外側で稼働中のCodexを停止せず検証するため、**一時ホーム内の試験に限り**稼働プロセスの取得結果を空にしています。実運用のプログラムに稼働チェックを迂回するCLIオプションはありません。
+
+実アプリを完全終了してこの入口から起動する確認、他OSのCodexホストでの実更新、native upgrade自体が強制終了した場合の原子性は未検証です。取得失敗時に保持されることと、更新途中のあらゆる障害からの復元保証は区別します。通常ショートカット・他の端末からの同時起動は排他できません。フックの信頼を自動承認せず、0.2.0の導入作業は利用環境でCodexを終了して行います。
+
+## 0.1.0: 初版
 
 検証日: 2026-09-14。対象: `codex/initial-plugin` の0.1.0実装。
 
