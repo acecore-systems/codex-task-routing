@@ -17,7 +17,7 @@ Acecoreが日常利用で改善している分担原則を既定値として同�
 
 - Codexのプラグイン、ライフサイクルフック、標準サブエージェントが使えるローカル環境。
 - `python --version` がPython 3.11以上を返すこと。Python標準ライブラリだけを使います。
-- 起動前同期にはCodex CLIとGitが必要です。Windowsの起動ショートカットには同じPythonの`pythonw.exe`とWindows版Codexアプリを使います。
+- 自動更新にはCodex CLIとGitが必要です。定期実行の登録はWindowsに対応し、Windowsタスクスケジューラと同じPythonの`pythonw.exe`を使います。
 - 選択したモデル・effortが、そのアカウントと実行環境で利用できること。
 
 最初の検証対象はWindowsとCodex CLIです。設定の要求値を確認しても、実際の子がそのモデルで実行した証明にはなりません。起動時のツールと実行結果を別に確認します。
@@ -42,37 +42,39 @@ codex plugin add codex-task-routing@codex-task-routing
 
 開始・再開・コンパクション時に有効方針を読み込みます。子には短い引継ぎ用のコンテキストと参照先を渡します。フック自体はモデル呼出し・ネットワークアクセス・子の起動を行いません。
 
-### 起動前にmainへ自動同期する
+### 普段の起動方法のまま自動更新する
 
-0.2.0以降では、最初に起動入口を一度追加すれば、その入口からCodexを開くたびに登録したGit refへ同期します。`--ref main`で導入した場合はmainを追従し、固定したcommit SHAは維持します。固定版を選ぶ場合は変更されないcommit SHAを推奨します。
+0.2.0以降では、Windowsで自動更新を一度登録すると、ログオン中に15分ごとに登録したGit refを確認します。`--ref main`で導入した場合はmainを追従し、固定したcommit SHAは維持します。**専用ショートカットは不要です。普段どおりCodexを開いてください。**
 
-Windowsでは、プラグイン導入後にPowerShellで次を実行します。リポジトリを別途クローンする必要はありません。
+プラグイン導入後、PowerShellで次を一度実行します。リポジトリのクローンは不要です。
 
 ```powershell
 $routingPlugin = (codex plugin list --marketplace codex-task-routing --json | ConvertFrom-Json).installed |
     Where-Object pluginId -eq 'codex-task-routing@codex-task-routing'
-python (Join-Path $routingPlugin.source.path 'scripts/install_launcher.py')
+python (Join-Path $routingPlugin.source.path 'scripts/install_updater.py') install
 ```
 
-スタートメニューに追加される **Codex Task Routing** から起動してください。必要ならこのショートカットをタスクバーにピン留めできます。インストーラーは起動入口だけを作成し、Codexの起動・終了やプラグインの更新は行いません。既存の通常ショートカットから起動した場合は自動同期されません。
+リポジトリのcheckoutがある場合は`python scripts/install_updater.py install`でも登録できます。登録内容を先に確認するには`install --dry-run`を使います。管理者権限やパスワードの保存は不要です。インストーラーは自動更新用ファイルと本人用の定期タスクを作り、Codexの起動・終了や、その場でのプラグイン更新は行いません。
 
-リポジトリのcheckoutがある場合は`python scripts/install_launcher.py`でも同じ入口を作れます。Windows以外では`python scripts/install_launcher.py --mode cli`を使い、生成された`bootstrap.py`をPythonで起動します。Windowsでも`--mode cli --no-shortcut`でCLI用に導入できます。
+自動更新の動作は次のとおりです。
+
+- CodexとChatGPTのアプリ・CLIがすべて終了していれば、対象marketplaceだけを標準CLIで同期します。モデルを呼ばず、AIのトークンを消費しません。
+- 使用中、稼働状態が判別できない場合、別の更新処理が実行中の場合は、更新を見送って次の確認を待ちます。アプリを長時間開いたままの場合は、閉じた後の確認まで更新されません。
+- 通信・認証・CLIエラーでは、削除や再インストールを試みません。更新失敗は短い診断として残り、次の定期確認で再度確認します。利用者のアプリを停止・再起動しません。
+- 個別の`overrides.json`、親設定、指示、フックの信頼設定を編集しません。フック定義が変わった版では、Codex標準の`/hooks`による再確認が必要な場合があります。
+
+登録状態と直近の結果の確認、定期実行の解除は次のコマンドで行えます。
 
 ```text
-python <CODEX_HOME>/codex-task-routing/launcher/bootstrap.py --cli -- <Codex CLIの引数>
+python scripts/install_updater.py status
+python scripts/install_updater.py uninstall
 ```
 
-起動時の動作は次のとおりです。
+checkoutがない場合は、上のPowerShell例と同じ`install_updater.py`のパスに`status`または`uninstall`を渡します。解除後も個別の上書きやCodex設定は残ります。自動更新用のファイルはプラグインの版別キャッシュの外へ保存し、プラグイン更新後は新しい更新処理を読み込みます。固定された起動インターフェースを変更する将来の版では再登録が必要になる場合があります。
 
-- Codexが完全に終了していれば、対象marketplaceだけを標準CLIで同期してから起動します。更新確認にモデルを呼びません。
-- Codex・ChatGPTのアプリやCLIがすでに動いている場合、または稼働状態が判別できない場合は、更新を見送って現在の版で起動します。独自に改名された実行ファイルまでは検出しません。
-- 通信・認証・CLIの更新エラーでは、削除や再インストールを試みず起動を続けます。タイムアウト時はランチャーが起動した更新プロセスだけを停止します。
-- 同時に別のランチャーが同期している場合、排他を確保できない場合、タイムアウト後の更新プロセスの停止を確認できない場合は、追加の起動を見送ります。同期中に通常ショートカットや別の端末からCodexを起動することまでは排他できないため、普段の起動入口をこのランチャーにそろえてください。
-- 個別の`overrides.json`、親設定、指示、フックの信頼設定を編集しません。変更されたフックの再確認はCodex標準の`/hooks`で行います。
+診断先は`<CODEX_HOME>/codex-task-routing/updater/state/last-sync.json`です。認証情報やCLI出力全文は保存しません。PCの休止中・ログオフ中には実行せず、次に実行できるタイミングで確認します。通常起動と更新の開始を完全には排他できないため、**毎回の起動直前に必ず最新版になる保証はありません**。
 
-診断は`<CODEX_HOME>/codex-task-routing/launcher/state/last-sync.json`に短い結果だけを残します。認証情報やCLI出力全文は保存しません。アプリを長時間開いたままの場合、途中の自動更新は行わず、完全終了後の次回起動で追従します。
-
-起動入口はプラグインの版別キャッシュの外に置き、毎回Codexの取得元から現在の同期処理を読みます。薄い起動用bootstrapと予備の同期処理は初回導入時のコピーです。通常の方針・プラグイン・同期処理の更新は追従しますが、この起動インターフェース自体の変更時はインストーラーを再実行してください。解除する場合はショートカットを削除して通常の起動入口へ戻します。
+Windows以外では定期実行の登録に未対応です。Codexが終了している時に`python plugins/codex-task-routing/scripts/updater.py`で同じ一回分の更新処理を実行できます。
 
 ## 適用確認と変更
 
@@ -104,7 +106,7 @@ python plugins/codex-task-routing/scripts/routing.py render --output-dir outputs
 
 同じ版を再現する場合、両PCの取得元のrefを同じcommit SHAまたは公開タグにそろえ、同じ上書きを用意します。診断のpolicy hashも比較します。モデルの生成結果まで同一になるという意味ではありません。
 
-起動ランチャーを使わず手動更新する場合や0.1.0から移行する場合は、Codexアプリ・CLIをすべて終了してから次を実行します。`upgrade`だけで導入済みプラグインも更新します。
+自動更新を登録せず手動更新する場合や0.1.0から移行する場合は、Codexアプリ・CLIをすべて終了してから次を実行します。`upgrade`だけで導入済みプラグインも更新します。
 
 ```text
 codex plugin marketplace upgrade codex-task-routing
@@ -121,7 +123,7 @@ codex plugin add codex-task-routing@codex-task-routing
 
 配布ファイルを変更するPRではmanifestの版も更新します。CIは同じ版のまま配布内容が変わることを拒否します。ローカルの開発ではmanifestのcachebusterまたは版を更新して再導入します。更新は旧導入コピーを削除するため、作業中のフックから自己更新しません。起動後の新しいタスクで適用を確認します。
 
-解除は次のとおりです。通常のCodex設定や上書きファイルは残ります。
+プラグインを解除する場合は、先に`install_updater.py uninstall`で定期実行を解除し、次を実行します。通常のCodex設定や上書きファイルは残ります。
 
 ```text
 codex plugin remove codex-task-routing@codex-task-routing
@@ -142,6 +144,6 @@ python scripts/check_package.py
 
 詳細は必要な節だけ読みます。方針の正本は `defaults/config.json`、分類と引継ぎのテンプレートは `defaults/templates/` にあります。既定の元文書は個人パスと適用経路を調整し、意味を保った正本スナップショットと照合しています。
 
-このプラグインは認証・会話履歴・メモリ・契約の利用率を読みません。方針フックはローカルの有効方針キャッシュと利用者が指定した成果物を書き出します。任意の起動ランチャーは専用の入口・設定・同期診断を保存し、標準CLIによるmarketplace更新を行います。内部ログ解析や常時計測は含みません。
+このプラグインは認証・会話履歴・メモリ・契約の利用率を読みません。方針フックはローカルの有効方針キャッシュと利用者が指定した成果物を書き出します。任意の自動更新機能は専用ファイル・設定・同期診断とWindowsの定期タスクを作成し、標準CLIによるmarketplace更新を行います。内部ログ解析や常時計測は含みません。
 
 MIT License · Acecore

@@ -5,4 +5,4 @@ import runpy
 
 if __name__ == '__main__':
     runpy.run_path(str(Path(__file__).resolve().parents[1] /
-                      'plugins/codex-task-routing/scripts/install_launcher.py'), run_name='__main__')
+                      'plugins/codex-task-routing/scripts/install_updater.py'), run_name='__main__')

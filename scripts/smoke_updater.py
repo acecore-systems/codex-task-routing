@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Exercise pre-launch synchronization with native Codex and a local Git fixture.
+"""Exercise one-shot background synchronization with native Codex and a local Git fixture.
 
-No application/model session is started. The target is a Python marker command.
+No application/model session is started and no scheduled task is registered.
 Only this isolated home's process detector is mocked to model a closed app.
 """
 import argparse
@@ -78,52 +78,67 @@ def main():
 
     home, env, protected = make_home('main-home','main')
     pinned_home,pinned_env,pinned_protected = make_home('pinned-home',first_sha)
-    next_version = initial_version.split('+')[0] + '+codex.prelaunch-test'
+    next_version = initial_version.split('+')[0] + '+codex.updater-test'
     manifest['version'] = next_version
     manifest_path.write_text(json.dumps(manifest),encoding='utf-8')
-    next_runner = source / 'plugins/codex-task-routing/scripts/prelaunch.py'
+    next_runner = source / 'plugins/codex-task-routing/scripts/updater.py'
     with next_runner.open('a',encoding='utf-8') as stream:
         stream.write('\nNATIVE_FIXTURE_MARKER = "updated runner"\n')
     git('add','plugins/codex-task-routing/.codex-plugin/plugin.json',
-        'plugins/codex-task-routing/scripts/prelaunch.py')
+        'plugins/codex-task-routing/scripts/updater.py')
     git('-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','-m','Updated fixture')
 
-    module_spec = importlib.util.spec_from_file_location('native_prelaunch_fixture',ROOT/'plugins/codex-task-routing/scripts/prelaunch.py')
+    module_spec = importlib.util.spec_from_file_location('native_updater_fixture',ROOT/'plugins/codex-task-routing/scripts/updater.py')
     updater = importlib.util.module_from_spec(module_spec)
     sys.modules[module_spec.name] = updater
     module_spec.loader.exec_module(updater)
 
-    def launch_marker(home, env, name):
+    def synchronize(home, env, *, running=False):
         assert home.is_relative_to(base) and Path(env['CODEX_HOME']) == home
-        marker = base / (name+'.txt')
-        target = [sys.executable,'-c','from pathlib import Path; import sys; Path(sys.argv[1]).write_text("launched")',str(marker)]
-        with mock.patch.dict(os.environ, env, clear=True), mock.patch.object(updater,'_running_process_names',return_value=set()):
-            assert updater.main(['--codex',cli_path,'--',*target]) == 0
-        assert marker.read_text() == 'launched'
-        return json.loads((home/'codex-task-routing/launcher/state/last-sync.json').read_text())
+        processes = {'Codex.exe'} if running else set()
+        inherited = {**env, 'CODEX_HOME': str(base / 'unexpected-home')}
+        interpreter = Path(sys.executable)
+        if os.name == 'nt':
+            interpreter = interpreter.with_name('pythonw.exe')
+            assert interpreter.is_file(), 'Scheduler helper requires pythonw.exe'
+        with mock.patch.dict(os.environ, inherited, clear=True), \
+             mock.patch.object(updater,'_running_process_names',return_value=processes), \
+             mock.patch.object(updater.sys,'executable',str(interpreter)):
+            code = updater.main(['--codex',cli_path,'--codex-home',str(home)])
+        assert not (base / 'unexpected-home').exists(), 'Native CLI used the inherited home'
+        result = json.loads((home/'codex-task-routing/updater/state/last-sync.json').read_text())
+        return code, result
 
     assert installed_version(env) == initial_version, 'Listing alone must not fetch main'
-    success = launch_marker(home,env,'success')
+    skipped_code, skipped = synchronize(home,env,running=True)
+    assert skipped_code == 0 and skipped['outcome'] == 'skipped', skipped
+    assert installed_version(env) == initial_version
+    success_code, success = synchronize(home,env)
+    assert success_code == 0, success
     assert success['outcome'] == 'updated', success
     assert installed_version(env) == next_version
-    bootstrap = runpy.run_path(str(ROOT/'plugins/codex-task-routing/scripts/launcher_bootstrap.py'))
-    current_runner = bootstrap['marketplace_updater'](cli_path,home,env)
-    assert current_runner is not None
-    assert runpy.run_path(str(current_runner))['NATIVE_FIXTURE_MARKER'] == 'updated runner'
-    pinned = launch_marker(pinned_home,pinned_env,'pinned')
+    entry = runpy.run_path(str(ROOT/'plugins/codex-task-routing/scripts/updater_entry.py'))
+    current_runtime = entry['_current_runtime'](cli_path, home, str(home))
+    assert current_runtime is not None
+    assert runpy.run_path(str(current_runtime))['NATIVE_FIXTURE_MARKER'] == 'updated runner'
+    pinned_code, pinned = synchronize(pinned_home,pinned_env)
+    assert pinned_code == 0, pinned
     assert pinned['outcome'] == 'unchanged', pinned
     assert installed_version(pinned_env) == initial_version
     offline_env = {**env,'GIT_CONFIG_KEY_0':f'url.{(base / "missing-remote").as_uri()}.insteadOf'}
-    failure = launch_marker(home,offline_env,'offline')
+    failure_code, failure = synchronize(home,offline_env)
     assert failure['outcome'] == 'failed', failure
     assert installed_version(env) == next_version
     for path, content in {**protected,**pinned_protected}.items():
         assert path.read_bytes() == content, path
-    report = {'ok':True,'checks':['main update precedes marker target',
-        'bootstrap resolves the updated runner from the native source',
-        'pinned commit remains pinned','unavailable remote retains installed version and launches target',
+    report = {'ok':True,'checks':['running app skips native update',
+        'one-shot update follows main without launching an application',
+        'native source resolves the newer updater runtime',
+        'explicit Codex home overrides a different inherited home',
+        'Windows native helper works with the scheduled pythonw interpreter',
+        'pinned commit remains pinned','unavailable remote retains installed version',
         'native config, guidance and overrides are unchanged'],
-        'not_verified':['real desktop launch','closed desktop process detection on other OSes',
+        'not_verified':['scheduled task registration','closed desktop process detection on other OSes',
                         'native upgrade crash atomicity','hook trust interaction']}
     (base/'result.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
     print(json.dumps(report))

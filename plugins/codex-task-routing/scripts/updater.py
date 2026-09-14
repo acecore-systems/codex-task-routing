@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Synchronize this marketplace before a new Codex process starts.
+"""Synchronize this marketplace from a scheduled background worker.
 
-This file is deliberately standalone.  The durable launcher loads it from the
+This file is deliberately standalone.  The durable updater entry loads it from the
 currently installed plugin snapshot, which may be replaced by the upgrade it
 starts.  Do not import code from that snapshot after startup.
 """
@@ -34,7 +34,7 @@ EXPECTED_GIT_HOST = "github.com"
 EXPECTED_GIT_PATH = "/acecore-systems/codex-task-routing"
 SAFE_VERSION = re.compile(r"\d+\.\d+\.\d+(?:[+-][A-Za-z0-9._-]+)?$")
 
-STATE_RELATIVE = Path(PLUGIN_NAME) / "launcher" / "state"
+STATE_RELATIVE = Path(PLUGIN_NAME) / "updater" / "state"
 LOCK_NAME = "sync.lock"
 DIAGNOSTIC_NAME = "last-sync.json"
 SCHEMA_VERSION = 1
@@ -45,7 +45,7 @@ STATE_ERROR_EXIT = 76
 UNCONTAINED_UPDATE_EXIT = 77
 ERROR_NO_MORE_FILES = 18
 
-# The root launcher owns this Job Object handle.  The helper assigns itself to
+# The root worker owns this Job Object handle.  The helper assigns itself to
 # the job before it starts the native CLI, so every descendant is terminated
 # when the root closes the handle after a timeout or a normal update.
 WINDOWS_JOB_HELPER = """import ctypes
@@ -72,7 +72,7 @@ if not job or not assign(job, current()):
 if not close(job):
     raise SystemExit(125)
 try:
-    raise SystemExit(subprocess.call(sys.argv[2:], stdin=subprocess.DEVNULL))
+    raise SystemExit(subprocess.call(sys.argv[2:], stdin=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW))
 except FileNotFoundError:
     raise SystemExit(126)
 """
@@ -92,11 +92,11 @@ BLOCKING_PROCESS_NAMES = frozenset(
 
 
 class StateError(Exception):
-    """The launcher state directory cannot be safely used."""
+    """The updater state directory cannot be safely used."""
 
 
 class LockBusy(Exception):
-    """Another launcher owns the per-CODEX_HOME synchronization lock."""
+    """Another worker owns the per-CODEX_HOME synchronization lock."""
 
 
 @dataclass(frozen=True)
@@ -135,7 +135,7 @@ def _is_link_or_reparse(path: Path) -> bool:
     except FileNotFoundError:
         return False
     except OSError as exc:
-        raise StateError("cannot inspect launcher state") from exc
+        raise StateError("cannot inspect updater state") from exc
     if stat.S_ISLNK(metadata.st_mode):
         return True
     try:
@@ -156,29 +156,29 @@ def _assert_safe_ancestors(path: Path | str) -> Path:
         current = current.parent
     for candidate in reversed(ancestors):
         if os.path.lexists(candidate) and _is_link_or_reparse(candidate):
-            raise StateError("launcher state path is a link or reparse point")
+            raise StateError("updater state path is a link or reparse point")
     return absolute
 
 
-def _codex_home() -> Path:
-    configured = os.environ.get("CODEX_HOME")
+def _codex_home(configured_home: Path | str | None = None) -> Path:
+    configured = os.fspath(configured_home) if configured_home is not None else os.environ.get("CODEX_HOME")
     return _absolute(configured) if configured else _absolute(Path.home() / ".codex")
 
 
-def _state_directory() -> Path:
-    directory = _assert_safe_ancestors(_codex_home() / STATE_RELATIVE)
+def _state_directory(configured_home: Path | str | None = None) -> Path:
+    directory = _assert_safe_ancestors(_codex_home(configured_home) / STATE_RELATIVE)
     try:
         directory.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
-        raise StateError("cannot create launcher state") from exc
+        raise StateError("cannot create updater state") from exc
     directory = _assert_safe_ancestors(directory)
     if not directory.is_dir() or _is_link_or_reparse(directory):
-        raise StateError("launcher state is unsafe")
+        raise StateError("updater state is unsafe")
     return directory
 
 
 def _write_diagnostic(state_dir: Path, outcome: str, reason: str, **details: str) -> None:
-    """Persist only a small, non-secret machine-readable launcher result."""
+    """Persist only a small, non-secret machine-readable worker result."""
 
     payload: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
@@ -197,12 +197,12 @@ def _write_diagnostic(state_dir: Path, outcome: str, reason: str, **details: str
             handle.flush()
             os.fsync(handle.fileno())
         if _is_link_or_reparse(temporary):
-            raise StateError("launcher diagnostic is unsafe")
+            raise StateError("updater diagnostic is unsafe")
         os.replace(temporary, destination)
     except StateError:
         raise
     except OSError as exc:
-        raise StateError("cannot write launcher diagnostic") from exc
+        raise StateError("cannot write updater diagnostic") from exc
     finally:
         if os.path.lexists(temporary):
             try:
@@ -219,10 +219,10 @@ def _acquire_lock(state_dir: Path) -> LauncherLock:
     try:
         descriptor = os.open(path, flags, 0o600)
     except OSError as exc:
-        raise StateError("cannot acquire launcher lock") from exc
+        raise StateError("cannot acquire updater lock") from exc
     try:
         if not stat.S_ISREG(os.fstat(descriptor).st_mode):
-            raise StateError("launcher lock is not a regular file")
+            raise StateError("updater lock is not a regular file")
         if os.name == "nt":
             import msvcrt
 
@@ -241,7 +241,7 @@ def _acquire_lock(state_dir: Path) -> LauncherLock:
         os.close(descriptor)
         if exc.errno in {errno.EACCES, errno.EAGAIN}:
             raise LockBusy() from exc
-        raise StateError("cannot initialize launcher lock") from exc
+        raise StateError("cannot initialize updater lock") from exc
     except StateError:
         os.close(descriptor)
         raise
@@ -409,7 +409,7 @@ def _create_windows_job() -> WindowsJob | None:
         close = kernel32.CloseHandle
         close.argtypes = (wintypes.HANDLE,)
         close.restype = wintypes.BOOL
-        name = f"CodexTaskRoutingPrelaunch-{secrets.token_hex(16)}"
+        name = f"CodexTaskRoutingUpdater-{secrets.token_hex(16)}"
         handle = create(None, name)
         if not handle:
             return None
@@ -476,8 +476,10 @@ def _terminate_process_tree(process: subprocess.Popen[str], job: WindowsJob | No
     return _wait_for_command_stop(process)
 
 
-def _cli_environment() -> dict[str, str]:
+def _cli_environment(codex_home: Path | None = None) -> dict[str, str]:
     environment = os.environ.copy()
+    if codex_home is not None:
+        environment["CODEX_HOME"] = str(codex_home)
     # Marketplace synchronization is non-interactive.  We neither inspect nor
     # serialize inherited authentication material.
     environment["GIT_TERMINAL_PROMPT"] = "0"
@@ -486,7 +488,7 @@ def _cli_environment() -> dict[str, str]:
     return environment
 
 
-def _run_command(command: Sequence[str], state_dir: Path, *, timeout: int | float = CLI_TIMEOUT_SECONDS) -> CommandResult:
+def _run_command(command: Sequence[str], state_dir: Path, *, timeout: int | float = CLI_TIMEOUT_SECONDS, codex_home: Path | None = None) -> CommandResult:
     job: WindowsJob | None = None
     actual_command = list(command)
     if os.name == "nt":
@@ -498,7 +500,7 @@ def _run_command(command: Sequence[str], state_dir: Path, *, timeout: int | floa
         process = subprocess.Popen(
             actual_command,
             cwd=state_dir,
-            env=_cli_environment(),
+            env=_cli_environment(codex_home),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -523,14 +525,17 @@ def _run_command(command: Sequence[str], state_dir: Path, *, timeout: int | floa
     finally:
         if job is not None:
             _close_windows_job(job)
-    # The helper maps a missing target executable to its reserved status.
+    # The helper maps a missing managed-command executable to its reserved status.
     if os.name == "nt" and process.returncode == 126:
         return CommandResult(returncode=None, missing=True)
     return CommandResult(returncode=process.returncode, stdout=stdout, stderr=stderr)
 
 
 def _run_cli(codex: str, arguments: Sequence[str], state_dir: Path) -> CommandResult:
-    return _run_command([codex, "plugin", *arguments], state_dir)
+    # The state directory was resolved from this run's explicit --codex-home.
+    # A scheduled task does not inherit the installing shell's CODEX_HOME.
+    home = state_dir.parents[len(STATE_RELATIVE.parts) - 1]
+    return _run_command([codex, "plugin", *arguments], state_dir, codex_home=home)
 
 
 def _text_category(text: str) -> str:
@@ -725,40 +730,23 @@ def _synchronize(codex: str, state_dir: Path) -> tuple[str, str, dict[str, str]]
     return "unchanged", "version_unchanged", details
 
 
-def _start_target(arguments: Sequence[str]) -> subprocess.Popen[Any]:
-    # Deliberately inherit the caller's interactive stdio and current working
-    # directory.  The update CLI alone runs from the neutral state directory.
-    return subprocess.Popen(list(arguments), shell=False)
+def run_updater(codex: str, *, codex_home: Path | str | None = None) -> int:
+    """Run one guarded marketplace check without starting, stopping, or restarting Codex."""
 
-
-def _wait_for_target(arguments: Sequence[str]) -> int:
     try:
-        process = _start_target(arguments)
-    except OSError:
-        return 127
-    return process.wait()
-
-
-def run_prelaunch(codex: str, target_arguments: Sequence[str], *, detach: bool = False) -> int:
-    """Synchronize when safe, then start and wait for the requested target."""
-
-    if not target_arguments:
-        return 2
-    try:
-        state_dir = _state_directory()
+        state_dir = _state_directory(codex_home)
     except StateError:
         return STATE_ERROR_EXIT
 
     try:
         lock = _acquire_lock(state_dir)
     except LockBusy:
-        # Starting another Codex process while a pre-launch update is active
-        # recreates the replacement race this launcher exists to prevent.
-        return LOCK_BUSY_EXIT
+        # A later schedule interval will retry.  Do not emit a second state
+        # record while the active worker owns it.
+        return 0
     except StateError:
         return STATE_ERROR_EXIT
 
-    target_process: subprocess.Popen[Any] | None = None
     try:
         try:
             names = _running_process_names()
@@ -775,49 +763,29 @@ def run_prelaunch(codex: str, target_arguments: Sequence[str], *, detach: bool =
                 pass
             return UNCONTAINED_UPDATE_EXIT
         except Exception:
-            # A launcher defect must not make an otherwise safe, locked launch
-            # impossible.  Keep the diagnostic generic and never serialize an
-            # exception that might contain a path or command output.
-            outcome, reason, details = "failed", "launcher_internal_error", {}
+            # Keep diagnostics generic: exceptions can contain a local path
+            # or native command output and are never persisted.
+            outcome, reason, details = "failed", "worker_internal_error", {}
         try:
             _write_diagnostic(state_dir, outcome, reason, **details)
         except StateError:
-            pass
-        try:
-            target_process = _start_target(target_arguments)
-        except OSError:
-            try:
-                _write_diagnostic(state_dir, "failed", "target_launch_failed")
-            except StateError:
-                pass
-            return 127
+            return STATE_ERROR_EXIT
     finally:
         _release_lock(lock)
-    if target_process is None:
-        return 127
-    return 0 if detach else target_process.wait()
+    return 0
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--codex", default="codex", help="Codex CLI path used only for marketplace commands")
-    parser.add_argument(
-        "--detach",
-        action="store_true",
-        help="Return after the target has started; intended for the desktop application.",
-    )
-    parser.add_argument("target", nargs=argparse.REMAINDER, help="Target command after --")
+    parser.add_argument("--codex-home", type=Path, help="Isolated Codex home for this one worker run")
+    parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    target = list(args.target)
-    if target[:1] == ["--"]:
-        target = target[1:]
-    if not target:
-        return 2
-    return run_prelaunch(args.codex, target, detach=args.detach)
+    return run_updater(args.codex, codex_home=args.codex_home)
 
 
 if __name__ == "__main__":
