@@ -40,6 +40,7 @@ def main():
     override.parent.mkdir()
     override.write_text(json.dumps({"schema_version": 1, "models": {
         "terra": {"default_effort": "high"}}}), encoding="utf-8")
+    chat_config = home / PLUGIN_NAME / "chatgpt.json"
     before = {p: p.read_bytes() for p in (guidance, override)}
     env = {**os.environ, "CODEX_HOME": str(home),
            "PATH": str(Path(sys.executable).parent) + os.pathsep + os.environ.get("PATH", "")}
@@ -73,6 +74,16 @@ def main():
     assert status["ok"] and status["override"]["present"]
     assert status["host"]["trust_state"] == "unknown"
     results.append("native install and installed runtime status passed")
+    route_script = script.parent / "chatgpt_route.py"
+    assert run([sys.executable, str(route_script), "status"])["enabled"] is False
+    default_hook = run([sys.executable, str(script), "hook"],
+                       event={"hook_event_name": "SessionStart", "source": "startup"})
+    assert "Opt-in ChatGPT" not in default_hook["hookSpecificOutput"]["additionalContext"]
+    assert "Observation sample" in default_hook["hookSpecificOutput"]["additionalContext"]
+    chat_config.write_text(json.dumps({"schema_version": 1, "enabled": True,
+                                     "required_model": "6 Pro", "transport": "codex-app-tools"}), encoding="utf-8")
+    before[chat_config] = chat_config.read_bytes()
+    results.append("fresh native install keeps Chat route disabled and observation available")
     hooks = json.loads((script.parent.parent / "hooks/hooks.json").read_text(encoding="utf-8"))["hooks"]
     for event in ("SessionStart", "SubagentStart"):
         # The command comes from this reviewed local test copy; run the exact
@@ -87,6 +98,8 @@ def main():
         context = payload["hookSpecificOutput"]
         assert context["hookEventName"] == event
         assert payload.get("continue", True) and "policy hash" in context["additionalContext"]
+        assert ("Opt-in ChatGPT Chat route is enabled" in context["additionalContext"]) == (event == "SessionStart")
+        assert "systemMessage" not in payload, payload.get("systemMessage")
     results.append("installed hook commands produced the official event-specific output for both events")
 
     manifest_path = plugin / ".codex-plugin" / "plugin.json"
@@ -98,6 +111,9 @@ def main():
     updated = run([sys.executable, str(installed_runtime(next_version)), "status", "--json"])
     assert updated["ok"] and updated["manifest_version"] == next_version
     assert updated["override"]["present"] and updated["policy_hash"] != status["policy_hash"]
+    assert chat_config.read_bytes() == before[chat_config]
+    updated_route = installed_runtime(next_version).parent / "chatgpt_route.py"
+    assert run([sys.executable, str(updated_route), "status"])["enabled"] is True
     results.append("native reinstall picked up changed version and preserved override")
     cli("remove", PLUGIN_ID)
     for path, content in before.items():
