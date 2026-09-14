@@ -47,6 +47,16 @@ class ChatGptRouteTestCase(unittest.TestCase):
             value["request_id"] = request_id
         return value
 
+    def handoff(self) -> dict[str, object]:
+        return {
+            "required_information": ["Compare both supplied options."],
+            "source_requirements": ["Use the supplied material as the only source."],
+            "freshness": "The supplied material is the stated snapshot.",
+            "allowed_tools": [],
+            "return_format": "Use concise Japanese sections.",
+            "stop_conditions": ["Stop when the supplied material is insufficient."],
+        }
+
     def write_json(self, name: str, value: object) -> Path:
         path = self.base / name
         path.write_text(json.dumps(value), encoding="utf-8")
@@ -116,6 +126,8 @@ class ChatGptRouteTestCase(unittest.TestCase):
         self.assertIn("Never call a model API or switch this work to ChatGPT Work.", bundle["prompt"])
         self.assertIn("Do not make external writes, purchases", bundle["prompt"])
         self.assertIn("use missing_input", bundle["prompt"])
+        self.assertIn("Separate facts, inferences, and unverified or not-collected information", bundle["prompt"])
+        self.assertIn("An allowed_tools list is an allowlist only", bundle["prompt"])
 
     def test_validate_accepts_prepared_bundle_and_does_not_echo_result_material(self) -> None:
         bundle = chatgpt_route.prepare_payload(self.request())
@@ -130,9 +142,14 @@ class ChatGptRouteTestCase(unittest.TestCase):
         self.assertEqual(result, {"ok": True, "request_id": bundle["request_id"], "status": "completed"})
         self.assertNotIn("sensitive result text", json.dumps(result))
 
-    def test_validate_accepts_only_canonical_current_or_v1_prepared_bundle(self) -> None:
+    def test_validate_accepts_current_and_in_flight_v2_or_v1_prepared_bundles(self) -> None:
         request = self.request(request_id=str(uuid.uuid4()))
         current_bundle = chatgpt_route.prepare_payload(request)
+        v2_bundle = {
+            "request_id": current_bundle["request_id"],
+            "input_sha256": current_bundle["input_sha256"],
+            "prompt": chatgpt_route._build_prompt_v2(request, current_bundle["input_sha256"]),
+        }
         legacy_bundle = {
             "request_id": current_bundle["request_id"],
             "input_sha256": current_bundle["input_sha256"],
@@ -145,10 +162,10 @@ class ChatGptRouteTestCase(unittest.TestCase):
             "result": "result",
             "evidence": [],
         }
-        for bundle in (current_bundle, legacy_bundle):
+        for bundle in (current_bundle, v2_bundle, legacy_bundle):
             with self.subTest(prompt=bundle["prompt"]):
                 self.assertEqual(chatgpt_route.validate_exchange(bundle, response)["status"], "completed")
-        for bundle in (current_bundle, legacy_bundle):
+        for bundle in (current_bundle, v2_bundle, legacy_bundle):
             with self.subTest(tampered=bundle["prompt"]):
                 tampered = dict(bundle)
                 tampered["prompt"] = tampered["prompt"].replace(
@@ -156,6 +173,72 @@ class ChatGptRouteTestCase(unittest.TestCase):
                 )
                 with self.assertRaises(chatgpt_route.ChatRouteError):
                     chatgpt_route.validate_exchange(tampered, response)
+
+    def test_handoff_is_hashed_prompted_and_requires_the_full_contract(self) -> None:
+        request = self.request(request_id=str(uuid.uuid4()))
+        request["handoff"] = self.handoff()
+        bundle = chatgpt_route.prepare_payload(request)
+        self.assertIn('"handoff":', bundle["prompt"])
+        self.assertIn("Follow handoff return_format when present", bundle["prompt"])
+        self.assertIn("source, version or date, and coverage scope", bundle["prompt"])
+        self.assertIn("required tool is unavailable or unauthorized", bundle["prompt"])
+        response = {
+            "request_id": bundle["request_id"],
+            "input_sha256": bundle["input_sha256"],
+            "status": "completed",
+            "result": "Fact: supplied material states the deadline.",
+            "evidence": ["Source: materials; date: not supplied; scope: both options."],
+        }
+        self.assertEqual(chatgpt_route.validate_exchange(bundle, response)["status"], "completed")
+
+        changed = self.request(request_id=bundle["request_id"])
+        changed["handoff"] = self.handoff()
+        changed_handoff = changed["handoff"]
+        assert isinstance(changed_handoff, dict)
+        changed_handoff["freshness"] = "A different freshness requirement."
+        with self.assertRaisesRegex(chatgpt_route.ChatRouteError, "input_sha256"):
+            chatgpt_route.validate_exchange(changed, response)
+
+        old_style_prompt = {
+            "request_id": bundle["request_id"],
+            "input_sha256": bundle["input_sha256"],
+            "prompt": chatgpt_route._build_prompt_v2(request, bundle["input_sha256"]),
+        }
+        with self.assertRaises(chatgpt_route.ChatRouteError):
+            chatgpt_route.validate_exchange(old_style_prompt, response)
+
+    def test_handoff_rejects_unknown_partial_invalid_or_excessive_values_without_echoing_secret(self) -> None:
+        secret = "handoff-secret-never-in-error"
+        invalid_handoffs: list[object] = [
+            {},
+            {**self.handoff(), "unexpected": secret},
+            {key: value for key, value in self.handoff().items() if key != "freshness"},
+            {**self.handoff(), "freshness": []},
+            {**self.handoff(), "allowed_tools": ["x" * (chatgpt_route.MAX_ALLOWED_TOOLS_CHARS + 1)]},
+            {
+                **self.handoff(),
+                "required_information": ["x" * chatgpt_route.MAX_HANDOFF_ITEM_CHARS]
+                * (chatgpt_route.MAX_HANDOFF_ITEMS + 1),
+            },
+        ]
+        for handoff in invalid_handoffs:
+            with self.subTest(handoff=type(handoff).__name__):
+                request = self.request()
+                request["handoff"] = handoff
+                with self.assertRaises(chatgpt_route.ChatRouteError) as raised:
+                    chatgpt_route.prepare_payload(request)
+                self.assertNotIn(secret, str(raised.exception))
+
+        oversized = self.handoff()
+        oversized["freshness"] = "x" * chatgpt_route.MAX_HANDOFF_FIELD_CHARS
+        oversized["return_format"] = "x" * chatgpt_route.MAX_HANDOFF_FIELD_CHARS
+        oversized["required_information"] = [
+            "x" * chatgpt_route.MAX_HANDOFF_ITEM_CHARS
+        ] * chatgpt_route.MAX_HANDOFF_ITEMS
+        request = self.request()
+        request["handoff"] = oversized
+        with self.assertRaisesRegex(chatgpt_route.ChatRouteError, "total size limit"):
+            chatgpt_route.prepare_payload(request)
 
     def test_validate_rejects_altered_prepared_bundle_fields_or_prompt(self) -> None:
         bundle = chatgpt_route.prepare_payload(self.request())

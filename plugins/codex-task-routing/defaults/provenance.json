@@ -12,7 +12,8 @@
     "plugin entrypoint and optional observation helper",
     "remove redundant Japanese effort labels to prevent stale labels after override",
     "parameterize model ids and supported effort slots; default roundtrip verified",
-    "bounded observation lifecycle with explicit missing usage and unchanged model defaults"
+    "bounded observation lifecycle with explicit missing usage and unchanged model defaults",
+    "0.6.0 conditional Chat-first suitability decision in catalog; native model and effort defaults unchanged"
   ],
   "source_policy_revision": "2026-09-14"
 }
