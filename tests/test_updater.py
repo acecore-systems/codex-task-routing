@@ -232,11 +232,31 @@ class UpdaterTest(unittest.TestCase):
     def test_timeout_kills_child_after_parent_exit(self) -> None:
         self.state_dir.mkdir(parents=True)
         marker = self.base / "late.txt"
-        child = "from pathlib import Path; import sys,time; time.sleep(.75); Path(sys.argv[1]).write_text('late')"
-        parent = "import subprocess,sys; subprocess.Popen([sys.executable,'-c'," + repr(child) + ",sys.argv[1]],stdout=sys.stdout,stderr=sys.stderr)"
-        result = updater._run_command([sys.executable, "-c", parent, str(marker)], self.state_dir, timeout=0.1)
+        ready = self.base / "ready.txt"
+        release = self.base / "release.txt"
+        # The write must only become possible after containment has returned.
+        # A fixed child sleep races the test runner's scheduling on a busy host.
+        child = "\n".join([
+            "from pathlib import Path",
+            "import sys,time",
+            "Path(sys.argv[2]).write_text('ready')",
+            "deadline = time.monotonic() + 15",
+            "while not Path(sys.argv[3]).exists():",
+            "    if time.monotonic() >= deadline: raise SystemExit(0)",
+            "    time.sleep(.01)",
+            "Path(sys.argv[1]).write_text('late')",
+        ])
+        parent = "import subprocess,sys; subprocess.Popen([sys.executable,'-c'," + repr(child) + ",*sys.argv[1:]],stdout=sys.stdout,stderr=sys.stderr)"
+        try:
+            result = updater._run_command(
+                [sys.executable, "-c", parent, str(marker), str(ready), str(release)],
+                self.state_dir, timeout=2,
+            )
+        finally:
+            release.write_text("released", encoding="utf-8")
         self.assertTrue(result.timed_out)
         self.assertFalse(result.containment_failed)
+        self.assertTrue(ready.exists(), "child fixture must start before testing containment")
         time.sleep(1)
         self.assertFalse(marker.exists())
 
