@@ -17,7 +17,7 @@ def check():
     assert not {'hooks', 'mcpServers', 'apps'} & manifest.keys()
     assert re.fullmatch(r'\d+\.\d+\.\d+(?:[+-][\w.-]+)?', manifest['version'])
     assert manifest['author']['name'] == 'Acecore'
-    for name in ['LICENSE', 'scripts/routing.py', 'scripts/updater.py', 'scripts/updater_entry.py', 'scripts/install_updater.py', 'hooks/hooks.json', 'defaults/config.json', 'skills/task-routing/SKILL.md', 'skills/task-routing/references/configuration.md']:
+    for name in ['LICENSE', 'scripts/routing.py', 'scripts/updater.py', 'scripts/updater_entry.py', 'scripts/install_updater.py', 'hooks/hooks.json', 'defaults/config.json', 'skills/task-routing/SKILL.md', 'skills/task-routing/references/configuration.md', 'skills/task-routing/references/observation.md', 'skills/task-routing/references/observation-example.json']:
         assert (PLUGIN / name).is_file(), name
     hooks = json.loads((PLUGIN / 'hooks/hooks.json').read_text(encoding='utf-8'))['hooks']
     assert set(hooks) == {'SessionStart', 'SubagentStart'}
@@ -28,7 +28,7 @@ def check():
                 assert hook['command'] == "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','routing.py'),run_name='__main__')\" hook"
                 assert hook['timeout'] <= 10
     config = json.loads((PLUGIN / 'defaults/config.json').read_text(encoding='utf-8'))
-    assert config['policy_revision'] == '2026-09-14'
+    assert config['policy_revision'] == '2026-09-14-observation-completion'
     assert config['models']['luna']['default_effort'] == 'max'
     assert config['models']['terra']['default_effort'] == 'xhigh'
     assert config['models']['sol']['default_effort'] == 'high'
