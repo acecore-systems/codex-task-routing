@@ -35,13 +35,16 @@ class ChatHookTests(unittest.TestCase):
     def test_missing_and_disabled_do_not_advertise_chat(self):
         before = self.payload()
         self.assertNotIn("Opt-in ChatGPT", before["hookSpecificOutput"]["additionalContext"])
-        self.settings({"schema_version": 1, "enabled": False, "required_model": "6 Pro", "transport": "codex-app-tools"})
+        self.settings({"schema_version": 1, "enabled": False, "required_model": "6 Pro", "transport": "browser-temporary"})
         self.assertEqual(before, self.payload())
 
     def test_enabled_only_advertised_to_session_root(self):
-        self.settings({"schema_version": 1, "enabled": True, "required_model": "6 Pro", "transport": "codex-app-tools"})
+        self.settings({"schema_version": 1, "enabled": True, "required_model": "6 Pro", "transport": "browser-temporary"})
         parent = self.payload()["hookSpecificOutput"]["additionalContext"]
         self.assertIn("Opt-in ChatGPT Chat route is enabled", parent)
+        self.assertIn("transport: browser-temporary", parent)
+        self.assertIn("Temporary Chat", parent)
+        self.assertIn("never use send_message_to_thread", parent)
         self.assertIn("never Work or a model API", parent)
         self.assertLessEqual(len(parent), routing.MAX_ADDITIONAL_CONTEXT_CHARS)
         child = self.payload("SubagentStart")["hookSpecificOutput"]["additionalContext"]
@@ -57,7 +60,7 @@ class ChatHookTests(unittest.TestCase):
     def test_turning_off_restores_policy_and_keeps_observation_sample(self):
         policy = routing.load_policy(codex_home=self.home)
         routing.observation_start(codex_home=self.home, policy=policy, task_id="retained-task")
-        settings = {"schema_version": 1, "enabled": True, "required_model": "6 Pro", "transport": "codex-app-tools"}
+        settings = {"schema_version": 1, "enabled": True, "required_model": "6 Pro", "transport": "browser-temporary"}
         self.settings(settings)
         self.assertIn("Opt-in ChatGPT", self.payload()["hookSpecificOutput"]["additionalContext"])
         settings["enabled"] = False
@@ -69,6 +72,12 @@ class ChatHookTests(unittest.TestCase):
         self.assertEqual(status["task_ids"], ["retained-task"])
         self.assertEqual(status["remaining"], 2)
         self.assertEqual(routing.load_policy(codex_home=self.home).content_hash, policy.content_hash)
+
+    def test_explicit_legacy_transport_remains_available_but_is_not_temporary(self):
+        self.settings({"schema_version": 1, "enabled": True, "required_model": "6 Pro", "transport": "codex-app-tools"})
+        context = self.payload()["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("transport: codex-app-tools (legacy)", context)
+        self.assertIn("cannot start or operate a Temporary Chat", context)
 
 
 if __name__ == "__main__":

@@ -78,9 +78,9 @@ Windows以外では定期実行の登録に未対応です。Codexが終了し�
 
 ## 適用確認と変更
 
-### 通常ChatのGPT-6 Proへ渡す（任意）
+### 通常Chatの一時Chat（GPT-6 Pro）へ渡す（任意）
 
-0.4.0から、通常Chatの別枠を使う実験的な経路を任意で有効にできます。独立した調査・比較・文案・レビューを候補にし、ローカル編集・テストはCodexで進めます。既定は無効で、モデル・effortの既存方針は変わりません。
+0.5.0から、通常Chatの別枠を使う実験的な経路は、新しい一時Chatを優先します。独立した調査・比較・文案・レビューを候補にし、ローカル編集・テストはCodexで進めます。既定は無効で、モデル・effortの既存方針は変わりません。
 
 `<CODEX_HOME>/codex-task-routing/chatgpt.json` に次を保存します。プラグインキャッシュ内には保存しません。
 
@@ -89,15 +89,15 @@ Windows以外では定期実行の登録に未対応です。Codexが終了し�
   "schema_version": 1,
   "enabled": true,
   "required_model": "6 Pro",
-  "transport": "codex-app-tools"
+  "transport": "browser-temporary"
 }
 ```
 
 新しいタスクのフックに `Opt-in ChatGPT Chat route is enabled` が表示されることを確認します。`enabled` を `false` にすると、この経路への新しい依頼を停止できます。切替後は新しいタスクから確認してください。進行中のChatを自動停止する設定ではありません。設定を有効にしただけでメッセージは送信されず、接続先の権限も増えません。
 
-この経路には、通常Chatへログイン済みのブラウザ、UIで選択できる `6 Pro`、Codexアプリの会話送受信ツールが必要です。タスクごとに通常Chatを用意し、UIでモデルを確認してから直接送信します。依頼IDと材料hashで回答を照合し、親が内容を受け入れます。モデルAPIキーは使いません。WorkやモデルAPIへの暗黙の切替も行いません。バックエンドのモデルIDは取得できないため、UI表示と実行メタデータを区別します。
+この経路には、通常Chatへログイン済みのBrowserと、UIで選択・確認できる `6 Pro` が必要です。タスクごとに一時Chatを作り、Chatであること、一時Chatであること、`6 Pro` 表示を送信前後で確認します。準備済みの実依頼を一度だけ送信し、最終回答を依頼IDと材料hashで照合してから必要な結果だけを保存し、一時Chatは保存せず閉じます。複数行の本文は `paste({format:'text'})` またはサポートされた `fill` で入力し、全文一致を確認して送信ボタンを一回だけ使います。モデルAPIキーは使わず、WorkやモデルAPIへ暗黙に切り替えません。バックエンドのモデルIDは取得できないため、UI表示と実行メタデータを区別します。
 
-初版は本文と既存の承認済みMCPで取得できる資料を扱います。独自MCPサーバーの公開・書き戻し・自動ファイル添付は含みません。通常Chatの生成はChatの枠、親の処理はCodexの枠を使い、接続先サービスやサーバーの費用は別途確認します。[運用手順・制約](plugins/codex-task-routing/skills/task-routing/references/chatgpt.md)
+一時Chatでは `send_message_to_thread` を使いません。内部で `isTemporaryChat: false` となるためです。既に明示した `"transport": "codex-app-tools"` はlegacyとして互換を保ちますが、自動で書き換えず、一時Chatの作成・操作には使いません。既存の承認済みMCPは材料の受け渡しに使えます。独自MCPサーバーの公開・書き戻し・自動ファイル添付は含みません。通常Chatの生成はChatの枠、親の処理はCodexの枠を使い、接続先サービスやサーバーの費用は別途確認します。[運用手順・制約](plugins/codex-task-routing/skills/task-routing/references/chatgpt.md) と [browser不要化の課題](docs/backlog.md) を参照してください。
 
 ### Codexサブエージェントの設定
 

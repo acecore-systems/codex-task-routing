@@ -75,7 +75,8 @@ def main():
     assert status["host"]["trust_state"] == "unknown"
     results.append("native install and installed runtime status passed")
     route_script = script.parent / "chatgpt_route.py"
-    assert run([sys.executable, str(route_script), "status"])["enabled"] is False
+    default_route = run([sys.executable, str(route_script), "status"])
+    assert default_route["enabled"] is False and default_route["transport"] == "browser-temporary"
     default_hook = run([sys.executable, str(script), "hook"],
                        event={"hook_event_name": "SessionStart", "source": "startup"})
     assert "Opt-in ChatGPT" not in default_hook["hookSpecificOutput"]["additionalContext"]
@@ -99,6 +100,8 @@ def main():
         assert context["hookEventName"] == event
         assert payload.get("continue", True) and "policy hash" in context["additionalContext"]
         assert ("Opt-in ChatGPT Chat route is enabled" in context["additionalContext"]) == (event == "SessionStart")
+        if event == "SessionStart":
+            assert "transport: codex-app-tools (legacy)" in context["additionalContext"]
         assert "systemMessage" not in payload, payload.get("systemMessage")
     results.append("installed hook commands produced the official event-specific output for both events")
 
@@ -113,7 +116,8 @@ def main():
     assert updated["override"]["present"] and updated["policy_hash"] != status["policy_hash"]
     assert chat_config.read_bytes() == before[chat_config]
     updated_route = installed_runtime(next_version).parent / "chatgpt_route.py"
-    assert run([sys.executable, str(updated_route), "status"])["enabled"] is True
+    updated_route_status = run([sys.executable, str(updated_route), "status"])
+    assert updated_route_status["enabled"] is True and updated_route_status["transport"] == "codex-app-tools"
     results.append("native reinstall picked up changed version and preserved override")
     cli("remove", PLUGIN_ID)
     for path, content in before.items():

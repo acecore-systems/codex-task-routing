@@ -1303,14 +1303,24 @@ def _chatgpt_context(home: Path, plugin_root: Path) -> str:
         plugin_root / "skills" / "task-routing" / "references" / "chatgpt.md"
     )
     _read_limited_utf8(reference, MAX_TEMPLATE_BYTES, "ChatGPT route instructions")
+    transport = settings["transport"]
+    transport_note = (
+        "Start a new Temporary Chat and use supported Browser operations to send one actual request and read its "
+        "final answer; never use send_message_to_thread for this Temporary Chat. "
+        if transport == "browser-temporary"
+        else "This legacy direct-thread transport is retained for existing explicit configurations; it cannot start "
+        "or operate a Temporary Chat. "
+    )
+    legacy_suffix = " (legacy)" if transport == "codex-app-tools" else ""
     return (
-        "\nOpt-in ChatGPT Chat route is enabled (required UI model: 6 Pro; transport: codex-app-tools). "
+        f"\nOpt-in ChatGPT Chat route is enabled (required UI model: 6 Pro; transport: {transport}{legacy_suffix}). "
         "This is a user-enabled alternative to standard Codex children for substantial, independent "
         "research, comparison, drafting and review tasks. Read the route instructions before use: "
         f"{reference}. "
         "Use normal Chat only; never Work or a model API. Verify the Chat surface and 6 Pro in the UI "
         "before dispatch and verify the model after completion; tool replies do not attest a backend model. "
-        "Use an isolated conversation per task, request IDs and input hashes. Missing tools, unknown model "
+        + transport_note
+        + "Use an isolated conversation per task, request IDs and input hashes. Missing tools, unknown model "
         "or quota failure blocks this route; report it, do not silently substitute a billed API or Work. "
         "Do not route from subagents or start models from hooks. Preserve the parent model and effort."
     )
