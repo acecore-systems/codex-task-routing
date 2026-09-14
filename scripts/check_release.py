@@ -23,11 +23,11 @@ def main():
         parser.error('--base or RELEASE_BASE is required')
     # Resolve a revision before passing it into git show syntax.
     base = subprocess.check_output(['git', 'rev-parse', '--verify', '--end-of-options',
-                                    args.base + '^{commit}'], cwd=ROOT, text=True).strip()
+                                    args.base + '^{commit}'], cwd=ROOT, text=True, encoding='utf-8').strip()
     paths = subprocess.check_output(['git', 'diff', '--name-only', '--no-renames',
-                                     base, 'HEAD', '--', PREFIX], cwd=ROOT, text=True).splitlines()
+                                     base, 'HEAD', '--', PREFIX], cwd=ROOT, text=True, encoding='utf-8').splitlines()
     before = json.loads(subprocess.check_output(['git', 'show', base + ':' + MANIFEST],
-                                               cwd=ROOT, text=True))['version']
+                                               cwd=ROOT, text=True, encoding='utf-8'))['version']
     after = json.loads((ROOT / MANIFEST).read_text(encoding='utf-8'))['version']
     if needs_version_change(paths, before, after):
         raise SystemExit('Distributed plugin files changed without a new manifest version.')
