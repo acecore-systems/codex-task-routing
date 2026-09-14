@@ -1,0 +1,22 @@
+{
+  "name": "codex-task-routing",
+  "version": "0.1.0",
+  "description": "Task delegation policies for research, documents, images, operations, and development in Codex.",
+  "author": {
+    "name": "Acecore",
+    "url": "https://github.com/acecore-systems"
+  },
+  "skills": "./skills/",
+  "repository": "https://github.com/acecore-systems/codex-task-routing",
+  "homepage": "https://github.com/acecore-systems/codex-task-routing",
+  "license": "MIT",
+  "interface": {
+    "displayName": "Codex Task Routing",
+    "shortDescription": "Use the right model and effort for each delegated task.",
+    "longDescription": "Apply Acecore's task delegation defaults, preserve the selected parent model, and customize model, effort, handoff, and review policies with local overrides.",
+    "developerName": "Acecore",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": "Codex Task Routingの適用状態と、既定値から変更した分担設定を確認して。"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "policy_revision": "2026-09-14",
+  "source_sha256": {
+    "AGENTS.md": "bd2584d350c204f1ffbc8c005c084fc34360acddf8812557504350820e34be42",
+    "model-routing-policy.md": "9335ccec4516bc71b68d01f9304d6e71d3b5efcd77a210476571cd7d060c476c",
+    "model-routing-catalog.md": "76dc9bb5abb49ed71db4db6799ce7ad06f6259002fa85182419576ad1787e762",
+    "model-routing-handoff.md": "9bf2a2f2dae947abf6b976f0aa8ca860c459ec7ba9134fd8b2005fd6709c56c5"
+  },
+  "adjustments": [
+    "personal-path portability",
+    "remove adoption-history sentence",
+    "plugin entrypoint and optional observation helper",
+    "remove redundant Japanese effort labels to prevent stale labels after override",
+    "parameterize model ids and supported effort slots; default roundtrip verified"
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','routing.py'),run_name='__main__')\" hook",
+            "timeout": 10,
+            "additionalContextLimit": 8000,
+            "statusMessage": "Loading task routing policy"
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','routing.py'),run_name='__main__')\" hook",
+            "timeout": 10,
+            "additionalContextLimit": 8000,
+            "statusMessage": "Loading delegated task policy"
+          }
+        ]
+      }
+    ]
+  }
+}

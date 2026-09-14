@@ -1,0 +1,17 @@
+{{principles.policy_intro}}
+{{principles.policy_effort}}
+{{principles.policy_timing}}
+{{principles.policy_reading}}
+{{principles.policy_classification}}
+{{principles.policy_test_image}}
+{{principles.policy_originals}}
+{{principles.policy_luna_timing}}
+{{principles.policy_retrieval}}
+{{principles.policy_escalation}}
+{{principles.policy_handoff}}
+{{principles.policy_reasoning}}
+{{principles.policy_parent}}
+{{principles.policy_hierarchy}}
+{{principles.policy_economy}}
+{{principles.policy_observation}}
+{{principles.policy_scope}}

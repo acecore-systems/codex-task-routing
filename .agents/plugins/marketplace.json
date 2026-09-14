@@ -1,0 +1,20 @@
+{
+  "name": "codex-task-routing",
+  "interface": {
+    "displayName": "Codex Task Routing"
+  },
+  "plugins": [
+    {
+      "name": "codex-task-routing",
+      "source": {
+        "source": "local",
+        "path": "./plugins/codex-task-routing"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
