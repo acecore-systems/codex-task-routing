@@ -11,7 +11,7 @@ import unittest
 import uuid
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "plugins" / "codex-task-routing" / "scripts" / "routing.py"
@@ -204,9 +204,86 @@ class RoutingTestCase(unittest.TestCase):
                 self.assertEqual(cache.name, policy.content_hash)
                 self.assertTrue(routing._is_managed_directory(cache))
 
-        with patch.object(routing.os, "rename", side_effect=OSError(errno.EACCES, "denied")):
+        denied_calls = 0
+
+        def denied(source, destination):
+            nonlocal denied_calls
+            denied_calls += 1
+            raise OSError(errno.EACCES, "denied")
+
+        with patch.object(routing.os, "rename", side_effect=denied):
             with self.assertRaises(routing.RoutingError):
                 routing._cache_directory(self.base / "home-denied", policy)
+        self.assertEqual(denied_calls, 1)
+
+    @unittest.skipUnless(os.name == "nt", "Windows rename error mapping")
+    def test_cache_rename_retries_only_bounded_windows_access_candidates(self) -> None:
+        policy = self.policy()
+        original_rename = routing.os.rename
+        transient_home = self.base / "home-transient-access"
+        calls = 0
+
+        def fail_twice_then_publish(source, destination):
+            nonlocal calls
+            calls += 1
+            if calls < routing.CACHE_RENAME_MAX_ATTEMPTS:
+                raise OSError(errno.EACCES, "temporary access", None, 5)
+            original_rename(source, destination)
+
+        with (
+            patch.object(routing.os, "rename", side_effect=fail_twice_then_publish),
+            patch.object(routing.time, "sleep") as sleep,
+        ):
+            cache = routing._cache_directory(transient_home, policy)
+        self.assertEqual(cache.name, policy.content_hash)
+        self.assertEqual(calls, routing.CACHE_RENAME_MAX_ATTEMPTS)
+        self.assertEqual(
+            sleep.call_args_list,
+            [
+                call(routing.CACHE_RENAME_RETRY_SECONDS),
+                call(routing.CACHE_RENAME_RETRY_SECONDS * 2),
+            ],
+        )
+
+        persistent_home = self.base / "home-persistent-access"
+        persistent_calls = 0
+
+        def permanently_denied(source, destination):
+            nonlocal persistent_calls
+            persistent_calls += 1
+            raise OSError(errno.EACCES, "persistent access", None, 5)
+
+        with (
+            patch.object(routing.os, "rename", side_effect=permanently_denied),
+            patch.object(routing.time, "sleep") as sleep,
+        ):
+            with self.assertRaises(routing.RoutingError):
+                routing._cache_directory(persistent_home, policy)
+        self.assertEqual(persistent_calls, routing.CACHE_RENAME_MAX_ATTEMPTS)
+        self.assertEqual(sleep.call_count, routing.CACHE_RENAME_MAX_ATTEMPTS - 1)
+
+        mismatch_home = self.base / "home-mismatched-winner"
+        mismatch_calls = 0
+
+        def publish_mismatch_then_signal_access(source, destination):
+            nonlocal mismatch_calls
+            mismatch_calls += 1
+            destination.mkdir()
+            (destination / "foreign.txt").write_text("do not overwrite", encoding="utf-8")
+            raise OSError(errno.EACCES, "temporary access", None, 5)
+
+        with (
+            patch.object(routing.os, "rename", side_effect=publish_mismatch_then_signal_access),
+            patch.object(routing.time, "sleep") as sleep,
+        ):
+            with self.assertRaises(routing.RoutingError):
+                routing._cache_directory(mismatch_home, policy)
+        self.assertEqual(mismatch_calls, 1)
+        self.assertEqual(sleep.call_count, 0)
+        self.assertEqual(
+            (mismatch_home / routing.CACHE_RELATIVE / policy.content_hash / "foreign.txt").read_text(encoding="utf-8"),
+            "do not overwrite",
+        )
 
     def test_mutated_cache_is_not_reused_as_effective_policy(self) -> None:
         policy = self.policy()

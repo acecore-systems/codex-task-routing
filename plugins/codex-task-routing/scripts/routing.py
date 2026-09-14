@@ -19,6 +19,7 @@ import re
 import secrets
 import stat
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping
@@ -57,6 +58,14 @@ MAX_TOKEN_DEPTH = 20
 # conservative character ceiling so the runtime never asks the host to truncate
 # an effective policy mid-document.
 MAX_ADDITIONAL_CONTEXT_CHARS = 8000
+
+# Windows can briefly retain a directory handle immediately after another
+# process creates a fresh cache tree.  Only retry the Windows errors that can
+# describe that short sharing/access window, and leave all other filesystem
+# errors visible to the caller.
+CACHE_RENAME_MAX_ATTEMPTS = 3
+CACHE_RENAME_RETRY_SECONDS = 0.05
+WINDOWS_TRANSIENT_RENAME_WINERRORS = frozenset({5, 32, 33})
 
 EFFORT_ORDER = {"medium": 0, "high": 1, "xhigh": 2, "max": 3}
 MODEL_FIELDS = ("id", "min_effort", "default_effort", "max_effort")
@@ -532,16 +541,30 @@ def _cache_matches_policy(directory: Path, policy: Policy) -> bool:
     return True
 
 
+def _verified_existing_cache(destination: Path, policy: Policy) -> bool:
+    """Return whether a published cache is exact, rejecting unsafe entries."""
+
+    if not os.path.lexists(destination):
+        return False
+    if _is_link_or_reparse(destination) or not destination.is_dir():
+        raise RoutingError("policy cache entry is unsafe")
+    if not _cache_matches_policy(destination, policy):
+        raise RoutingError("policy cache entry does not match the effective policy")
+    return True
+
+
+def _is_transient_windows_rename_error(exc: OSError) -> bool:
+    """Recognize only bounded-retry candidates from Windows directory sharing."""
+
+    return os.name == "nt" and getattr(exc, "winerror", None) in WINDOWS_TRANSIENT_RENAME_WINERRORS
+
+
 def _cache_directory(codex_home: Path, policy: Policy) -> Path:
     """Create a fresh content-addressed cache directory without touching an old one."""
 
     cache_root = _safe_mkdir(_absolute(codex_home) / CACHE_RELATIVE)
     destination = cache_root / policy.content_hash
-    if os.path.lexists(destination):
-        if _is_link_or_reparse(destination) or not destination.is_dir():
-            raise RoutingError("policy cache entry is unsafe")
-        if not _cache_matches_policy(destination, policy):
-            raise RoutingError("policy cache entry does not match the effective policy")
+    if _verified_existing_cache(destination, policy):
         return destination
     staging = cache_root / f".routing-staging-{policy.content_hash}-{secrets.token_hex(8)}"
     try:
@@ -549,21 +572,34 @@ def _cache_directory(codex_home: Path, policy: Policy) -> Path:
         staging.mkdir()
         render_policy(policy, staging)
         # os.rename does not overwrite an existing destination on Windows.
-        os.rename(staging, destination)
-    except OSError as exc:
-        # Windows uses EEXIST and Linux may use ENOTEMPTY when a concurrent
-        # hook has already atomically published this non-empty directory.
-        if exc.errno in {errno.EEXIST, errno.ENOTEMPTY}:
-            if (
-                os.path.lexists(destination)
-                and not _is_link_or_reparse(destination)
-                and destination.is_dir()
-                and _cache_matches_policy(destination, policy)
-            ):
+        for attempt in range(CACHE_RENAME_MAX_ATTEMPTS):
+            try:
+                os.rename(staging, destination)
                 return destination
-            raise RoutingError("policy cache entry appeared during rendering") from exc
+            except OSError as exc:
+                # Windows uses EEXIST and Linux may use ENOTEMPTY when a
+                # concurrent hook has already atomically published this
+                # non-empty directory.  Never accept a link or mismatched
+                # directory as a concurrent winner.
+                if exc.errno in {errno.EEXIST, errno.ENOTEMPTY}:
+                    if _verified_existing_cache(destination, policy):
+                        return destination
+                    raise RoutingError("policy cache entry appeared during rendering") from exc
+                # A fresh directory can be temporarily held by Windows file
+                # indexing or another local process.  WinError 5 is also used
+                # for permanent denial, so this remains short and bounded; a
+                # persistent failure still escapes as a RoutingError.
+                if (
+                    _is_transient_windows_rename_error(exc)
+                    and attempt + 1 < CACHE_RENAME_MAX_ATTEMPTS
+                ):
+                    if _verified_existing_cache(destination, policy):
+                        return destination
+                    time.sleep(CACHE_RENAME_RETRY_SECONDS * (attempt + 1))
+                    continue
+                raise RoutingError("cannot create the policy cache entry") from exc
+    except OSError as exc:
         raise RoutingError("cannot create the policy cache entry") from exc
-    return destination
 
 
 def _guidance_directories(cwd: Path, codex_home: Path | None) -> list[Path]:

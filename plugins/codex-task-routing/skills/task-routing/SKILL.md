@@ -5,6 +5,8 @@ description: Apply Codex Task Routing for substantial independent tasks, includi
 
 # Task routing
 
+Avoid a classifier-only model call or repeated full tool inventories. For a substantial Chat candidate, reuse the scoped, expiring capability inventory and deterministic `chat_plan.py` checks in [capability reuse](references/chat-capabilities.md); short work needs no extra planning files. Use [local transfer](references/chat-transfer.md) when supported Browser DOM operations can move the prepared prompt and final response without echoing their full text into the parent's context. These helpers do not authorize dispatch, attest a model, or replace semantic acceptance.
+
 For an enabled normal Chat route, evaluate Chat suitability before choosing a native child for each substantial independent work unit; users need not mention this plugin again. Prefer 6 Pro for work that can finish with approved materials and verified tools when preparation, waiting, acceptance and rework are proportionate. Split analysis or design from local execution when useful. Preserve the parent's useful independent work requirement. A small remainder or repeated local inspection stays in Codex. Use the route reference's selection and handoff checks; enabling Chat does not grant data sharing or tool permissions.
 
 Use the effective policy already supplied by this plugin's start hook. Keep the user's chosen parent model and effort. It authorizes choosing suitable standard subagents only within the user's task, available tools, and higher-priority instructions. A child requires a bounded independent task and useful independent work for its direct parent. Short work stays with the current capable agent.
