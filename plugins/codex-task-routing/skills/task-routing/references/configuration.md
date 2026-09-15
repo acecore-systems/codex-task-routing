@@ -10,7 +10,7 @@ python plugins/codex-task-routing/scripts/routing.py --config examples/overrides
 
 上書きに含めたフィールドだけを変更します。`schema_version` は1。役割キーは `luna`、`terra`、`sol`、`astra`。各役割は `id`、`min_effort`、`default_effort`、`max_effort` を持ちます。別のモデルを設定しても役割ラベルは変えません。
 
-effortの設定値は `medium`、`high`、`xhigh`、`max` で、下限≤標準≤上限が必要です。これはこの版の子の選定設定であり、親のeffortには適用しません。値が妥当でも、実際のモデルがそのeffortを受け付けるかは実行時の機能で確認します。
+effortの設定値は `medium`、`high`、`xhigh`、`max` で、下限≤標準≤上限が必要です。自動選定には有効なdefault_effortだけを固定値として使います。min_effort/max_effortは互換性とoverrideの範囲検証用で、毎回の候補ではありません。Terra定義は互換性維持のため残し、Terra子を標準にしません。親の実設定には適用しません。値が妥当でも、実際のモデルがそのeffortを受け付けるかは実行時の機能で確認します。
 
 未定義キー、重複したJSONキー、型違い、空文字、無効範囲、解決できないテンプレートはエラーとして扱います。設定内容の誤りを既定値への暗黙の切戻しで隠しません。
 

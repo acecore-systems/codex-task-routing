@@ -1351,15 +1351,15 @@ def _chatgpt_context(home: Path, plugin_root: Path) -> str:
     return (
         f"\nOpt-in ChatGPT Chat route is enabled (required UI model: 6 Pro; transport: {transport}{legacy_suffix}). "
         "This is a user-enabled alternative to standard Codex children for substantial, independent "
-        "research, comparison, drafting and review tasks. Before assigning a substantial independent work unit, "
+        "research, analysis, design, drafting, review and explicitly authorized implementation/testing/PR tasks. Before assigning a substantial work unit, "
         "evaluate this Chat route first: prefer 6 Pro when approved materials and verified tools suffice and "
         "handoff, waiting, acceptance and rework costs are proportionate. Do not require another plugin mention. "
-        "Split analysis/design from local execution when useful; keep short or repeatedly local work in Codex. "
-        "The parent must still have useful independent work. Check required information, sources/freshness, "
+        "Use Chat as the initial main specialist, not a redundant final review. Include implementation/PR work only with actual tools, scoped write approval and a sufficient test environment. Keep short work or repeated access to Codex-only local resources in Codex. "
+        "Parallel delegation requires useful independent parent work. Serial specialist delegation requires explicit host permission and concrete added value; never invent parent work or bypass host rules. Check required information, sources/freshness, "
         "allowed tool capabilities, return format and stop conditions before dispatch. "
         "Read the route instructions before use: "
         f"{reference}. "
-        "Use normal Chat only; never Work or a model API. Verify the Chat surface and 6 Pro in the UI "
+        "Before dispatch use chat_plan.py --live with fresh observations; supplied flags are not proof of permission. Confirm the permitted transport separately from quota and opt-in; unknown authorization blocks dispatch. Use normal Chat only; never Work or a model API. Verify the Chat surface and 6 Pro in the UI "
         "before dispatch and verify the model after completion; tool replies do not attest a backend model. "
         + transport_note
         + "Use an isolated conversation per task, request IDs and input hashes. Missing tools, unknown model "
@@ -1445,13 +1445,13 @@ def hook_payload(
             model_matrix = "; ".join(
                 f"{role.title()}={policy.config['models'][role]['id']} "
                 f"({policy.config['models'][role]['default_effort']})"
-                for role in REQUIRED_MODEL_ROLES
+                for role in ("luna", "sol", "astra")
             )
             context = "\n".join(
                 [
                     f"Codex Task Routing manifest {policy.version}; policy hash {policy.content_hash}.",
                     f"Configured child-routing reference only; it does not change the parent: {model_matrix}.",
-                    "Follow the parent-specified scope and acceptance criteria; re-delegate only under the detailed policy, and distinguish unverified work from confirmed results.",
+                    "Terra child is outside the standard route. Follow the parent-specified scope and acceptance criteria; return specialist questions to the parent rather than re-delegating, and distinguish unverified work from confirmed results.",
                     f"Effective policy: {references['effective.md']}",
                     "Detailed policy references:",
                     detail_refs,
