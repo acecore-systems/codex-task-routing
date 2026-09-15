@@ -63,3 +63,17 @@ the response format/correlation check, and `status: completed`. Even a
 completed status is not semantic acceptance: the parent must still assess the
 answer against the task's acceptance criteria, evidence, scope, and UI model
 confirmation.
+
+## Dispatch permission and longer work
+
+Before any Chat send/collection, follow [usage and authorization gates](chat-limits.md)
+and pass fresh observations to `chat_plan.py --live`. Local transfer validation
+is not permission for an otherwise unapproved automated extraction method.
+
+The helper deadline is a local transport lifetime, not proof that Chat failed
+or permission to resend its task. Choose `--timeout` within the supported
+1–3600 seconds for the expected work. If the helper expires while Chat is
+still running, keep the existing Chat and do not resend. Once a reply is
+available, a new local helper can use the same validated bundle and reply
+target to save that reply; request ID/hash and no-overwrite checks still apply.
+Never restart the model task merely to restore a local form.

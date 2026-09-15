@@ -17,7 +17,7 @@ def check():
     assert not {'hooks', 'mcpServers', 'apps'} & manifest.keys()
     assert re.fullmatch(r'\d+\.\d+\.\d+(?:[+-][\w.-]+)?', manifest['version'])
     assert manifest['author']['name'] == 'Acecore'
-    for name in ['LICENSE', 'scripts/routing.py', 'scripts/chatgpt_route.py', 'scripts/updater.py', 'scripts/updater_entry.py', 'scripts/install_updater.py', 'hooks/hooks.json', 'defaults/config.json', 'skills/task-routing/SKILL.md', 'skills/task-routing/references/configuration.md', 'skills/task-routing/references/chatgpt.md', 'skills/task-routing/references/observation.md', 'skills/task-routing/references/observation-example.json']:
+    for name in ['LICENSE', 'scripts/routing.py', 'scripts/chatgpt_route.py', 'scripts/updater.py', 'scripts/updater_entry.py', 'scripts/install_updater.py', 'hooks/hooks.json', 'defaults/config.json', 'skills/task-routing/SKILL.md', 'skills/task-routing/references/configuration.md', 'skills/task-routing/references/chatgpt.md', 'skills/task-routing/references/observation.md', 'skills/task-routing/references/chat-limits.md', 'skills/task-routing/references/observation-example.json']:
         assert (PLUGIN / name).is_file(), name
     hooks = json.loads((PLUGIN / 'hooks/hooks.json').read_text(encoding='utf-8'))['hooks']
     for name in ['scripts/chat_plan.py', 'scripts/chat_transfer.py', 'skills/task-routing/references/chat-capabilities.md', 'skills/task-routing/references/chat-transfer.md']:
@@ -30,10 +30,11 @@ def check():
                 assert hook['command'] == "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','routing.py'),run_name='__main__')\" hook"
                 assert hook['timeout'] <= 10
     config = json.loads((PLUGIN / 'defaults/config.json').read_text(encoding='utf-8'))
-    assert config['policy_revision'] == '2026-09-14-observation-completion'
+    assert config['policy_revision'] == '2026-09-15-terra-chat-fixed'
     assert config['models']['luna']['default_effort'] == 'max'
     assert config['models']['terra']['default_effort'] == 'xhigh'
     assert config['models']['sol']['default_effort'] == 'high'
+    assert config['models']['astra']['default_effort'] == 'high'
     forbidden = re.compile(r'(?:[A-Za-z]:[/\\]Users[/\\](?!<|\$)[A-Za-z0-9_-]+)|(?:-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----)|(?:gh[pousr]_[A-Za-z0-9]{30,})')
     for path in PLUGIN.rglob('*'):
         if not path.is_file() or '__pycache__' in path.parts:

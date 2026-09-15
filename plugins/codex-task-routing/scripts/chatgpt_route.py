@@ -404,8 +404,8 @@ def _build_prompt_v2(request: Mapping[str, Any], input_sha256: str) -> str:
     )
 
 
-def _build_prompt(request: Mapping[str, Any], input_sha256: str) -> str:
-    """Render the current Temporary Chat prompt with an optional handoff contract."""
+def _build_prompt_v3(request: Mapping[str, Any], input_sha256: str) -> str:
+    """Render the 0.6/0.7 prompt unchanged for strict in-flight validation."""
 
     request_json = json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return "\n".join(
@@ -428,6 +428,21 @@ def _build_prompt(request: Mapping[str, Any], input_sha256: str) -> str:
             "Request JSON:",
             request_json,
         ]
+    )
+
+
+def _build_prompt(request: Mapping[str, Any], input_sha256: str) -> str:
+    """Use verified capabilities, not a writing-only task label, for new work."""
+    prompt = _build_prompt_v3(request, input_sha256)
+    prompt = prompt.replace(
+        "This route is for research, comparison, drafting, and review.",
+        "This route can handle research, analysis, design, drafting, review, and explicitly authorized implementation, testing or pull requests when the actual tools and verification environment suffice.",
+        1,
+    )
+    return prompt.replace(
+        "This is the actual task request; do not send a separate availability handshake.",
+        "This is the actual task request; do not send a separate availability handshake. For implementation, verify the specified repository, base/head revision, allowed files and operations, and test environment. Do not infer merge or deployment approval from permission to create a pull request. Return changed revisions, test results and unverified environments; stop if the required capability or approval is missing.",
+        1,
     )
 
 
@@ -467,7 +482,7 @@ def _expected_request(value: Mapping[str, Any]) -> tuple[str, str]:
             raise ChatRouteError("prepared bundle request_id does not match its prompt")
         if input_sha256 != expected_hash:
             raise ChatRouteError("prepared bundle input_sha256 does not match its prompt")
-        canonical_prompts = {_build_prompt(prompt_request, expected_hash)}
+        canonical_prompts = {_build_prompt(prompt_request, expected_hash), _build_prompt_v3(prompt_request, expected_hash)}
         if "handoff" not in prompt_request:
             canonical_prompts.update(
                 {
