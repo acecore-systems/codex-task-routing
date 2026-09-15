@@ -33,7 +33,7 @@ def _time(value):
         if parsed.tzinfo is None:
             raise ValueError()
         return parsed.astimezone(timezone.utc)
-    except ValueError as exc:
+    except (ValueError, OverflowError) as exc:
         raise ChatRouteError("observation time requires an ISO timestamp with timezone") from exc
 
 
@@ -62,7 +62,7 @@ def validate_inventory(value):
         if cap["tool"] not in installed or not isinstance(cap["state"], str) or cap["state"] not in STATES:
             raise ChatRouteError("unknown tool or capability state")
         observed, expires = _time(cap["observed_at"]), _time(cap["expires_at"])
-        if not observed < expires <= observed + timedelta(days=7):
+        if not timedelta(0) < expires - observed <= timedelta(days=7):
             raise ChatRouteError("capability lifetime must be positive and at most seven days")
     return value
 

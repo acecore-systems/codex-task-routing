@@ -25,34 +25,3 @@ jobs:
         env:
           RELEASE_BASE: ${{ github.event.pull_request.base.sha }}
         run: python scripts/check_release.py
-  apply_review_patch:
-    if: github.event_name == 'pull_request' && github.event.pull_request.number == 9 && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'codex/chat-routing-tools'
-    needs: test
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha }}
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Apply only the locally verified patch and remove temporary review plumbing
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo '9475d4a592871808a5a59f2afbd9c268b07380fb5b5278dda5e9c13a54182a6e  .github/review-fix.patch' | sha256sum --check
-          git diff --exit-code 192007fcc7c20a1ba024d74882794857bd955abd HEAD -- docs/validation.md plugins/codex-task-routing/.codex-plugin/plugin.json plugins/codex-task-routing/scripts/chat_plan.py plugins/codex-task-routing/scripts/chatgpt_route.py tests/test_chat_boundary_regressions.py
-          git apply --index .github/review-fix.patch
-          git show 192007fcc7c20a1ba024d74882794857bd955abd:.github/workflows/checks.yml > .github/workflows/checks.yml
-          git add .github/workflows/checks.yml
-          git rm .github/review-fix.patch
-          python -m unittest discover -s tests -v
-          python scripts/check_package.py
-          git diff --cached --check
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'PR #9: Unicodeと接続期限の境界値を修正し回帰テストを追加'
-          git push origin HEAD:codex/chat-routing-tools
