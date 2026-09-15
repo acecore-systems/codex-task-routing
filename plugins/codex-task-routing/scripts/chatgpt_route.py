@@ -177,6 +177,12 @@ def _require_keys(value: Mapping[str, Any], *, required: set[str], allowed: set[
 def _require_nonempty_string(value: Any, *, purpose: str, maximum: int) -> str:
     if not isinstance(value, str) or not value.strip() or len(value) > maximum:
         raise ChatRouteError(f"{purpose} must be a non-empty string within the size limit")
+    # JSON permits escaped lone surrogates that cannot be saved as UTF-8.
+    # Reject them at the shared protocol boundary, before hashing or saving.
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise ChatRouteError(f"{purpose} must contain valid Unicode text") from exc
     return value
 
 
