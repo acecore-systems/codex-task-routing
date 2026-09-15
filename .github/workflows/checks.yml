@@ -25,3 +25,12 @@ jobs:
         env:
           RELEASE_BASE: ${{ github.event.pull_request.base.sha }}
         run: python scripts/check_release.py
+      - name: Export source snapshot for offline PR review
+        if: matrix.os == 'ubuntu-latest'
+        run: git archive --format=zip --output=review-source.zip HEAD
+      - uses: actions/upload-artifact@v4
+        if: matrix.os == 'ubuntu-latest'
+        with:
+          name: review-source-${{ github.sha }}
+          path: review-source.zip
+          retention-days: 1
