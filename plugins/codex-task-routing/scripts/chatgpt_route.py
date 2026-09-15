@@ -451,11 +451,19 @@ def prepare_payload(value: Mapping[str, Any]) -> dict[str, str]:
 
     request = _normalise_request(value, require_request_id=False)
     input_sha256 = _sha256(request)
-    return {
+    bundle = {
         "request_id": request["request_id"],
         "input_sha256": input_sha256,
         "prompt": _build_prompt(request, input_sha256),
     }
+    # The prompt contains JSON inside a JSON string. Quotes, backslashes and
+    # non-ASCII text make source character counts an unsafe size estimate.
+    # Match the CLI's serialization, including its final newline, so every
+    # successful prepare result can be read by validate and the local helper.
+    encoded = (json.dumps(bundle, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8")
+    if len(encoded) > MAX_JSON_BYTES:
+        raise ChatRouteError("prepared bundle exceeds the size limit; shorten materials or use scoped source references")
+    return bundle
 
 
 def _expected_request(value: Mapping[str, Any]) -> tuple[str, str]:

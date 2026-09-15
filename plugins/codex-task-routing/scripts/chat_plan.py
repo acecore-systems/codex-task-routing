@@ -12,7 +12,7 @@ from chatgpt_route import ChatRouteError, _load_json_object, _require_keys, _req
 
 FLAGS = {"substantial", "parent_has_independent_work", "materials_approved",
          "handoff_proportionate", "requires_repeated_local_access"}
-STATES = {"advertised", "verified", "blocked"}
+STATES = {"advertised", "permission_checked", "verified", "blocked"}
 
 
 def _keys(value, required, purpose):
@@ -54,13 +54,22 @@ def validate_inventory(value):
         raise ChatRouteError("capabilities must be a bounded list")
     seen = set()
     for cap in caps:
-        _keys(cap, {"tool", "operation", "scope", "state", "observed_at", "expires_at"}, "capability")
+        required = {"tool", "operation", "scope", "state", "observed_at", "expires_at"}
+        if not isinstance(cap, dict):
+            raise ChatRouteError("capability must be an object")
+        _require_keys(cap, required=required, allowed=required | {"permission_evidence"}, purpose="capability")
         key = tuple(_text(cap[k]) for k in ("tool", "operation", "scope"))
         if key in seen:
             raise ChatRouteError("duplicate capability scope")
         seen.add(key)
         if cap["tool"] not in installed or not isinstance(cap["state"], str) or cap["state"] not in STATES:
             raise ChatRouteError("unknown tool or capability state")
+        # A first real operation must not require an unrelated trial write.
+        # This state records scoped capability/permission checks, not execution.
+        if cap["state"] == "permission_checked" and "permission_evidence" not in cap:
+            raise ChatRouteError("permission_checked requires scoped permission evidence")
+        if "permission_evidence" in cap:
+            _text(cap["permission_evidence"])
         observed, expires = _time(cap["observed_at"]), _time(cap["expires_at"])
         if not timedelta(0) < expires - observed <= timedelta(days=7):
             raise ChatRouteError("capability lifetime must be positive and at most seven days")
@@ -156,11 +165,14 @@ def plan(facts, inventory=None, *, now=None, live=None):
         state = "unknown"
         if cap:
             state = cap["state"] if _time(cap["observed_at"]) <= instant < _time(cap["expires_at"]) else "stale"
-        checks.append({**need, "state": state, "installed": bool(inventory and need["tool"] in inventory["installed_plugins"])})
+        checks.append({**need, "state": state, "installed": bool(inventory and need["tool"] in inventory["installed_plugins"]),
+                       "execution_verified": state == "verified"})
     if any(c["state"] == "blocked" for c in checks):
         return {"route": "not_ready", "reason": "required_capability_blocked", "checks": checks}
-    if any(c["state"] != "verified" for c in checks):
+    if any(c["state"] not in {"verified", "permission_checked"} for c in checks):
         return {"route": "preflight_needed", "reason": "verify_only_required_capabilities", "checks": checks}
+    if live is None and any(c["state"] == "permission_checked" for c in checks):
+        return {"route": "preflight_needed", "reason": "fresh_live_required_for_unexercised_capability", "checks": checks}
     return {"route": "chat_candidate", "reason": "verify_live_surface_model_and_permissions", "checks": checks,
             "live_checked": live is not None, "delegation_mode": delegation}
 
