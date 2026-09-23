@@ -205,7 +205,12 @@ def _load_templates(plugin_root: Path) -> dict[str, str]:
         if path.suffix.lower() == ".md":
             if _is_link_or_reparse(path) or not path.is_file():
                 raise RoutingError("template is unavailable", code="invalid_template")
-            templates[path.name] = _read_limited_utf8(path, MAX_TEMPLATE_BYTES, "template")
+            try:
+                templates[path.name] = _read_limited_utf8(path, MAX_TEMPLATE_BYTES, "template")
+            except RoutingError as exc:
+                if exc.code in {"invalid_json", "invalid_policy"}:
+                    raise RoutingError("template is invalid", code="invalid_template") from exc
+                raise
     if set(templates) != set(RENDERED_TEMPLATE_NAMES):
         raise RoutingError("templates do not match the packaged policy set", code="invalid_template")
     return templates

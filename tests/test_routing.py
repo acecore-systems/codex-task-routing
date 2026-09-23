@@ -196,6 +196,17 @@ class RoutingTestCase(unittest.TestCase):
                 result = routing.status_payload(plugin_root=self.plugin, codex_home=self.home)
                 self.assertEqual(result["error_code"], code)
                 self.assertNotIn("private-", json.dumps(result))
+
+    def test_status_identifies_invalid_template_encoding_and_size(self) -> None:
+        template = self.plugin / "defaults/templates/effective.md"
+        for content, limit in [(b"\xff", routing.MAX_TEMPLATE_BYTES), (b"x" * 33, 32)]:
+            with self.subTest(content=content), patch.object(routing, "MAX_TEMPLATE_BYTES", limit):
+                template.write_bytes(content)
+                result = routing.status_payload(plugin_root=self.plugin, codex_home=self.home)
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["error_code"], "invalid_template")
+                self.assertIn("template", result["hint"])
+
     def test_hash_is_stable_and_changes_for_config_or_template(self) -> None:
         first = self.policy()
         second = self.policy()
