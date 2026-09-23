@@ -44,6 +44,23 @@ effortの設定値は `medium`、`high`、`xhigh`、`max` で、下限≤標準�
 
 ## 状態の区別
 
+`status --json` が `ok: false` を返す場合は、`error_code` と `hint` で原因と対処を確認できます。設定値・未知キーの名前・OSエラー本文を表示せず、固定の診断文だけを返します。終了コードは従来どおり2です。
+
+| error_code | 確認する内容 |
+| --- | --- |
+| `invalid_json` | UTF-8、JSON構文、重複キー、トップレベルがobjectか |
+| `unsupported_key` | モデル・原則・設定のキーが既定定義に存在するか |
+| `unsupported_schema` | `schema_version` が整数の1か |
+| `unsupported_effort` | effortが対応値か |
+| `invalid_effort_range` | 下限≤標準≤上限を満たすか |
+| `invalid_template` | 未知参照、循環、展開上限、配布テンプレートの欠損 |
+| `filesystem_unavailable` | 指定ファイルの存在と読み取り権限 |
+| `unsafe_path` | パスや親ディレクトリにリンク・reparse pointがないか |
+| `invalid_cache` | キャッシュの不一致・安全に扱えないパス |
+| `invalid_policy` | その他の型・必須フィールド・構造 |
+
+診断は自動修復しません。フックはこれまでどおり短い失敗通知にとどめ、詳細な確認を `status --json` に分けます。
+
 - `status` の解決成功: ファイルと設定が正しい。
 - Codexのプラグイン有効状態: ホストのプラグイン管理で確認する。
 - フックの信頼: `/hooks` で利用者が確認する。

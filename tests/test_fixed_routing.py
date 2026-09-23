@@ -6,7 +6,7 @@ import io
 import json
 from pathlib import Path
 import sys
-import tempfile
+from runtime_fixtures import runtime_directory
 import unittest
 from contextlib import redirect_stdout, redirect_stderr
 
@@ -20,11 +20,7 @@ import routing
 
 class FixedRoutingTests(unittest.TestCase):
     def setUp(self):
-        root = ROOT / 'tests/.tmp-runtime-tests'
-        root.mkdir(exist_ok=True)
-        self.temp = tempfile.TemporaryDirectory(dir=root)
-        self.addCleanup(self.temp.cleanup)
-        self.home = Path(self.temp.name)
+        self.home = self.enterContext(runtime_directory())
         self.now = datetime(2026, 9, 15, 12, tzinfo=timezone.utc)
         self.facts = dict(substantial=True, parent_has_independent_work=False,
                           materials_approved=True, handoff_proportionate=True,
