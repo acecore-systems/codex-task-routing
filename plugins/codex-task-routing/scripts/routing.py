@@ -8,8 +8,6 @@ dependency.  It only reads the bundled defaults and the opt-in override file.
 from __future__ import annotations
 
 import argparse
-from contextlib import contextmanager
-from datetime import datetime, timezone
 import errno
 import hashlib
 import importlib.util
@@ -17,12 +15,32 @@ import json
 import os
 import re
 import secrets
-import stat
 import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Iterator, Mapping
+from typing import Any, Callable, Mapping
+
+
+# The shipped hook uses runpy.run_path, which does not add the script's
+# directory to sys.path. Resolve bundled modules for both that entry and CLI use.
+_SCRIPT_DIRECTORY = str(Path(__file__).resolve().parent)
+if _SCRIPT_DIRECTORY not in sys.path:
+    sys.path.insert(0, _SCRIPT_DIRECTORY)
+
+from routing_core.common import (
+    EFFORT_ORDER, MAX_JSON_BYTES, RoutingError, DuplicateKeyError, diagnostic_fields,
+    _reject_duplicate_pairs, _is_link_or_reparse, _absolute,
+    _assert_safe_ancestors, _read_limited_utf8, _load_json,
+    _is_schema_version_one, _canonical_json, _safe_mkdir, _write_atomic,
+)
+from routing_core.observation import (
+    OBSERVATIONS_RELATIVE, OBSERVATION_LOCK_NAME,
+    MAX_OBSERVATION_INPUT_BYTES, observation_sampling_key, observation_status,
+    observation_start, observation_complete, _observation_sampling_key,
+    _observation_task_id, _find_observation_task, _read_observation_state,
+    _observation_write_lock,
+)
 
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
@@ -30,8 +48,6 @@ DEFAULT_CONFIG_RELATIVE = Path("defaults") / "config.json"
 TEMPLATE_RELATIVE = Path("defaults") / "templates"
 OVERRIDE_RELATIVE = Path("codex-task-routing") / "overrides.json"
 CACHE_RELATIVE = Path("codex-task-routing") / "cache"
-OBSERVATIONS_RELATIVE = Path("codex-task-routing") / "observations"
-OBSERVATION_LOCK_NAME = ".state.lock"
 MARKER_NAME = ".codex-task-routing-managed.json"
 RENDERED_TEMPLATE_NAMES = (
     "effective.md",
@@ -42,17 +58,10 @@ RENDERED_TEMPLATE_NAMES = (
 RENDERED_FILE_NAMES = RENDERED_TEMPLATE_NAMES
 DETAILED_TEMPLATE_NAMES = tuple(name for name in RENDERED_TEMPLATE_NAMES if name != "effective.md")
 
-MAX_JSON_BYTES = 512 * 1024
 MAX_TEMPLATE_BYTES = 1024 * 1024
 MAX_HOOK_INPUT_BYTES = 128 * 1024
 MAX_VALUE_CHARS = 100 * 1024
 MAX_RENDERED_BYTES = 1024 * 1024
-MAX_OBSERVATION_STATE_BYTES = 512 * 1024
-MAX_OBSERVATION_INPUT_BYTES = 128 * 1024
-MAX_OBSERVATION_TASK_ID_CHARS = 256
-MAX_OBSERVATION_REFERENCE_CHARS = 4096
-MAX_OBSERVATION_SCOPE_CHARS = 500
-MAX_OBSERVATION_RUNS = 32
 MAX_TOKEN_DEPTH = 20
 # hooks.json uses a token-oriented platform limit.  Keep this independent,
 # conservative character ceiling so the runtime never asks the host to truncate
@@ -67,7 +76,6 @@ CACHE_RENAME_MAX_ATTEMPTS = 3
 CACHE_RENAME_RETRY_SECONDS = 0.05
 WINDOWS_TRANSIENT_RENAME_WINERRORS = frozenset({5, 32, 33})
 
-EFFORT_ORDER = {"medium": 0, "high": 1, "xhigh": 2, "max": 3}
 MODEL_FIELDS = ("id", "min_effort", "default_effort", "max_effort")
 REQUIRED_MODEL_ROLES = ("luna", "terra", "sol", "astra")
 SAFE_MODEL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
@@ -76,110 +84,15 @@ SAFE_TOKEN = re.compile(
 )
 
 
-class RoutingError(Exception):
-    """A safe, user-actionable policy error.
-
-    Messages deliberately contain neither parsed configuration values nor file
-    bodies.  Hook diagnostics can therefore use a fixed error category.
-    """
-
-
-class DuplicateKeyError(RoutingError):
-    pass
-
-
-def _reject_duplicate_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in result:
-            raise DuplicateKeyError("JSON contains duplicate object keys")
-        result[key] = value
-    return result
-
-
-def _is_link_or_reparse(path: Path) -> bool:
-    """Return true for a symlink, Windows junction, or other reparse point."""
-
-    try:
-        mode = os.lstat(path).st_mode
-    except FileNotFoundError:
-        return False
-    except OSError as exc:
-        raise RoutingError("cannot inspect a filesystem path") from exc
-    if stat.S_ISLNK(mode):
-        return True
-    try:
-        attributes = os.lstat(path).st_file_attributes  # type: ignore[attr-defined]
-    except AttributeError:
-        return False
-    except OSError as exc:
-        raise RoutingError("cannot inspect a filesystem path") from exc
-    return bool(attributes & 0x400)  # FILE_ATTRIBUTE_REPARSE_POINT
-
-
-def _absolute(path: Path | str) -> Path:
-    # abspath normalizes ``.`` and ``..`` without resolving symlinks.
-    return Path(os.path.abspath(os.fspath(path)))
-
-
-def _assert_safe_ancestors(path: Path | str) -> Path:
-    """Normalize a path and reject every existing link/reparse component."""
-
-    absolute = _absolute(path)
-    parts: list[Path] = []
-    current = absolute
-    while True:
-        parts.append(current)
-        if current.parent == current:
-            break
-        current = current.parent
-    for candidate in reversed(parts):
-        if os.path.lexists(candidate) and _is_link_or_reparse(candidate):
-            raise RoutingError("refusing a symlink or reparse-point path")
-    return absolute
-
-
-def _read_limited_utf8(path: Path, limit: int, purpose: str) -> str:
-    path = _assert_safe_ancestors(path)
-    if not os.path.lexists(path) or _is_link_or_reparse(path):
-        raise RoutingError(f"{purpose} is unavailable")
-    try:
-        metadata = os.lstat(path)
-    except OSError as exc:
-        raise RoutingError(f"{purpose} is unavailable") from exc
-    if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > limit:
-        raise RoutingError(f"{purpose} is invalid")
-    try:
-        return path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as exc:
-        raise RoutingError(f"{purpose} is not valid UTF-8") from exc
-
-
-def _load_json(path: Path, purpose: str, limit: int = MAX_JSON_BYTES) -> dict[str, Any]:
-    text = _read_limited_utf8(path, limit, purpose)
-    try:
-        value = json.loads(text, object_pairs_hook=_reject_duplicate_pairs)
-    except (json.JSONDecodeError, DuplicateKeyError, RecursionError) as exc:
-        raise RoutingError(f"{purpose} is not valid JSON") from exc
-    if not isinstance(value, dict):
-        raise RoutingError(f"{purpose} must be a JSON object")
-    return value
-
-
 def _require_exact_keys(value: Mapping[str, Any], allowed: set[str], purpose: str) -> None:
     if set(value) - allowed:
-        raise RoutingError(f"{purpose} contains an unsupported key")
+        raise RoutingError(f"{purpose} contains an unsupported key", code="unsupported_key")
 
 
 def _validate_string(value: Any, purpose: str) -> str:
     if not isinstance(value, str) or not value.strip() or len(value) > MAX_VALUE_CHARS:
         raise RoutingError(f"{purpose} must be a non-empty string")
     return value
-
-
-def _is_schema_version_one(value: Any) -> bool:
-    # ``bool`` is an ``int`` subclass in Python, but JSON true is not schema 1.
-    return type(value) is int and value == 1
 
 
 def _validate_model(model: Mapping[str, Any], purpose: str, *, partial: bool) -> None:
@@ -196,7 +109,7 @@ def _validate_model(model: Mapping[str, Any], purpose: str, *, partial: bool) ->
         if effort_key in model:
             effort = model[effort_key]
             if not isinstance(effort, str) or effort not in EFFORT_ORDER:
-                raise RoutingError(f"{purpose} has an unsupported effort")
+                raise RoutingError(f"{purpose} has an unsupported effort", code="unsupported_effort")
 
 
 def _validate_effort_range(model: Mapping[str, Any], purpose: str) -> None:
@@ -209,7 +122,7 @@ def _validate_effort_range(model: Mapping[str, Any], purpose: str) -> None:
     except (KeyError, TypeError) as exc:
         raise RoutingError(f"{purpose} is incomplete") from exc
     if not valid:
-        raise RoutingError(f"{purpose} has an invalid effort range")
+        raise RoutingError(f"{purpose} has an invalid effort range", code="invalid_effort_range")
 
 
 def _validate_defaults(config: dict[str, Any]) -> None:
@@ -217,7 +130,7 @@ def _validate_defaults(config: dict[str, Any]) -> None:
         config, {"schema_version", "policy_revision", "models", "principles"}, "defaults"
     )
     if not _is_schema_version_one(config.get("schema_version")):
-        raise RoutingError("defaults has an unsupported schema version")
+        raise RoutingError("defaults has an unsupported schema version", code="unsupported_schema")
     _validate_string(config.get("policy_revision"), "defaults policy revision")
     models = config.get("models")
     if not isinstance(models, dict) or set(models) != set(REQUIRED_MODEL_ROLES):
@@ -239,7 +152,7 @@ def _validate_defaults(config: dict[str, Any]) -> None:
 def _merge_override(defaults: dict[str, Any], override: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
     _require_exact_keys(override, {"schema_version", "models", "principles"}, "override")
     if not _is_schema_version_one(override.get("schema_version")):
-        raise RoutingError("override has an unsupported schema version")
+        raise RoutingError("override has an unsupported schema version", code="unsupported_schema")
     has_models = "models" in override
     has_principles = "principles" in override
     if not has_models and not has_principles:
@@ -253,7 +166,7 @@ def _merge_override(defaults: dict[str, Any], override: dict[str, Any]) -> tuple
             raise RoutingError("override models must be a non-empty object")
         for role, patch in models.items():
             if role not in merged["models"] or not isinstance(patch, dict):
-                raise RoutingError("override contains an unsupported model")
+                raise RoutingError("override contains an unsupported model", code="unsupported_key")
             _validate_model(patch, "override model", partial=True)
             for field, value in patch.items():
                 merged["models"][role][field] = value
@@ -264,17 +177,13 @@ def _merge_override(defaults: dict[str, Any], override: dict[str, Any]) -> tuple
             raise RoutingError("override principles must be a non-empty object")
         for key, value in principles.items():
             if key not in merged["principles"]:
-                raise RoutingError("override contains an unsupported principle")
+                raise RoutingError("override contains an unsupported principle", code="unsupported_key")
             merged["principles"][key] = _validate_string(value, "override principle")
             applied.append(f"principles.{key}")
 
     for model in merged["models"].values():
         _validate_effort_range(model, "effective model")
     return merged, applied
-
-
-def _canonical_json(value: Any) -> bytes:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
 
 def _manifest_version(plugin_root: Path) -> str:
@@ -286,19 +195,19 @@ def _manifest_version(plugin_root: Path) -> str:
 def _load_templates(plugin_root: Path) -> dict[str, str]:
     directory = _assert_safe_ancestors(plugin_root / TEMPLATE_RELATIVE)
     if not directory.is_dir() or _is_link_or_reparse(directory):
-        raise RoutingError("template directory is unavailable")
+        raise RoutingError("template directory is unavailable", code="invalid_template")
     templates: dict[str, str] = {}
     try:
         entries = list(directory.iterdir())
     except OSError as exc:
-        raise RoutingError("template directory is unavailable") from exc
+        raise RoutingError("template directory is unavailable", code="invalid_template") from exc
     for path in entries:
         if path.suffix.lower() == ".md":
             if _is_link_or_reparse(path) or not path.is_file():
-                raise RoutingError("template is unavailable")
+                raise RoutingError("template is unavailable", code="invalid_template")
             templates[path.name] = _read_limited_utf8(path, MAX_TEMPLATE_BYTES, "template")
     if set(templates) != set(RENDERED_TEMPLATE_NAMES):
-        raise RoutingError("templates do not match the packaged policy set")
+        raise RoutingError("templates do not match the packaged policy set", code="invalid_template")
     return templates
 
 
@@ -327,7 +236,7 @@ class Policy:
             current: Any = self.config
             for part in path.split("."):
                 if not isinstance(current, dict) or part not in current:
-                    raise RoutingError("policy contains an unresolved token")
+                    raise RoutingError("policy contains an unresolved token", code="invalid_template")
                 current = current[part]
             return current
 
@@ -335,15 +244,15 @@ class Policy:
             if path in cache:
                 return cache[path]
             if path in stack:
-                raise RoutingError("policy contains a cyclic token")
+                raise RoutingError("policy contains a cyclic token", code="invalid_template")
             if len(stack) >= MAX_TOKEN_DEPTH:
-                raise RoutingError("policy token expansion is too deep")
+                raise RoutingError("policy token expansion is too deep", code="invalid_template")
             value = value_for(path)
             if not isinstance(value, str):
-                raise RoutingError("policy token does not resolve to text")
+                raise RoutingError("policy token does not resolve to text", code="invalid_template")
             expanded = substitute(value, lambda child: resolve(child, stack + (path,)))
             if len(expanded.encode("utf-8")) > MAX_RENDERED_BYTES:
-                raise RoutingError("policy token expansion is too large")
+                raise RoutingError("policy token expansion is too large", code="invalid_template")
             cache[path] = expanded
             return expanded
 
@@ -352,7 +261,7 @@ class Policy:
     def render_template(self, text: str) -> str:
         rendered = substitute(text, self.resolve_token)
         if len(rendered.encode("utf-8")) > MAX_RENDERED_BYTES:
-            raise RoutingError("rendered policy is too large")
+            raise RoutingError("rendered policy is too large", code="invalid_template")
         return rendered
 
     def rendered_documents(self) -> dict[str, str]:
@@ -373,7 +282,7 @@ def substitute(text: str, resolver: Callable[[str], str]) -> str:
 
     rendered = SAFE_TOKEN.sub(replace, text)
     if "{{" in rendered or "}}" in rendered:
-        raise RoutingError("policy contains an unresolved token")
+        raise RoutingError("policy contains an unresolved token", code="invalid_template")
     return rendered
 
 
@@ -391,7 +300,7 @@ def load_policy(
     explicit_override = config_path is not None
     override_present = os.path.lexists(override_path)
     if explicit_override and not override_present:
-        raise RoutingError("override configuration is unavailable")
+        raise RoutingError("override configuration is unavailable", code="filesystem_unavailable")
     if override_present:
         override = _load_json(override_path, "override configuration")
         config, applied = _merge_override(defaults, override)
@@ -416,18 +325,6 @@ def load_policy(
         config_hash=config_hash,
         content_hash=content_hash,
     )
-
-
-def _safe_mkdir(path: Path) -> Path:
-    path = _assert_safe_ancestors(path)
-    try:
-        path.mkdir(parents=True, exist_ok=True)
-    except OSError as exc:
-        raise RoutingError("cannot create the policy output directory") from exc
-    path = _assert_safe_ancestors(path)
-    if not path.is_dir() or _is_link_or_reparse(path):
-        raise RoutingError("policy output directory is unsafe")
-    return path
 
 
 def _safe_directory_entries(directory: Path) -> list[Path]:
@@ -471,33 +368,6 @@ def _prepare_render_directory(output_dir: Path) -> Path:
             raise RoutingError("output directory is not empty or plugin-managed")
         return output_dir
     return _safe_mkdir(output_dir)
-
-
-def _write_atomic(directory: Path, name: str, content: str) -> None:
-    directory = _assert_safe_ancestors(directory)
-    target = directory / name
-    if os.path.lexists(target) and _is_link_or_reparse(target):
-        raise RoutingError("refusing to overwrite a link or reparse point")
-    temporary = directory / f".routing-write-{secrets.token_hex(12)}"
-    try:
-        with open(temporary, "x", encoding="utf-8", newline="\n") as handle:
-            handle.write(content)
-            handle.flush()
-            os.fsync(handle.fileno())
-        if _is_link_or_reparse(temporary):
-            raise RoutingError("temporary policy output is unsafe")
-        os.replace(temporary, target)
-    except RoutingError:
-        raise
-    except OSError as exc:
-        raise RoutingError("cannot write policy output") from exc
-    finally:
-        # Only clean up a file created by this invocation, never directory data.
-        if os.path.lexists(temporary):
-            try:
-                os.unlink(temporary)
-            except OSError:
-                pass
 
 
 def render_policy(policy: Policy, output_dir: Path) -> dict[str, Path]:
@@ -704,527 +574,6 @@ def _cache_status(codex_home: Path, policy: Policy) -> tuple[str, Path]:
         return "unsafe", destination
 
 
-def _utc_now() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-
-
-def _observation_text(value: Any, purpose: str, limit: int = MAX_OBSERVATION_REFERENCE_CHARS) -> str:
-    if not isinstance(value, str) or not value.strip() or len(value) > limit:
-        raise RoutingError(f"{purpose} must be a non-empty string")
-    if any(ord(character) < 32 for character in value):
-        raise RoutingError(f"{purpose} contains control characters")
-    return value
-
-
-def _observation_optional_text(value: Any, purpose: str) -> str | None:
-    if value is None:
-        return None
-    return _observation_text(value, purpose)
-
-
-def _observation_task_id(value: Any) -> str:
-    return _observation_text(value, "observation task id", MAX_OBSERVATION_TASK_ID_CHARS)
-
-
-def _observation_sampling_key(value: Any) -> str:
-    if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value):
-        raise RoutingError("observation sampling key is invalid")
-    return value
-
-
-def observation_sampling_key(policy: Policy) -> str:
-    """Hash rendered policy content, deliberately excluding the manifest version.
-
-    The policy's usual content hash includes the package version because it is
-    useful for cache invalidation.  Sampling must instead continue across a
-    package-only release when the rendered policy is identical.
-    """
-
-    documents = policy.rendered_documents()
-    canonical_documents = {name: documents[name] for name in sorted(documents)}
-    return hashlib.sha256(_canonical_json(canonical_documents)).hexdigest()
-
-
-def _observation_policy_metadata(policy: Policy, sampling_key: str) -> dict[str, str]:
-    return {
-        "policy_revision": policy.config["policy_revision"],
-        "manifest_version": policy.version,
-        "content_hash": policy.content_hash,
-        "sampling_key": sampling_key,
-    }
-
-
-def _empty_observation_state(sampling_key: str) -> dict[str, Any]:
-    sampling_key = _observation_sampling_key(sampling_key)
-    return {"schema_version": 1, "samples": {sampling_key: {"tasks": {}}}}
-
-
-def _validate_observation_measurement(value: Any, *, allow_partial: bool) -> None:
-    if not isinstance(value, dict):
-        raise RoutingError("observation measurement must be an object")
-    if set(value) != {"state", "reason"}:
-        raise RoutingError("observation measurement has unsupported fields")
-    state = value.get("state")
-    reason = value.get("reason")
-    allowed = {"measured", "missing"}
-    if allow_partial:
-        allowed.add("partial")
-    if state not in allowed:
-        raise RoutingError("observation measurement state is invalid")
-    if state == "measured":
-        if reason is not None:
-            raise RoutingError("measured observation must not have a missing reason")
-    elif _observation_optional_text(reason, "observation measurement reason") is None:
-        raise RoutingError("missing observation measurement needs a reason")
-
-
-def _validate_observation_verification(value: Any) -> None:
-    if not isinstance(value, dict) or set(value) != {"reference", "reason"}:
-        raise RoutingError("observation verification has unsupported fields")
-    reference = _observation_optional_text(value.get("reference"), "verification reference")
-    reason = _observation_optional_text(value.get("reason"), "verification missing reason")
-    if reference is None and reason is None:
-        raise RoutingError("missing verification needs a reason")
-    if reference is not None and reason is not None:
-        raise RoutingError("verified observation must not have a missing reason")
-
-
-def _validate_observation_requested(value: Any) -> None:
-    if not isinstance(value, dict) or set(value) != {"model", "effort", "reason"}:
-        raise RoutingError("requested run settings have unsupported fields")
-    model = _observation_optional_text(value.get("model"), "requested model")
-    effort = value.get("effort")
-    if effort is not None and effort not in EFFORT_ORDER:
-        raise RoutingError("requested effort is invalid")
-    reason = _observation_optional_text(value.get("reason"), "requested settings reason")
-    if (model is None or effort is None) and reason is None:
-        raise RoutingError("unknown requested settings need a reason")
-    if model is not None and effort is not None and reason is not None:
-        raise RoutingError("known requested settings must not have an unknown reason")
-
-
-def _validate_observation_observed(value: Any) -> None:
-    if not isinstance(value, dict) or set(value) != {"model", "effort", "evidence_ref", "reason"}:
-        raise RoutingError("observed run settings have unsupported fields")
-    model = _observation_optional_text(value.get("model"), "observed model")
-    effort = value.get("effort")
-    if effort is not None and effort not in EFFORT_ORDER:
-        raise RoutingError("observed effort is invalid")
-    evidence = _observation_optional_text(value.get("evidence_ref"), "observed settings reference")
-    reason = _observation_optional_text(value.get("reason"), "observed settings reason")
-    if model is not None or effort is not None:
-        if evidence is None:
-            raise RoutingError("observed settings need a verification reference")
-    elif evidence is not None:
-        raise RoutingError("unknown observed settings must not have a verification reference")
-    if (model is None or effort is None) and reason is None:
-        raise RoutingError("unknown observed settings need a reason")
-    if model is not None and effort is not None and reason is not None:
-        raise RoutingError("known observed settings must not have an unknown reason")
-
-
-def _validate_observation_usage(value: Any) -> None:
-    fields = {
-        "state",
-        "reason",
-        "evidence_ref",
-        "turn_scope",
-        "input_tokens",
-        "cache_input_tokens",
-        "output_tokens",
-        "reasoning_tokens",
-        "unknown_reasons",
-    }
-    if not isinstance(value, dict) or set(value) != fields:
-        raise RoutingError("run usage has unsupported fields")
-    state = value.get("state")
-    reason = _observation_optional_text(value.get("reason"), "run usage reason")
-    evidence = _observation_optional_text(value.get("evidence_ref"), "run usage reference")
-    if value.get("turn_scope") not in {"full_turn", "partial_turn"}:
-        raise RoutingError("run usage turn scope is invalid")
-    token_fields = ("input_tokens", "cache_input_tokens", "output_tokens", "reasoning_tokens")
-    unknown_reasons = value.get("unknown_reasons")
-    if not isinstance(unknown_reasons, dict) or set(unknown_reasons) - set(token_fields):
-        raise RoutingError("run usage unknown reasons are invalid")
-    for name in token_fields:
-        amount = value.get(name)
-        if amount is not None and (type(amount) is not int or amount < 0):
-            raise RoutingError("run usage token count is invalid")
-        missing_reason = unknown_reasons.get(name)
-        if amount is None:
-            if state == "measured" and _observation_optional_text(
-                missing_reason, "run usage unknown reason"
-            ) is None:
-                raise RoutingError("unknown measured token count needs a reason")
-        elif missing_reason is not None:
-            raise RoutingError("known token count must not have an unknown reason")
-    if state == "missing":
-        if reason is None or evidence is not None or any(value.get(name) is not None for name in token_fields):
-            raise RoutingError("missing run usage is invalid")
-        if unknown_reasons:
-            raise RoutingError("missing run usage uses one shared reason")
-    elif state == "measured":
-        if reason is not None or evidence is None or not any(value.get(name) is not None for name in token_fields):
-            raise RoutingError("measured run usage is invalid")
-    else:
-        raise RoutingError("run usage state is invalid")
-    input_tokens = value.get("input_tokens")
-    cache_input_tokens = value.get("cache_input_tokens")
-    output_tokens = value.get("output_tokens")
-    reasoning_tokens = value.get("reasoning_tokens")
-    if input_tokens is not None and cache_input_tokens is not None and cache_input_tokens > input_tokens:
-        raise RoutingError("cache input exceeds input")
-    if output_tokens is not None and reasoning_tokens is not None and reasoning_tokens > output_tokens:
-        raise RoutingError("reasoning exceeds output")
-
-
-def _validate_observation_run(value: Any) -> None:
-    fields = {"run_key", "relationship", "state", "run_id", "run_id_reason", "requested", "observed", "usage"}
-    if not isinstance(value, dict) or set(value) != fields:
-        raise RoutingError("observation run has unsupported fields")
-    _observation_text(value.get("run_key"), "run key", 128)
-    if value.get("relationship") not in {"parent", "child", "grandchild"}:
-        raise RoutingError("run relationship is invalid")
-    state = value.get("state")
-    if state not in {"ongoing", "completed", "interrupted"}:
-        raise RoutingError("run state is invalid")
-    run_id = _observation_optional_text(value.get("run_id"), "run id")
-    run_id_reason = _observation_optional_text(value.get("run_id_reason"), "run id missing reason")
-    if run_id is None and run_id_reason is None:
-        raise RoutingError("unknown run id needs a reason")
-    if run_id is not None and run_id_reason is not None:
-        raise RoutingError("known run id must not have an unknown reason")
-    _validate_observation_requested(value.get("requested"))
-    _validate_observation_observed(value.get("observed"))
-    _validate_observation_usage(value.get("usage"))
-    if state != "completed" and value["usage"]["state"] == "measured":
-        raise RoutingError("unfinished run usage cannot be recorded as completed usage")
-
-
-def _validate_observation_completion(value: Any) -> None:
-    fields = {"state", "scope", "measurement", "verification", "rework", "runs"}
-    if not isinstance(value, dict) or set(value) != fields:
-        raise RoutingError("observation completion has unsupported fields")
-    state = value.get("state")
-    if state not in {"completed", "interrupted"}:
-        raise RoutingError("observation completion state is invalid")
-    _observation_text(value.get("scope"), "observation scope", MAX_OBSERVATION_SCOPE_CHARS)
-    _validate_observation_measurement(value.get("measurement"), allow_partial=True)
-    _validate_observation_verification(value.get("verification"))
-    _observation_text(value.get("rework"), "rework record")
-    runs = value.get("runs")
-    if not isinstance(runs, list) or len(runs) > MAX_OBSERVATION_RUNS:
-        raise RoutingError("observation runs are invalid")
-    run_keys: set[str] = set()
-    for run in runs:
-        _validate_observation_run(run)
-        if run["run_key"] in run_keys:
-            raise RoutingError("observation run keys must be unique")
-        run_keys.add(run["run_key"])
-    measurement = value["measurement"]["state"]
-    measured_runs = [run for run in runs if run["usage"]["state"] == "measured"]
-    token_fields = ("input_tokens", "cache_input_tokens", "output_tokens", "reasoning_tokens")
-    full_coverage = (
-        state == "completed"
-        and any(run["relationship"] == "parent" for run in runs)
-        and all(
-            run["state"] == "completed"
-            and run["usage"]["state"] == "measured"
-            and run["usage"]["turn_scope"] == "full_turn"
-            and all(run["usage"][field] is not None for field in token_fields)
-            for run in runs
-        )
-    )
-    if measurement == "measured":
-        if not full_coverage:
-            raise RoutingError("measured observation has incomplete run usage")
-    elif measurement == "missing" and measured_runs:
-        raise RoutingError("missing observation cannot contain measured run usage")
-    elif measurement == "partial" and (not measured_runs or full_coverage):
-        raise RoutingError("partial observation measurement is inconsistent")
-
-
-def _validate_observation_record(value: Any, sampling_key: str, task_id: str) -> None:
-    fields = {
-        "task_id", "sampling_key", "policy", "state", "measurement", "started_at",
-        "updated_at", "completed_at", "scope", "rework", "verification", "runs",
-    }
-    if not isinstance(value, dict) or set(value) != fields:
-        raise RoutingError("observation record is invalid")
-    if value.get("task_id") != task_id or value.get("sampling_key") != sampling_key:
-        raise RoutingError("observation record identity is invalid")
-    _observation_task_id(value["task_id"])
-    policy = value.get("policy")
-    if not isinstance(policy, dict) or set(policy) != {"policy_revision", "manifest_version", "content_hash", "sampling_key"}:
-        raise RoutingError("observation record policy is invalid")
-    _observation_text(policy.get("policy_revision"), "observation policy revision")
-    _observation_text(policy.get("manifest_version"), "observation manifest version")
-    if not isinstance(policy.get("content_hash"), str) or not re.fullmatch(r"[0-9a-f]{64}", policy["content_hash"]):
-        raise RoutingError("observation policy hash is invalid")
-    if policy.get("sampling_key") != sampling_key:
-        raise RoutingError("observation policy sampling key is invalid")
-    if value.get("state") not in {"ongoing", "completed", "interrupted"}:
-        raise RoutingError("observation record state is invalid")
-    _validate_observation_measurement(value.get("measurement"), allow_partial=True)
-    for name in ("started_at", "updated_at"):
-        _observation_text(value.get(name), "observation timestamp", 64)
-    completed_at = value.get("completed_at")
-    if value["state"] == "ongoing":
-        if completed_at is not None or value.get("scope") is not None or value.get("rework") is not None or value.get("verification") is not None or value.get("runs") != []:
-            raise RoutingError("ongoing observation record is invalid")
-    else:
-        _observation_text(completed_at, "observation completion timestamp", 64)
-        _validate_observation_completion(
-            {
-                "state": value["state"],
-                "scope": value["scope"],
-                "measurement": value["measurement"],
-                "verification": value["verification"],
-                "rework": value["rework"],
-                "runs": value["runs"],
-            }
-        )
-
-
-def _validate_observation_state(value: Any, sampling_key: str) -> dict[str, Any]:
-    sampling_key = _observation_sampling_key(sampling_key)
-    if not isinstance(value, dict) or set(value) != {"schema_version", "samples"}:
-        raise RoutingError("observation state is invalid")
-    if not _is_schema_version_one(value.get("schema_version")) or not isinstance(value.get("samples"), dict):
-        raise RoutingError("observation state is invalid")
-    if set(value["samples"]) != {sampling_key}:
-        raise RoutingError("observation state has an unexpected sampling key")
-    sample = value["samples"][sampling_key]
-    if not isinstance(sample, dict) or set(sample) != {"tasks"} or not isinstance(sample.get("tasks"), dict):
-        raise RoutingError("observation sample is invalid")
-    if len(sample["tasks"]) > 3:
-        raise RoutingError("observation sample exceeds its limit")
-    for task_id, record in sample["tasks"].items():
-        _observation_task_id(task_id)
-        _validate_observation_record(record, sampling_key, task_id)
-    return value
-
-
-def _observation_directory(codex_home: Path, *, create: bool) -> Path:
-    directory = _absolute(codex_home) / OBSERVATIONS_RELATIVE
-    if create:
-        return _safe_mkdir(directory)
-    directory = _assert_safe_ancestors(directory)
-    if os.path.lexists(directory) and (not directory.is_dir() or _is_link_or_reparse(directory)):
-        raise RoutingError("observation directory is unsafe")
-    return directory
-
-
-def _observation_state_path(codex_home: Path, sampling_key: str, *, create: bool) -> Path:
-    sampling_key = _observation_sampling_key(sampling_key)
-    return _observation_directory(codex_home, create=create) / f"{sampling_key}.json"
-
-
-def _read_observation_state(codex_home: Path, sampling_key: str) -> dict[str, Any]:
-    sampling_key = _observation_sampling_key(sampling_key)
-    directory = _observation_directory(codex_home, create=False)
-    path = directory / f"{sampling_key}.json"
-    if not os.path.lexists(path):
-        return _empty_observation_state(sampling_key)
-    return _validate_observation_state(
-        _load_json(path, "observation state", MAX_OBSERVATION_STATE_BYTES), sampling_key
-    )
-
-
-@contextmanager
-def _observation_write_lock(codex_home: Path, sampling_key: str | None = None) -> Iterator[None]:
-    """Serialize writes with an OS lock that is released if the process exits."""
-
-    directory = _observation_directory(codex_home, create=True)
-    lock_name = (
-        f".{_observation_sampling_key(sampling_key)}.lock"
-        if sampling_key is not None
-        else OBSERVATION_LOCK_NAME
-    )
-    lock_path = directory / lock_name
-    if os.path.lexists(lock_path) and _is_link_or_reparse(lock_path):
-        raise RoutingError("observation lock is unsafe")
-    flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
-    try:
-        descriptor = os.open(lock_path, flags, 0o600)
-    except OSError as exc:
-        raise RoutingError("cannot lock observation state") from exc
-    try:
-        try:
-            if not stat.S_ISREG(os.fstat(descriptor).st_mode):
-                raise RoutingError("observation lock is not a regular file")
-            if os.name == "nt":
-                import msvcrt
-
-                if os.fstat(descriptor).st_size == 0:
-                    os.write(descriptor, b"0")
-                os.lseek(descriptor, 0, os.SEEK_SET)
-                msvcrt.locking(descriptor, msvcrt.LK_NBLCK, 1)
-            else:
-                import fcntl
-
-                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError as exc:
-            raise RoutingError("observation state is busy or unavailable") from exc
-        yield
-    finally:
-        # Keep the inode fixed: unlinking allows two writers to lock different
-        # files. Closing (including process termination) releases the OS lock.
-        os.close(descriptor)
-
-
-def _write_observation_state(codex_home: Path, sampling_key: str, state: dict[str, Any]) -> None:
-    sampling_key = _observation_sampling_key(sampling_key)
-    _validate_observation_state(state, sampling_key)
-    encoded = json.dumps(state, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
-    if len(encoded.encode("utf-8")) > MAX_OBSERVATION_STATE_BYTES:
-        raise RoutingError("observation state is too large")
-    path = _observation_state_path(codex_home, sampling_key, create=True)
-    _write_atomic(path.parent, path.name, encoded)
-
-
-def _find_observation_task(state: dict[str, Any], sampling_key: str, task_id: str) -> dict[str, Any] | None:
-    sampling_key = _observation_sampling_key(sampling_key)
-    return state["samples"][sampling_key]["tasks"].get(task_id)
-
-
-def observation_status(
-    *, codex_home: Path, policy: Policy | None = None, sampling_key: str | None = None
-) -> dict[str, Any]:
-    """Read one sampling group without reading or writing any other group."""
-
-    if sampling_key is None:
-        if policy is None:
-            raise RoutingError("observation status needs a policy or sampling key")
-        sampling_key = observation_sampling_key(policy)
-    else:
-        sampling_key = _observation_sampling_key(sampling_key)
-    try:
-        state = _read_observation_state(codex_home, sampling_key)
-        sample = state["samples"][sampling_key]
-        tasks = list(sample["tasks"].values())
-    except (RoutingError, OSError):
-        return {
-            "state": "unknown",
-            "remaining": None,
-            "recorded": None,
-            "pending": None,
-            "completed": None,
-            "missing": None,
-        }
-    pending = sum(record["state"] == "ongoing" for record in tasks)
-    completed = sum(record["state"] == "completed" for record in tasks)
-    missing = sum(
-        record["state"] != "ongoing" and record["measurement"]["state"] != "measured"
-        for record in tasks
-    )
-    return {
-        "state": "valid",
-        "sampling_key": sampling_key,
-        "remaining": 3 - len(tasks),
-        "recorded": len(tasks),
-        "pending": pending,
-        "completed": completed,
-        "missing": missing,
-        "task_ids": [record["task_id"] for record in tasks],
-    }
-
-
-def observation_start(*, codex_home: Path, policy: Policy, task_id: str, kind: str = "normal") -> dict[str, Any]:
-    """Reserve one normal-work observation, idempotently by the parent task key."""
-
-    task_id = _observation_task_id(task_id)
-    if kind != "normal":
-        if kind not in {"audit", "config"}:
-            raise RoutingError("observation kind is invalid")
-        return {"state": "skipped", "reason": "non_normal_work", "recorded": False}
-    sampling_key = observation_sampling_key(policy)
-    with _observation_write_lock(codex_home, sampling_key):
-        state = _read_observation_state(codex_home, sampling_key)
-        existing = _find_observation_task(state, sampling_key, task_id)
-        now = _utc_now()
-        if existing is not None:
-            existing["updated_at"] = now
-            _write_observation_state(codex_home, sampling_key, state)
-            return {"state": "existing", "recorded": True, "sampling_key": sampling_key}
-        sample = state["samples"][sampling_key]
-        if len(sample["tasks"]) >= 3:
-            return {"state": "full", "recorded": False, "sampling_key": sampling_key}
-        sample["tasks"][task_id] = {
-            "task_id": task_id,
-            "sampling_key": sampling_key,
-            "policy": _observation_policy_metadata(policy, sampling_key),
-            "state": "ongoing",
-            "measurement": {"state": "missing", "reason": "completion is not recorded"},
-            "started_at": now,
-            "updated_at": now,
-            "completed_at": None,
-            "scope": None,
-            "rework": None,
-            "verification": None,
-            "runs": [],
-        }
-        _write_observation_state(codex_home, sampling_key, state)
-    return {"state": "started", "recorded": True, "sampling_key": sampling_key}
-
-
-def observation_complete(
-    *, codex_home: Path, sampling_key: str, task_id: str, completion: dict[str, Any]
-) -> dict[str, Any]:
-    """Close one reserved group without loading current policy or other groups."""
-
-    task_id = _observation_task_id(task_id)
-    sampling_key = _observation_sampling_key(sampling_key)
-    _validate_observation_completion(completion)
-    with _observation_write_lock(codex_home, sampling_key):
-        state = _read_observation_state(codex_home, sampling_key)
-        record = _find_observation_task(state, sampling_key, task_id)
-        if record is None:
-            raise RoutingError("observation task is not reserved")
-        if record["verification"] is not None and record["verification"]["reference"] is not None and completion["verification"]["reference"] is None:
-            raise RoutingError("completion must retain existing verification evidence")
-        # Each completion is a full snapshot.  A resumed task must not erase
-        # earlier runs or replace acquired evidence with unknown values.
-        incoming_runs = {run["run_key"]: run for run in completion["runs"]}
-        for previous in record["runs"]:
-            current = incoming_runs.get(previous["run_key"])
-            if current is None:
-                raise RoutingError("completion must retain existing runs")
-            if current["relationship"] != previous["relationship"] or (
-                previous["run_id"] is not None and current["run_id"] != previous["run_id"]
-            ):
-                raise RoutingError("a different run needs a new run key")
-            if previous["state"] == "completed" and current["state"] != "completed":
-                raise RoutingError("completion must retain completed run evidence")
-            for section, names in (
-                ("usage", ("input_tokens", "cache_input_tokens", "output_tokens", "reasoning_tokens")),
-                ("observed", ("model", "effort")),
-                ("requested", ("model", "effort")),
-            ):
-                if any(previous[section][name] is not None and current[section][name] is None for name in names):
-                    raise RoutingError("completion must retain acquired run values")
-        now = _utc_now()
-        record.update(
-            {
-                "state": completion["state"],
-                "scope": completion["scope"],
-                "measurement": completion["measurement"],
-                "verification": completion["verification"],
-                "rework": completion["rework"],
-                "runs": completion["runs"],
-                "completed_at": now,
-                "updated_at": now,
-            }
-        )
-        _write_observation_state(codex_home, sampling_key, state)
-    return {
-        "state": "closed",
-        "observation_state": completion["state"],
-        "measurement_state": completion["measurement"]["state"],
-        "sampling_key": sampling_key,
-    }
-
-
 def status_payload(
     *,
     plugin_root: Path = PLUGIN_ROOT,
@@ -1265,9 +614,11 @@ def status_payload(
         }
         if not result["ok"]:
             result["error"] = "policy cache is unsafe or does not match the effective policy"
+            result.update(diagnostic_fields("invalid_cache"))
         return result
-    except (RoutingError, OSError):
+    except (RoutingError, OSError) as exc:
         return {
+            **diagnostic_fields(exc.code if isinstance(exc, RoutingError) else "filesystem_unavailable"),
             "ok": False,
             "error": "policy configuration or templates are invalid",
             "host": {

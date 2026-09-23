@@ -148,6 +148,7 @@ class RoutingTestCase(unittest.TestCase):
         (self.plugin / "defaults" / "config.json").write_text(json.dumps(config), encoding="utf-8")
         with self.assertRaises(routing.RoutingError):
             self.policy().render_template("{{principles.policy_timing}}")
+
         config = json.loads(json.dumps(DEFAULTS))
         for index in range(routing.MAX_TOKEN_DEPTH + 1):
             key = f"deep_{index}"
@@ -164,6 +165,37 @@ class RoutingTestCase(unittest.TestCase):
         with self.assertRaises(routing.RoutingError):
             self.policy().render_template("{{principles.policy_timing}}")
 
+    def test_status_explains_invalid_configuration_without_echoing_secrets(self) -> None:
+        secret = "private-input-sentinel"
+        cases = [
+            ({"schema_version": 1, secret: secret}, "unsupported_key"),
+            ({"schema_version": True, "models": {"terra": {"default_effort": "max"}}}, "unsupported_schema"),
+            ({"schema_version": 1, "models": {"terra": {"default_effort": secret}}}, "unsupported_effort"),
+            ({"schema_version": 1, "models": {"terra": {"min_effort": "max"}}}, "invalid_effort_range"),
+            ({"schema_version": 1, "principles": {"summary": "{{" + secret + "}}"}}, "invalid_template"),
+            ('{"schema_version":1,"schema_version":1,"' + secret + '":0}', "invalid_json"),
+            ('{"' + secret + '":', "invalid_json"),
+        ]
+        for value, code in cases:
+            with self.subTest(code=code, value=value):
+                path = self.write_override(value)
+                before = path.read_bytes()
+                result = routing.status_payload(plugin_root=self.plugin, codex_home=self.home)
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["error_code"], code)
+                self.assertTrue(result["hint"])
+                self.assertEqual(path.read_bytes(), before)
+                self.assertNotIn(secret, json.dumps(result))
+
+    def test_status_does_not_echo_os_errors_or_unrecognized_error_text(self) -> None:
+        for error, code in [
+            (OSError("private-filesystem-sentinel"), "filesystem_unavailable"),
+            (routing.RoutingError("private-filesystem-sentinel", code="private-code"), "invalid_policy"),
+        ]:
+            with self.subTest(code=code), patch.object(routing, "load_policy", side_effect=error):
+                result = routing.status_payload(plugin_root=self.plugin, codex_home=self.home)
+                self.assertEqual(result["error_code"], code)
+                self.assertNotIn("private-", json.dumps(result))
     def test_hash_is_stable_and_changes_for_config_or_template(self) -> None:
         first = self.policy()
         second = self.policy()
@@ -219,7 +251,6 @@ class RoutingTestCase(unittest.TestCase):
     @unittest.skipUnless(os.name == "nt", "Windows rename error mapping")
     def test_cache_rename_retries_only_bounded_windows_access_candidates(self) -> None:
         policy = self.policy()
-        original_rename = routing.os.rename
         transient_home = self.base / "home-transient-access"
         calls = 0
 
@@ -228,7 +259,9 @@ class RoutingTestCase(unittest.TestCase):
             calls += 1
             if calls < routing.CACHE_RENAME_MAX_ATTEMPTS:
                 raise OSError(errno.EACCES, "temporary access", None, 5)
-            original_rename(source, destination)
+            # Unit-test retry decisions without spending the last attempt on a
+            # real Windows rename. Actual publication is covered independently.
+            return None
 
         with (
             patch.object(routing.os, "rename", side_effect=fail_twice_then_publish),
@@ -284,6 +317,14 @@ class RoutingTestCase(unittest.TestCase):
             (mismatch_home / routing.CACHE_RELATIVE / policy.content_hash / "foreign.txt").read_text(encoding="utf-8"),
             "do not overwrite",
         )
+
+    def test_cache_publication_roundtrips_on_real_filesystem(self) -> None:
+        policy = self.policy()
+        cache = routing._cache_directory(self.home, policy)
+        self.assertTrue(routing._is_managed_directory(cache))
+        for name, expected in policy.rendered_documents().items():
+            self.assertEqual((cache / name).read_text(encoding="utf-8"), expected)
+        self.assertEqual(routing._cache_directory(self.home, policy), cache)
 
     def test_mutated_cache_is_not_reused_as_effective_policy(self) -> None:
         policy = self.policy()

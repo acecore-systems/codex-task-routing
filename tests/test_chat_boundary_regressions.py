@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import sys
-import tempfile
+from runtime_fixtures import runtime_directory
 import unittest
 
 SCRIPTS = Path(__file__).resolve().parents[1] / 'plugins/codex-task-routing/scripts'
@@ -35,9 +35,7 @@ class ChatBoundaryRegressions(unittest.TestCase):
                 invalid = dict(self.response)
                 invalid[field] = [surrogate] if field == 'evidence' else surrogate
                 with self.subTest(surrogate=repr(surrogate), field=field):
-                    root = Path(__file__).resolve().parent / '.tmp-runtime-tests'
-                    root.mkdir(exist_ok=True)
-                    with tempfile.TemporaryDirectory(dir=root) as directory:
+                    with runtime_directory() as directory:
                         reply = Path(directory) / 'reply.json'
                         state = chat_transfer.TransferState(bundle=self.bundle, reply_path=reply)
                         with self.assertRaisesRegex(chat_transfer.ChatTransferError, 'valid Unicode'):

@@ -6,7 +6,7 @@ import io
 import json
 from pathlib import Path
 import sys
-import tempfile
+from runtime_fixtures import runtime_directory
 import unittest
 
 SCRIPTS = Path(__file__).resolve().parents[1] / 'plugins/codex-task-routing/scripts'
@@ -18,13 +18,7 @@ import chatgpt_route as route
 
 class PreparedBundleSizeTests(unittest.TestCase):
     def setUp(self):
-        # macOS's system temporary directory has a symlink ancestor. Keep test
-        # files under the checkout to exercise the same safe-path rules on all OSes.
-        root = Path(__file__).resolve().parent / '.tmp-runtime-tests'
-        root.mkdir(exist_ok=True)
-        self.temp = tempfile.TemporaryDirectory(dir=root)
-        self.addCleanup(self.temp.cleanup)
-        self.home = Path(self.temp.name)
+        self.home = self.enterContext(runtime_directory())
         self.request = dict(request_id='00000000-0000-4000-8000-000000000011',
                             task='Review supplied code.', materials='Fixture.',
                             acceptance_criteria=['Report findings.'])

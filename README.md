@@ -4,7 +4,7 @@
 
 Acecoreが日常利用で改善している分担原則を既定値として同梱します。親のモデル・effortを維持し、引継ぎ、同じ担当の継続、重要なレビューまで含めて、品質と総利用負担を考慮します。次回送信のモデル選択を勧める機能はありません。節約率は未実証です。
 
-0.8.0の基準運用は、**親Terra/xhighで通常作業を完結し、専門工程だけ固定effortの担当へ渡す**方式です。利用者が選んだ親設定は変更しません。
+現在の基準運用は、**親Terra/xhighで通常作業を完結し、専門工程だけ固定effortの担当へ渡す**方式です。利用者が選んだ親設定は変更しません。
 
 | 担当 | 固定値 | 役割 |
 | --- | --- | --- |
@@ -16,16 +16,14 @@ Acecoreが日常利用で改善している分担原則を既定値として同�
 
 Terra子は標準ルートから外します。min/max設定は互換性のため残し、自動選定は有効なdefault_effortに固定します。既存overrideと他モデル親は保持します。並列分担には親の独立作業が必要で、直列の専門委譲は具体的な追加価値とホストの許可を確認した場合だけ使います。
 
-## 必要な環境
+## 導入
+
+必要な環境は次のとおりです。
 
 - Codexのプラグイン、ライフサイクルフック、標準サブエージェントが使えるローカル環境。
 - `python --version` がPython 3.11以上を返すこと。Python標準ライブラリだけを使います。
-- 自動更新にはCodex CLIとGitが必要です。定期実行の登録はWindowsに対応し、Windowsタスクスケジューラと同じPythonの`pythonw.exe`を使います。
 - 選択したモデル・effortが、そのアカウントと実行環境で利用できること。
-
-最初の検証対象はWindowsとCodex CLIです。設定の要求値を確認しても、実際の子がそのモデルで実行した証明にはなりません。起動時のツールと実行結果を別に確認します。
-
-## 導入
+- 任意の自動更新にはCodex CLIとGitが必要です。定期実行の登録はWindowsに対応し、Windowsタスクスケジューラと同じPythonの`pythonw.exe`を使います。
 
 次のコマンドで `main` の配布版を導入します。複数PCで同じ版を固定する場合は、`main` の代わりに同じcommit SHAまたは公開タグを指定してください。
 
@@ -43,11 +41,82 @@ codex plugin add codex-task-routing@codex-task-routing
 
 導入後、CLIの `/hooks` でこのプラグインのフックを確認して信頼し、新しいタスクを開始してください。フックの定義を変更した版は、再確認が必要な場合があります。スキルの検出だけでは常時適用されません。[公式フック仕様](https://learn.chatgpt.com/docs/hooks)
 
-開始・再開・コンパクション時に有効方針を読み込みます。子には短い引継ぎ用のコンテキストと参照先を渡します。フック自体はモデル呼出し・ネットワークアクセス・子の起動を行いません。
+## 適用確認
+
+新しいタスクの開始時に有効方針の版、policy hash、参照先が渡されることを確認します。開始・再開・コンパクション時に有効方針を読み込み、子には短い引継ぎ用のコンテキストと参照先を渡します。フック自体はモデル呼出し・ネットワークアクセス・子の起動を行いません。
+
+設定と競合はリポジトリ直下で診断できます。
+
+```text
+python plugins/codex-task-routing/scripts/routing.py status --json
+python plugins/codex-task-routing/scripts/routing.py render --output-dir outputs/effective
+```
+
+`status` は設定・版・上書き・競合の診断です。ホストのフック信頼や実行モデルを推測して「有効」とは判定しません。実際の開始時に方針が渡されたことと、子の起動時のツール・実行結果を別に確認してください。最初の検証対象はWindowsとCodex CLIであり、設定の要求値だけでは実際の子がそのモデルで実行した証明になりません。
+
+## 設定を変更する
+
+上書きは `$CODEX_HOME/codex-task-routing/overrides.json` へ保存します。`CODEX_HOME` が未設定なら `~/.codex` です。上書きがなければ作者の既定値を使います。プラグインの更新・解除でこの上書きファイルを編集・削除しません。
+
+例として、Terraの標準effortだけ変更する場合は次のように指定します。
+
+```json
+{
+  "schema_version": 1,
+  "models": {
+    "terra": { "default_effort": "high" }
+  }
+}
+```
+
+これは使い方の例で、既定値を下げる推奨ではありません。原則自体も `principles.summary` や対応する詳細節を置き換えて変更できます。[設定の詳細](plugins/codex-task-routing/skills/task-routing/references/configuration.md)
+
+## 任意機能
+
+### 通常Chatの一時Chat（GPT-6 Pro）へ渡す
+
+通常Chat経路は明示的に有効にした場合だけ使います。確認済み接続の操作・範囲・有効期限をローカル台帳に保持し、`chat_plan.py` が必要な項目だけ機械照合します。分類専用のAI呼出しや全接続の再調査を避け、`chat_transfer.py` の一回限りのローカルフォームで、準備済み本文と最終回答をBrowser内の変数のまま受け渡せます。親のモデルへ全文を出力して再転記する必要を減らします。[接続と分類](plugins/codex-task-routing/skills/task-routing/references/chat-capabilities.md)、[転送補助](plugins/codex-task-routing/skills/task-routing/references/chat-transfer.md)。これらは明示実行の補助で、フックから起動・送信しません。
+
+通常ChatのGPT-6 ProはWork/Codexと別枠ですが、親の準備・操作・検収はCodex側に残ります。6 Proには契約別の上限があり、無制限ではありません。モデルや残量は実際のUIで確認し、第三者ツール固有の料金まで無料と扱いません。[公式の利用枠](https://help.openai.com/en/articles/20001354)、[Work/Codexの共有枠](https://learn.chatgpt.com/docs/pricing)。
+
+有効なroot経路では、6 Proを分析・設計・比較・文案・レビューの**最初の主担当候補**にします。実際の接続・書込み権限・検証環境がそろう実装・テスト・PR作成も対象です。短い仕事やCodex側の現物との頻繁な往復は親または専門子に残します。分類だけで外部書込みやマージを承認せず、同じ分析を別のAstraで全面再実行しません。
+
+Pro $200の週次枠を積極活用する運用ですが、契約価格だけで経路を有効化しません。[最新上限・送受信方法の許可・比較計画](plugins/codex-task-routing/skills/task-routing/references/chat-limits.md)を確認してください。送信直前は`chat_plan.py --live`で新しい観測を照合し、上限・モデル変更・許可不明で停止します。自動抽出に関する例外の許可は本プラグインでは確認していません。
+
+新規依頼には、目的・材料・合格条件に加え、`handoff` で必要情報、出典要件、鮮度、許可ツール、返却形式、停止条件を渡します。MCPはChat側で必要な操作が使えるかを確認し、回答に実取得の出典・版や日時・取得範囲を求めます。設定済み・選択済みだけを取得成功と扱いません。本文だけの仕事はツールなしで完結させ、承認済み範囲の確認を繰り返しません。
+
+`<CODEX_HOME>/codex-task-routing/chatgpt.json` に次を保存します。プラグインキャッシュ内には保存しません。
+
+```json
+{
+  "schema_version": 1,
+  "enabled": true,
+  "required_model": "6 Pro",
+  "transport": "browser-temporary"
+}
+```
+
+新しいタスクのフックに `Opt-in ChatGPT Chat route is enabled` が表示されることを確認します。`enabled` を `false` にすると、この経路への新しい依頼を停止できます。切替後は新しいタスクから確認してください。進行中のChatを自動停止する設定ではありません。設定を有効にしただけでメッセージは送信されず、接続先の権限も増えません。
+
+この経路には、通常Chatへログイン済みのBrowserと、UIで選択・確認できる `6 Pro` が必要です。タスクごとに一時Chatを作り、Chatであること、一時Chatであること、`6 Pro` 表示を送信前後で確認します。準備済みの実依頼を一度だけ送信し、最終回答を依頼IDと材料hashで照合してから必要な結果だけを保存し、一時Chatは保存せず閉じます。複数行の本文は `paste({format:'text'})` またはサポートされた `fill` で入力し、全文一致を確認して送信ボタンを一回だけ使います。モデルAPIキーは使わず、WorkやモデルAPIへ暗黙に切り替えません。バックエンドのモデルIDは取得できないため、UI表示と実行メタデータを区別します。
+
+一時Chatでは `send_message_to_thread` を使いません。内部で `isTemporaryChat: false` となるためです。既に明示した `"transport": "codex-app-tools"` はlegacyとして互換を保ちますが、自動で書き換えず、一時Chatの作成・操作には使いません。既存の承認済みMCPは材料の受け渡しに使えます。独自MCPサーバーの公開・書き戻し・自動ファイル添付は含みません。通常Chatの生成はChatの枠、親の処理はCodexの枠を使い、接続先サービスやサーバーの費用は別途確認します。[運用手順・制約](plugins/codex-task-routing/skills/task-routing/references/chatgpt.md) と [browser不要化の課題](docs/backlog.md) を参照してください。
+
+### 使用量の振返りを残す
+
+有効方針ごとに通常作業3件までを観測対象にします。開始時フックが残枠と記録状態を知らせ、AIが対象作業の開始と最終報告前に同じ記録を更新します。再開や子の仕事は同じ作業にまとめ、設定確認・監査は3件に含めません。プラグインの版だけが変わって分担方針が同じ場合も枠を取り直しません。
+
+記録には親子の要求設定と確認できた実行設定、使用量の対象範囲、検証結果と手直しを残します。使用量を取得できない項目は理由付きの欠測になります。記録が閉じても、実測が揃ったとは限りません。会話ログ・DBを自動収集する仕組みや、毎回の計測用モデル実行はありません。
+
+```text
+python plugins/codex-task-routing/scripts/routing.py observation status --json
+```
+
+記録はCodexホームのプラグイン専用領域へ保存し、リポジトリや公開用ファイルへ会話内容を追加しません。入力例と状態の意味は[観測手順](plugins/codex-task-routing/skills/task-routing/references/observation.md)を参照してください。自動的な利用料の集計や節約率の算定は行いません。
 
 ### 普段の起動方法のまま自動更新する
 
-0.2.0以降では、Windowsで自動更新を一度登録すると、ログオン中に15分ごとに登録したGit refを確認します。`--ref main`で導入した場合はmainを追従し、固定したcommit SHAは維持します。**専用ショートカットは不要です。普段どおりCodexを開いてください。**
+Windowsで自動更新を一度登録すると、ログオン中に15分ごとに登録したGit refを確認します。`--ref main`で導入した場合はmainを追従し、固定したcommit SHAは維持します。**専用ショートカットは不要です。普段どおりCodexを開いてください。**
 
 プラグイン導入後、PowerShellで次を一度実行します。リポジトリのクローンは不要です。
 
@@ -79,79 +148,11 @@ checkoutがない場合は、上のPowerShell例と同じ`install_updater.py`の
 
 Windows以外では定期実行の登録に未対応です。Codexが終了している時に`python plugins/codex-task-routing/scripts/updater.py`で同じ一回分の更新処理を実行できます。
 
-## 適用確認と変更
-
-### 通常Chatの一時Chat（GPT-6 Pro）へ渡す（任意）
-
-0.7.0では、確認済み接続の操作・範囲・有効期限をローカル台帳に保持し、`chat_plan.py` が必要な項目だけ機械照合します。分類専用のAI呼出しや全接続の再調査を避け、`chat_transfer.py` の一回限りのローカルフォームで、準備済み本文と最終回答をBrowser内の変数のまま受け渡せます。親のモデルへ全文を出力して再転記する必要を減らします。[接続と分類](plugins/codex-task-routing/skills/task-routing/references/chat-capabilities.md)、[転送補助](plugins/codex-task-routing/skills/task-routing/references/chat-transfer.md)。これらは明示実行の補助で、フックから起動・送信しません。
-
-通常ChatのGPT-6 ProはWork/Codexと別枠ですが、親の準備・操作・検収はCodex側に残ります。6 Proには契約別の上限があり、無制限ではありません。モデルや残量は実際のUIで確認し、第三者ツール固有の料金まで無料と扱いません。[公式の利用枠](https://help.openai.com/en/articles/20001354)、[Work/Codexの共有枠](https://learn.chatgpt.com/docs/pricing)。
-
-0.8.0では有効なroot経路において、6 Proを分析・設計・比較・文案・レビューの**最初の主担当候補**にします。実際の接続・書込み権限・検証環境がそろう実装・テスト・PR作成も対象です。短い仕事やCodex側の現物との頻繁な往復は親または専門子に残します。分類だけで外部書込みやマージを承認せず、同じ分析を別のAstraで全面再実行しません。
-
-Pro $200の週次枠を積極活用する運用ですが、契約価格だけで経路を有効化しません。[最新上限・送受信方法の許可・比較計画](plugins/codex-task-routing/skills/task-routing/references/chat-limits.md)を確認してください。送信直前は`chat_plan.py --live`で新しい観測を照合し、上限・モデル変更・許可不明で停止します。自動抽出に関する例外の許可は本プラグインでは確認していません。
-新規依頼には、目的・材料・合格条件に加え、`handoff` で必要情報、出典要件、鮮度、許可ツール、返却形式、停止条件を渡します。MCPはChat側で必要な操作が使えるかを確認し、回答に実取得の出典・版や日時・取得範囲を求めます。設定済み・選択済みだけを取得成功と扱いません。本文だけの仕事はツールなしで完結させ、承認済み範囲の確認を繰り返しません。
-
-`<CODEX_HOME>/codex-task-routing/chatgpt.json` に次を保存します。プラグインキャッシュ内には保存しません。
-
-```json
-{
-  "schema_version": 1,
-  "enabled": true,
-  "required_model": "6 Pro",
-  "transport": "browser-temporary"
-}
-```
-
-新しいタスクのフックに `Opt-in ChatGPT Chat route is enabled` が表示されることを確認します。`enabled` を `false` にすると、この経路への新しい依頼を停止できます。切替後は新しいタスクから確認してください。進行中のChatを自動停止する設定ではありません。設定を有効にしただけでメッセージは送信されず、接続先の権限も増えません。
-
-この経路には、通常Chatへログイン済みのBrowserと、UIで選択・確認できる `6 Pro` が必要です。タスクごとに一時Chatを作り、Chatであること、一時Chatであること、`6 Pro` 表示を送信前後で確認します。準備済みの実依頼を一度だけ送信し、最終回答を依頼IDと材料hashで照合してから必要な結果だけを保存し、一時Chatは保存せず閉じます。複数行の本文は `paste({format:'text'})` またはサポートされた `fill` で入力し、全文一致を確認して送信ボタンを一回だけ使います。モデルAPIキーは使わず、WorkやモデルAPIへ暗黙に切り替えません。バックエンドのモデルIDは取得できないため、UI表示と実行メタデータを区別します。
-
-一時Chatでは `send_message_to_thread` を使いません。内部で `isTemporaryChat: false` となるためです。既に明示した `"transport": "codex-app-tools"` はlegacyとして互換を保ちますが、自動で書き換えず、一時Chatの作成・操作には使いません。既存の承認済みMCPは材料の受け渡しに使えます。独自MCPサーバーの公開・書き戻し・自動ファイル添付は含みません。通常Chatの生成はChatの枠、親の処理はCodexの枠を使い、接続先サービスやサーバーの費用は別途確認します。[運用手順・制約](plugins/codex-task-routing/skills/task-routing/references/chatgpt.md) と [browser不要化の課題](docs/backlog.md) を参照してください。
-
-### Codexサブエージェントの設定
-
-リポジトリ直下で実行します。
-
-```text
-python plugins/codex-task-routing/scripts/routing.py status --json
-python plugins/codex-task-routing/scripts/routing.py render --output-dir outputs/effective
-```
-
-`status` は設定・版・上書き・競合の診断です。ホストのフック信頼や実行モデルを推測して「有効」とは判定しません。実際の開始時に方針が渡されたかも確認してください。
-
-上書きは `$CODEX_HOME/codex-task-routing/overrides.json` へ保存します。`CODEX_HOME` が未設定なら `~/.codex` です。上書きがなければ作者の既定値を使います。プラグインの更新・解除でこの上書きファイルを編集・削除しません。
-
-例: Terraの標準effortだけ変更する場合。
-
-```json
-{
-  "schema_version": 1,
-  "models": {
-    "terra": { "default_effort": "high" }
-  }
-}
-```
-
-これは使い方の例で、既定値を下げる推奨ではありません。原則自体も `principles.summary` や対応する詳細節を置き換えて変更できます。[設定の詳細](plugins/codex-task-routing/skills/task-routing/references/configuration.md)
-
-## 使用量の振返りを残す
-
-0.3.1では、有効方針ごとに通常作業3件までを観測対象にします。開始時フックが残枠と記録状態を知らせ、AIが対象作業の開始と最終報告前に同じ記録を更新します。再開や子の仕事は同じ作業にまとめ、設定確認・監査は3件に含めません。プラグインの版だけが変わって分担方針が同じ場合も枠を取り直しません。
-
-記録には親子の要求設定と確認できた実行設定、使用量の対象範囲、検証結果と手直しを残します。使用量を取得できない項目は理由付きの欠測になります。記録が閉じても、実測が揃ったとは限りません。会話ログ・DBを自動収集する仕組みや、毎回の計測用モデル実行はありません。
-
-```text
-python plugins/codex-task-routing/scripts/routing.py observation status --json
-```
-
-記録はCodexホームのプラグイン専用領域へ保存し、リポジトリや公開用ファイルへ会話内容を追加しません。入力例と状態の意味は[観測手順](plugins/codex-task-routing/skills/task-routing/references/observation.md)を参照してください。自動的な利用料の集計や節約率の算定は行いません。
-
 ## 更新・同じ版の再現・解除
 
 同じ版を再現する場合、両PCの取得元のrefを同じcommit SHAまたは公開タグにそろえ、同じ上書きを用意します。診断のpolicy hashも比較します。モデルの生成結果まで同一になるという意味ではありません。
 
-自動更新を登録せず手動更新する場合や0.1.0から移行する場合は、Codexアプリ・CLIをすべて終了してから次を実行します。`upgrade`だけで導入済みプラグインも更新します。
+自動更新を登録せず手動更新する場合は、Codexアプリ・CLIをすべて終了してから次を実行します。`upgrade`だけで導入済みプラグインも更新します。
 
 ```text
 codex plugin marketplace upgrade codex-task-routing
@@ -166,7 +167,7 @@ codex plugin marketplace add acecore-systems/codex-task-routing --ref COMMIT_SHA
 codex plugin add codex-task-routing@codex-task-routing
 ```
 
-配布ファイルを変更するPRではmanifestの版も更新します。CIは同じ版のまま配布内容が変わることを拒否します。ローカルの開発ではmanifestのcachebusterまたは版を更新して再導入します。更新は旧導入コピーを削除するため、作業中のフックから自己更新しません。起動後の新しいタスクで適用を確認します。
+配布ファイルを変更するPRではmanifestの版も上げます。CIはSemVerとして不正な版、同じ版、後退、build metadataだけの変更を拒否します。ローカルの開発でもmanifestの版を上げて再導入します。更新は旧導入コピーを削除するため、作業中のフックから自己更新しません。起動後の新しいタスクで適用を確認します。
 
 プラグインを解除する場合は、先に`install_updater.py uninstall`で定期実行を解除し、次を実行します。通常のCodex設定や上書きファイルは残ります。
 
@@ -174,9 +175,15 @@ codex plugin add codex-task-routing@codex-task-routing
 codex plugin remove codex-task-routing@codex-task-routing
 ```
 
-## 既存の分担指示がある場合
+## トラブル対応
 
-Codexホームや作業先の `AGENTS.md` / `AGENTS.override.md` に既知の分担指示があると、二重適用を防ぐためフックは新方針を追加せず競合を知らせます。自動で旧指示を削除しません。旧指示をバックアップして対象の分担節だけ移行し、新しいタスクで適用を確認してください。異なる表現の類似方針をすべて機械検出できるわけではありません。
+- **新しいタスクに方針が表示されない:** `/hooks` でフックの存在と信頼状態を確認します。スキルの検出だけでは常時適用されません。フック定義が変わった後は再確認が必要な場合があります。
+- **`status --json` がエラーを返す:** `error_code` で原因の種類を、`hint` で秘密値を含まない対処を確認します。既存の `error` フィールドも互換性のため維持します。設定ファイルを自動修正する診断ではありません。各コードの意味は[設定の詳細](plugins/codex-task-routing/skills/task-routing/references/configuration.md)を参照してください。
+- **既存の分担指示との競合が表示される:** Codexホームや作業先の `AGENTS.md` / `AGENTS.override.md` に既知の分担指示があると、二重適用を防ぐためフックは新方針を追加しません。旧指示を自動削除しないため、バックアップして対象の分担節だけ移行し、新しいタスクで適用を確認します。異なる表現の類似方針をすべて機械検出できるわけではありません。
+- **要求したモデルやeffortで動いたか不明:** `status` の要求値だけでは実行を証明できません。子の起動時のツールと実行結果を確認します。モデルとeffortの利用可否はホストごとに異なります。
+- **通常Chat経路が有効にならない:** `chatgpt.json`、新しいタスクのフック表示、ログイン済みBrowser、UIの `6 Pro` 表示を順に確認します。上限・モデル変更・許可不明の場合は送信しません。
+- **自動更新されない:** `install_updater.py status` と `last-sync.json` を確認します。CodexかChatGPTが稼働中、稼働状態が不明、別更新が実行中、PCが休止・ログオフ中の場合は更新を見送ります。
+- **別の版へ戻す、または固定する:** 実行中のCodexアプリ・CLIを終了し、上の再登録手順でcommit SHAまたは公開タグを指定します。上書きは自動削除されません。
 
 ## 開発と検証
 
@@ -185,10 +192,10 @@ python -m unittest discover -s tests -v
 python scripts/check_package.py
 ```
 
-テストでは既定本文の再現、上書き・無効設定、開始イベント、既存指示との競合、ファイル保護を検証します。実際のフック信頼操作・通常会話の分担判断・他OSは別の確認対象です。検証実績は [docs/validation.md](docs/validation.md) を参照してください。
+テストでは既定本文の再現、上書き・無効設定、開始イベント、既存指示との競合、ファイル保護を検証します。実際のフック信頼操作・通常会話の分担判断・他OSは別の確認対象です。検証実績は [docs/validation.md](docs/validation.md)、版ごとの変更は [docs/changelog.md](docs/changelog.md) を参照してください。
 
 詳細は必要な節だけ読みます。方針の正本は `defaults/config.json`、分類と引継ぎのテンプレートは `defaults/templates/` にあります。既定の元文書は個人パスと適用経路を調整し、意味を保った正本スナップショットと照合しています。
 
 このプラグインは認証・会話履歴・メモリ・契約の利用率を読みません。方針フックはローカルの有効方針キャッシュを書き出し、観測台帳は読み取るだけです。観測CLIはAIから渡された短い構造化データを専用台帳へ保存します。任意の自動更新機能は専用ファイル・設定・同期診断とWindowsの定期タスクを作成し、標準CLIによるmarketplace更新を行います。内部ログ解析や常時計測は含みません。
 
-MIT License · Acecore
+MIT License。詳細は [plugins/codex-task-routing/LICENSE](plugins/codex-task-routing/LICENSE) を参照してください。
