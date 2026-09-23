@@ -2,6 +2,12 @@
 
 現在の導入・適用確認・任意機能・トラブル対応は [README](../README.md) を参照してください。各版で確認した環境と未検証範囲は [検証記録](validation.md) に残しています。
 
+## 0.9.0
+
+- 既定の子をGPT-6 Luna/max・Sol/high・Astra/highとし、親の参考基準をSol/xhighへ更新しました。利用者の親設定は変更しません。
+- 旧`terra`キーはschema 1のoverride互換用に残し、子の割当・有効方針の表示から外しました。既存overrideの5.6系IDは自動変更しません。
+- 方針、分類表、引継ぎ、説明、フック出力と検証用fixtureを新しい基準へ合わせました。
+
 ## 0.8.2
 
 - release検査をSemVerの正しいprecedence比較へ変更し、同一版、版の後退、build metadataだけの変更、不正な版を拒否するようにしました。

@@ -114,28 +114,34 @@ class FixedRoutingTests(unittest.TestCase):
         self.assertEqual(json.loads(output.getvalue())['route'], 'not_ready')
         self.assertEqual(before, [p.read_bytes() for p in paths])
 
-    def test_fixed_defaults_and_child_hook_have_no_normal_terra_child(self):
+    def test_fixed_defaults_and_child_hook_uses_gpt6(self):
         policy = routing.load_policy(codex_home=self.home)
         self.assertEqual({k:v['default_effort'] for k,v in policy.config['models'].items()},
                          dict(luna='max', terra='xhigh', sol='high', astra='high'))
         effective = policy.render_template(policy.templates['effective.md'])
-        self.assertIn('Terra子は標準ルートから外し', effective)
+        self.assertNotIn('Terra子', effective)
+        self.assertNotIn('gpt-5.6', effective)
         for name, text in policy.templates.items():
             self.assertNotIn('.min_effort}}', text)
             self.assertNotIn('.max_effort}}', text)
         child = routing.hook_payload(event='SubagentStart', source='startup', codex_home=self.home, cwd=self.home)
         context = child['hookSpecificOutput']['additionalContext']
         self.assertNotIn('Terra=gpt-', context)
-        self.assertIn('Luna=gpt-5.6-luna (max)', context)
-        self.assertIn('Terra child is outside the standard route', context)
+        self.assertIn('Luna=gpt-6-luna (max)', context)
+        self.assertIn('Sol=gpt-6-sol (high)', context)
+        self.assertNotIn('gpt-5.6', context)
+        self.assertIn('Do not create a child solely', context)
 
     def test_existing_partial_override_is_not_deleted_or_rejected(self):
         path = self.home/'codex-task-routing/overrides.json'
         path.parent.mkdir()
-        path.write_text(json.dumps({'schema_version':1, 'models':{'terra':{'default_effort':'high'}}}))
+        path.write_text(json.dumps({'schema_version':1, 'models':{'terra':{'id':'gpt-5.6-terra','default_effort':'high'}}}))
         before = path.read_bytes()
         policy = routing.load_policy(codex_home=self.home)
         self.assertEqual(policy.config['models']['terra']['default_effort'], 'high')
+        self.assertNotIn('gpt-5.6', policy.render_template(policy.templates['effective.md']))
+        child = routing.hook_payload(event='SubagentStart', source='startup', codex_home=self.home, cwd=self.home)
+        self.assertNotIn('gpt-5.6', child['hookSpecificOutput']['additionalContext'])
         self.assertEqual(before, path.read_bytes())
         self.assertFalse((self.home/'config.toml').exists())
         self.assertFalse(route.load_config(self.home)['enabled'])

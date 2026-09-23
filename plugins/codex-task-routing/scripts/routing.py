@@ -77,6 +77,7 @@ CACHE_RENAME_RETRY_SECONDS = 0.05
 WINDOWS_TRANSIENT_RENAME_WINERRORS = frozenset({5, 32, 33})
 
 MODEL_FIELDS = ("id", "min_effort", "default_effort", "max_effort")
+# The terra key remains for schema-v1 override compatibility; it is never routed.
 REQUIRED_MODEL_ROLES = ("luna", "terra", "sol", "astra")
 SAFE_MODEL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 SAFE_TOKEN = re.compile(
@@ -807,7 +808,7 @@ def hook_payload(
                 [
                     f"Codex Task Routing manifest {policy.version}; policy hash {policy.content_hash}.",
                     f"Configured child-routing reference only; it does not change the parent: {model_matrix}.",
-                    "Terra child is outside the standard route. Follow the parent-specified scope and acceptance criteria; return specialist questions to the parent rather than re-delegating, and distinguish unverified work from confirmed results.",
+                    "Do not create a child solely to hand off ordinary parent work. Follow the parent-specified scope and acceptance criteria; return specialist questions to the parent rather than re-delegating, and distinguish unverified work from confirmed results.",
                     f"Effective policy: {references['effective.md']}",
                     "Detailed policy references:",
                     detail_refs,

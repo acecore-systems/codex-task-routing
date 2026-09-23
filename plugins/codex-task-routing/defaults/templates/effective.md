@@ -7,7 +7,6 @@
 | Luna子 | {{models.luna.id}} | {{models.luna.default_effort}} |
 | Sol子 | {{models.sol.id}} | {{models.sol.default_effort}} |
 | Astra子 | {{models.astra.id}} | {{models.astra.default_effort}} |
-| Terra（親の基準・互換定義、子は標準外） | {{models.terra.id}} | {{models.terra.default_effort}} |
 | 通常Chat | UIで6 Pro | 別経路・Codex effortと換算しない |
 
 {{principles.summary}}

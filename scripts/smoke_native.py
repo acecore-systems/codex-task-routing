@@ -39,7 +39,7 @@ def main():
     override = home / PLUGIN_NAME / "overrides.json"
     override.parent.mkdir()
     override.write_text(json.dumps({"schema_version": 1, "models": {
-        "terra": {"default_effort": "high"}}}), encoding="utf-8")
+        "sol": {"default_effort": "xhigh"}}}), encoding="utf-8")
     chat_config = home / PLUGIN_NAME / "chatgpt.json"
     before = {p: p.read_bytes() for p in (guidance, override)}
     env = {**os.environ, "CODEX_HOME": str(home),
