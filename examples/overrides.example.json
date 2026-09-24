@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
   "models": {
-    "terra": { "default_effort": "high" }
+    "sol": { "default_effort": "xhigh" }
   }
 }

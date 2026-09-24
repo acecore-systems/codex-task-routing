@@ -30,11 +30,14 @@ def check():
                 assert hook['command'] == "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','routing.py'),run_name='__main__')\" hook"
                 assert hook['timeout'] <= 10
     config = json.loads((PLUGIN / 'defaults/config.json').read_text(encoding='utf-8'))
-    assert config['policy_revision'] == '2026-09-15-terra-chat-fixed'
+    assert config['policy_revision'] == '2026-09-24-gpt6-routing'
     assert config['models']['luna']['default_effort'] == 'max'
-    assert config['models']['terra']['default_effort'] == 'xhigh'
+    assert config['models']['terra']['id'] == 'gpt-6-sol'  # legacy override key, never routed
     assert config['models']['sol']['default_effort'] == 'high'
     assert config['models']['astra']['default_effort'] == 'high'
+    assert config['models']['luna']['id'] == 'gpt-6-luna'
+    assert config['models']['sol']['id'] == 'gpt-6-sol'
+    assert config['models']['astra']['id'] == 'gpt-6-astra'
     forbidden = re.compile(r'(?:[A-Za-z]:[/\\]Users[/\\](?!<|\$)[A-Za-z0-9_-]+)|(?:-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----)|(?:gh[pousr]_[A-Za-z0-9]{30,})')
     for path in PLUGIN.rglob('*'):
         if not path.is_file() or '__pycache__' in path.parts:

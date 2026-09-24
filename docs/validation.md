@@ -1,5 +1,13 @@
 # 検証記録
 
+## 0.9.0: GPT-6系への分担更新
+
+2026-09-24、Windows / Python 3.13の専用作業ツリーで134件のテスト、`python scripts/check_package.py`、`git diff --check` が成功しました。隔離Codexホームへのnative CLI導入、両フック、再インストールとoverride保持、解除も成功しました。一時Codexホームで方針をrenderし、有効方針・分類表・引継ぎ・子のフックに5.6系IDやTerra担当が出ないことを確認しました。
+
+- 既定IDは`gpt-6-luna`・`gpt-6-sol`・`gpt-6-astra`です。親Sol/xhighは参考基準であり、稼働中の親設定を変更しません。子の固定effortはLuna/max・Sol/high・Astra/highを維持しました。
+- schema 1の旧`terra`キーは既存overrideの読取り互換用として残し、子の候補には使いません。5.6系へ固定された既存overrideと既存の親設定は自動更新しません。
+- 実アカウントでのモデル起動、稼働中アプリへの更新、通常Chat画面、利用量・品質の比較は未検証です。CIの結果はPRで別途確認します。
+
 ## 0.8.2: 診断・テスト・リリース検査の改善
 
 2026-09-23、Windows / Python 3.13の通常サンドボックス内で134件のテストと `python scripts/check_package.py` が成功しました。隔離Codexホームではnative CLIによる導入・両フック起動・再インストール・解除と個別設定の保持も確認しました。稼働中アプリへの再読み込み、通常Chat画面、子モデルの実行、利用量は今回の検証に含みません。CIには既存の3 OS / Python 3.11に加えてWindows / Python 3.13を追加し、リモート結果はPRで確認します。

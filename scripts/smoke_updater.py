@@ -69,7 +69,7 @@ def main():
         (home / 'config.toml').write_text('model_reasoning_effort="high"\n',encoding='utf-8')
         private = home / 'codex-task-routing'
         private.mkdir()
-        (private / 'overrides.json').write_text('{"schema_version":1,"models":{"terra":{"default_effort":"high"}}}',encoding='utf-8')
+        (private / 'overrides.json').write_text('{"schema_version":1,"models":{"sol":{"default_effort":"xhigh"}}}',encoding='utf-8')
         env = {**environment,'CODEX_HOME':str(home)}
         cli(env,'marketplace','add',URL,'--ref',ref)
         cli(env,'add',PLUGIN_ID)

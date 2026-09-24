@@ -26,9 +26,9 @@ DEFAULTS = {
     "schema_version": 1,
     "policy_revision": "2026-09-14",
     "models": {
-        "luna": {"id": "gpt-5.6-luna", "min_effort": "xhigh", "default_effort": "max", "max_effort": "max"},
-        "terra": {"id": "gpt-5.6-terra", "min_effort": "high", "default_effort": "xhigh", "max_effort": "max"},
-        "sol": {"id": "gpt-5.6-sol", "min_effort": "medium", "default_effort": "high", "max_effort": "xhigh"},
+        "luna": {"id": "gpt-6-luna", "min_effort": "xhigh", "default_effort": "max", "max_effort": "max"},
+        "terra": {"id": "gpt-6-sol", "min_effort": "high", "default_effort": "xhigh", "max_effort": "max"},
+        "sol": {"id": "gpt-6-sol", "min_effort": "medium", "default_effort": "high", "max_effort": "xhigh"},
         "astra": {"id": "gpt-6-astra", "min_effort": "high", "default_effort": "high", "max_effort": "max"},
     },
     "principles": {
@@ -87,10 +87,10 @@ class RoutingTestCase(unittest.TestCase):
         output = self.base / "rendered"
         references = routing.render_policy(policy, output)
         self.assertEqual(set(references), set(routing.RENDERED_FILE_NAMES))
-        self.assertIn("gpt-5.6-luna", (output / "model-routing-policy.md").read_text(encoding="utf-8"))
+        self.assertIn("gpt-6-luna", (output / "model-routing-policy.md").read_text(encoding="utf-8"))
         self.assertIn("xhigh", (output / "model-routing-handoff.md").read_text(encoding="utf-8"))
         effective = (output / "effective.md").read_text(encoding="utf-8")
-        self.assertIn("gpt-5.6-terra", effective)
+        self.assertIn("gpt-6-sol", effective)
 
     def test_bundled_defaults_match_public_detailed_fixtures(self) -> None:
         policy = routing.load_policy(plugin_root=routing.PLUGIN_ROOT, codex_home=self.home)

@@ -4,17 +4,17 @@
 
 Acecoreが日常利用で改善している分担原則を既定値として同梱します。親のモデル・effortを維持し、引継ぎ、同じ担当の継続、重要なレビューまで含めて、品質と総利用負担を考慮します。次回送信のモデル選択を勧める機能はありません。節約率は未実証です。
 
-現在の基準運用は、**親Terra/xhighで通常作業を完結し、専門工程だけ固定effortの担当へ渡す**方式です。利用者が選んだ親設定は変更しません。
+現在の基準運用は、**親GPT-6 Sol/xhighで通常作業を完結し、専門工程だけ固定effortの担当へ渡す**方式です。利用者が選んだ親設定は変更しません。
 
 | 担当 | 固定値 | 役割 |
 | --- | --- | --- |
-| 親の基準 | Terra/xhigh | 通常の調査・実装・検証・進行 |
-| 子 | Luna/max | 明確な定型工程 |
-| 子 | Sol/high | 複雑な実装・原因・重要レビュー |
-| 子 | Astra/high | 難しい設計・重大な不確実性 |
+| 親の参考基準 | GPT-6 Sol/xhigh | 通常の調査・実装・検証・進行 |
+| 子 | GPT-6 Luna/max | 明確な定型工程 |
+| 子 | GPT-6 Sol/high | 複雑な実装・原因・重要レビュー |
+| 子 | GPT-6 Astra/high | 難しい設計・重大な不確実性 |
 | 別経路 | 通常Chat 6 Pro | 適合するまとまった工程の主担当候補 |
 
-Terra子は標準ルートから外します。min/max設定は互換性のため残し、自動選定は有効なdefault_effortに固定します。既存overrideと他モデル親は保持します。並列分担には親の独立作業が必要で、直列の専門委譲は具体的な追加価値とホストの許可を確認した場合だけ使います。
+旧`terra`キーはschema 1の既存overrideの読取り互換用です。分担候補には出しません。同モデルへの無用な移管を避けます。min/max設定は互換性のため残し、自動選定は有効なdefault_effortに固定します。既存overrideと他モデル親は保持します。並列分担には親の独立作業が必要で、直列の専門委譲は具体的な追加価値とホストの許可を確認した場合だけ使います。
 
 ## 導入
 
@@ -56,15 +56,15 @@ python plugins/codex-task-routing/scripts/routing.py render --output-dir outputs
 
 ## 設定を変更する
 
-上書きは `$CODEX_HOME/codex-task-routing/overrides.json` へ保存します。`CODEX_HOME` が未設定なら `~/.codex` です。上書きがなければ作者の既定値を使います。プラグインの更新・解除でこの上書きファイルを編集・削除しません。
+上書きは `$CODEX_HOME/codex-task-routing/overrides.json` へ保存します。`CODEX_HOME` が未設定なら `~/.codex` です。上書きがなければ作者の既定値を使います。旧版の`luna`・`sol`の`id`を5.6系へ固定した上書きは自動で書き換えないため、移行時に`status --json`の適用キーを確認してください。プラグインの更新・解除でこの上書きファイルを編集・削除しません。
 
-例として、Terraの標準effortだけ変更する場合は次のように指定します。
+例として、Sol子の標準effortだけ変更する場合は次のように指定します。
 
 ```json
 {
   "schema_version": 1,
   "models": {
-    "terra": { "default_effort": "high" }
+    "sol": { "default_effort": "xhigh" }
   }
 }
 ```

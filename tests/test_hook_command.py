@@ -40,7 +40,7 @@ class HookCommandTest(unittest.TestCase):
                     context = payload["hookSpecificOutput"]
                     self.assertEqual(context["hookEventName"], event)
                     self.assertIn("policy hash", context["additionalContext"])
-                    self.assertIn("gpt-5.6-luna", context["additionalContext"])
+                    self.assertIn("gpt-6-luna", context["additionalContext"])
                     self.assertLessEqual(len(context["additionalContext"]), 8000)
         finally:
             shutil.rmtree(base)
