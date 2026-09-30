@@ -47,12 +47,12 @@
       "run_id": "019c0000-0000-7000-8000-000000000001",
       "run_id_reason": null,
       "requested": {
-        "model": "gpt-6-sol",
+        "model": "gpt-6.1-sol",
         "effort": "xhigh",
         "reason": null
       },
       "observed": {
-        "model": "gpt-6-sol",
+        "model": "gpt-6.1-sol",
         "effort": "xhigh",
         "evidence_ref": "example:existing-runtime-settings",
         "reason": null

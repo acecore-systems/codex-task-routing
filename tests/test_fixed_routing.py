@@ -114,13 +114,18 @@ class FixedRoutingTests(unittest.TestCase):
         self.assertEqual(json.loads(output.getvalue())['route'], 'not_ready')
         self.assertEqual(before, [p.read_bytes() for p in paths])
 
-    def test_fixed_defaults_and_child_hook_uses_gpt6(self):
+    def test_fixed_defaults_and_child_hook_uses_sol_6_1(self):
         policy = routing.load_policy(codex_home=self.home)
         self.assertEqual({k:v['default_effort'] for k,v in policy.config['models'].items()},
                          dict(luna='max', terra='xhigh', sol='high', astra='high'))
+        self.assertEqual({k:v['id'] for k,v in policy.config['models'].items()},
+                         dict(luna='gpt-6-luna', terra='gpt-6.1-sol',
+                              sol='gpt-6.1-sol', astra='gpt-6-astra'))
         effective = policy.render_template(policy.templates['effective.md'])
         self.assertNotIn('Terra子', effective)
         self.assertNotIn('gpt-5.6', effective)
+        self.assertNotIn('gpt-6-sol', effective)
+        self.assertIn('GPT-6.1 Sol/xhigh', effective)
         for name, text in policy.templates.items():
             self.assertNotIn('.min_effort}}', text)
             self.assertNotIn('.max_effort}}', text)
@@ -128,9 +133,23 @@ class FixedRoutingTests(unittest.TestCase):
         context = child['hookSpecificOutput']['additionalContext']
         self.assertNotIn('Terra=gpt-', context)
         self.assertIn('Luna=gpt-6-luna (max)', context)
-        self.assertIn('Sol=gpt-6-sol (high)', context)
+        self.assertIn('Sol=gpt-6.1-sol (high)', context)
         self.assertNotIn('gpt-5.6', context)
+        self.assertNotIn('gpt-6-sol', context)
         self.assertIn('Do not create a child solely', context)
+
+    def test_explicit_old_sol_override_is_preserved(self):
+        path = self.home/'codex-task-routing/overrides.json'
+        path.parent.mkdir()
+        path.write_text(json.dumps({'schema_version':1, 'models':{
+            'sol':{'id':'gpt-6-sol', 'default_effort':'xhigh'}}}))
+        before = path.read_bytes()
+        policy = routing.load_policy(codex_home=self.home)
+        self.assertEqual(policy.config['models']['sol']['id'], 'gpt-6-sol')
+        self.assertEqual(policy.config['models']['sol']['default_effort'], 'xhigh')
+        self.assertIn('gpt-6-sol', policy.render_template(policy.templates['effective.md']))
+        self.assertEqual(before, path.read_bytes())
+        self.assertFalse((self.home/'config.toml').exists())
 
     def test_existing_partial_override_is_not_deleted_or_rejected(self):
         path = self.home/'codex-task-routing/overrides.json'

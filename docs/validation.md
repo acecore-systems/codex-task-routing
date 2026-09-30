@@ -1,5 +1,13 @@
 # 検証記録
 
+## 0.9.1: Sol 6.1への更新
+
+2026-09-30、Windows / Python 3.13.15の専用作業ツリーで135件のテスト、`python scripts/check_package.py`、`git diff --check` が成功しました。Codex CLI 0.159.2を使った隔離Codexホームへのnative導入、両フック、再インストールとoverride保持、解除も成功しました。
+
+- Solと互換用の旧`terra`キーの既定IDは`gpt-6.1-sol`です。有効方針と子のフックに旧`gpt-6-sol`が出ないこと、固定effortとLuna・AstraのIDが維持されることを確認しました。
+- 旧Solへ明示固定されたoverrideは書き換えず、継続して受理することを回帰テストで確認しました。利用者の親設定は変更しません。
+- [OpenAI公式更新履歴](https://learn.chatgpt.com/docs/changelog#month-2026-09)でGPT-6.1 Solの更新と`gpt-6.1-sol`を確認しました。設定・フックの指定値の検証であり、実アカウントでの子モデル起動、稼働中アプリへの更新、通常Chat画面、品質・利用量の比較は未検証です。他OS / Python版はCIで別途確認します。
+
 ## 0.9.0: GPT-6系への分担更新
 
 2026-09-24、Windows / Python 3.13の専用作業ツリーで134件のテスト、`python scripts/check_package.py`、`git diff --check` が成功しました。隔離Codexホームへのnative CLI導入、両フック、再インストールとoverride保持、解除も成功しました。一時Codexホームで方針をrenderし、有効方針・分類表・引継ぎ・子のフックに5.6系IDやTerra担当が出ないことを確認しました。

@@ -1,5 +1,5 @@
 {
-  "policy_revision": "2026-09-24-gpt6-routing",
+  "policy_revision": "2026-09-30-sol-6.1-routing",
   "source_sha256": {
     "AGENTS.md": "bd2584d350c204f1ffbc8c005c084fc34360acddf8812557504350820e34be42",
     "model-routing-policy.md": "9335ccec4516bc71b68d01f9304d6e71d3b5efcd77a210476571cd7d060c476c",
@@ -15,11 +15,12 @@
     "bounded observation lifecycle with explicit missing usage and unchanged model defaults",
     "0.6.0 conditional Chat-first suitability decision in catalog; native model and effort defaults unchanged",
     "0.8.0 intentional policy change: Terra parent reference, fixed effective efforts, capability-based Chat-first and host-gated serial specialists; historical source hashes retained",
-    "0.9.0 intentional policy change: GPT-6 Luna/Sol defaults, Sol/xhigh parent reference, inactive legacy terra override key; historical source hashes retained"
+    "0.9.0 intentional policy change: GPT-6 Luna/Sol defaults, Sol/xhigh parent reference, inactive legacy terra override key; historical source hashes retained",
+    "0.9.1 intentional default model update: GPT-6.1 Sol for sol and inactive legacy terra; GPT-6.1 Sol/xhigh parent reference; efforts and explicit overrides preserved; historical source hashes retained"
   ],
   "source_policy_revision": "2026-09-14",
   "rendered_sha256": {
-    "model-routing-policy.md": "a4cbf7421615ed926154931caa85988db1801df58ae3fe1261ae20f060ee7737",
+    "model-routing-policy.md": "c2294ecdde3a48d677c033dbd0b075835a5eea5672a94e84a852ea5bedbfafa3",
     "model-routing-catalog.md": "d58efec8ceb5df0f5d084cde53fcb1feec9d934e4318535af253a959e6e9a0ac",
     "model-routing-handoff.md": "5564f3236514162aae5a6d862f177558ca1757d60a94c141c5d8eb346db575ad"
   }
