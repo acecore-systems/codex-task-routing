@@ -56,7 +56,7 @@ python plugins/codex-task-routing/scripts/routing.py render --output-dir outputs
 
 ## 設定を変更する
 
-上書きは `$CODEX_HOME/codex-task-routing/overrides.json` へ保存します。`CODEX_HOME` が未設定なら `~/.codex` です。上書きがなければ作者の既定値を使います。旧版の`luna`・`sol`の`id`を5.6系や旧`gpt-6-sol`へ固定した上書きは自動で書き換えないため、移行時に`status --json`の適用キーを確認してください。Solの旧ID指定を外すと6.1の既定値が使われます。プラグインの更新・解除でこの上書きファイルを編集・削除しません。
+上書きは `$CODEX_HOME/codex-task-routing/overrides.json` へ保存します。`CODEX_HOME` が未設定なら `~/.codex` です。上書きがなければ作者の既定値を使います。旧版の`luna`・`sol`の`id`を5.6系や旧`gpt-6-sol`へ固定した上書きは自動で書き換えないため、移行時に`status --json`の適用キーを確認してください。Solの旧ID指定は`gpt-6.1-sol`へ変更してください。プラグインの更新・解除でこの上書きファイルを編集・削除しません。
 
 例として、Sol子の標準effortだけ変更する場合は次のように指定します。
 
