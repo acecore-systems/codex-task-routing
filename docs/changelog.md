@@ -2,6 +2,12 @@
 
 現在の導入・適用確認・任意機能・トラブル対応は [README](../README.md) を参照してください。各版で確認した環境と未検証範囲は [検証記録](validation.md) に残しています。
 
+## 0.9.1
+
+- Solの既定IDを`gpt-6.1-sol`へ更新し、親の参考基準もGPT-6.1 Sol/xhighへ揃えました。互換用の旧`terra`キーの既定IDも6.1へ更新しました。
+- Luna/max・Sol/high・Astra/highの固定effort、既存override、利用者が選んだ親設定、通常Chat 6 Proの条件は維持します。旧`gpt-6-sol`へ固定されたoverrideの確認方法をREADMEに追記しました。
+- 今回は既定モデルの更新です。分担原則や配布・更新方式は変更していません。
+
 ## 0.9.0
 
 - 既定の子をGPT-6 Luna/max・Sol/high・Astra/highとし、親の参考基準をSol/xhighへ更新しました。利用者の親設定は変更しません。

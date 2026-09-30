@@ -73,9 +73,9 @@ def completed_child_run() -> dict:
         "state": "completed",
         "run_id": "019c0000-0000-7000-8000-000000000001",
         "run_id_reason": None,
-        "requested": {"model": "gpt-6-sol", "effort": "xhigh", "reason": None},
+        "requested": {"model": "gpt-6.1-sol", "effort": "xhigh", "reason": None},
         "observed": {
-            "model": "gpt-6-sol",
+            "model": "gpt-6.1-sol",
             "effort": "xhigh",
             "evidence_ref": "tool-result:child-1",
             "reason": None,

@@ -1,6 +1,6 @@
-# モデル選定・作業内の委譲（2026-09-24更新）
+# モデル選定・作業内の委譲（2026-09-30更新）
 
-作者の参考基準は親Sol/xhigh、子Luna/max・Sol/high・Astra/high、適合工程は通常Chatの6 Proを積極的な主担当とする。通常作業と進行を親で完結し、専門工程だけ渡す。同じモデルへの無用な移管はしない。これは性能・節約の実証ではなく比較する運用方針である。
+作者の参考基準は親GPT-6.1 Sol/xhigh、子Luna/max・Sol/high・Astra/high、適合工程は通常Chatの6 Proを積極的な主担当とする。通常作業と進行を親で完結し、専門工程だけ渡す。同じモデルへの無用な移管はしない。これは性能・節約の実証ではなく比較する運用方針である。
 
 親モデルを自動変更する機能ではない。利用者の親のmodel・effort（Ultra含む）と既存overrideを保持し、次回送信の切替提案はしない。別モデル親でも、能力に合う作業は親・適合する既存担当で進め、専門判断を必要な担当へ渡す。通常の可逆的な作業は承認内で進め、毎回の続行確認を増やさない。
 
@@ -37,7 +37,7 @@
 
 | 条件 | 第一候補 |
 | --- | --- |
-| 短い確認・整形・局所修正、通常の調査・実装・検証 | 親。参考基準はSol/xhigh |
+| 短い確認・整形・局所修正、通常の調査・実装・検証 | 親。参考基準はGPT-6.1 Sol/xhigh |
 | 明確でまとまった取得・抽出・照合・既定手順 | 委譲が見合えばLuna/max |
 | 材料がそろう比較・分析・要件・設計・文案・レビュー | 有効な通常Chat 6 Proを最初の主担当候補 |
 | 接続先の取得・編集・テスト・PRまで対象と承認が明確 | Chat側の実能力で完結すれば6 Pro。名称だけで不可にしない |
@@ -96,9 +96,9 @@ Luna/maxへ渡すのは、取得元・手順・必要項目・合格条件が明
 
 ### 作業内で使う推論強度と実行条件
 
-モデルは担当能力と必要ツールから先に選び、子のeffortは有効なdefault_effortを明示する。既定はLuna/max、Sol/high、Astra/high。親の参考基準はSol/xhigh。実際の親設定は変更しない。
+モデルは担当能力と必要ツールから先に選び、子のeffortは有効なdefault_effortを明示する。既定はLuna/max、Sol/high、Astra/high。親の参考基準はGPT-6.1 Sol/xhigh。実際の親設定は変更しない。
 
-モデルIDはLuna=gpt-6-luna、Sol=gpt-6-sol、Astra=gpt-6-astra。通常ChatはUIの6 Proを選び、Codex effortへ換算しない。要求した設定と実際の観測を分ける。API単価をCodex契約の消費率へ代入しない。
+モデルIDはLuna=gpt-6-luna、Sol=gpt-6.1-sol、Astra=gpt-6-astra。通常ChatはUIの6 Proを選び、Codex effortへ換算しない。要求した設定と実際の観測を分ける。API単価をCodex契約の消費率へ代入しない。
 
 子の推論・検証を十分に使い、通常の修正も同じ担当で完結する。品質不足を親の全面的な再処理で隠さず、入力・環境・担当の問題を分けて戻す。設定統一のために実行中の子を止めたり、完了済みの仕事を再実行したりしない。
 
@@ -144,4 +144,4 @@ Luna/maxへ渡すのは、取得元・手順・必要項目・合格条件が明
 
 - 同じ有効方針ディレクトリのeffective.mdを要約、この文書を詳細分類の正本とする。有効かつ信頼済みのプラグインフックで開始・再開時に読み込む。既存セッションは再読込みが必要な場合があり、別PC・別CODEX_HOME・クラウド環境への自動同期は前提にしない。より優先される指示・適用されるプロジェクト指示に従う。
 - 分類は運用開始時の基準。ユーザーの修正指示や実測で調整し、モデル更新・利用可否変更時は公式情報と現在の環境を確認する。具体例は `model-routing-catalog.md` に集約し、この文書の一般条件と矛盾させない。繰り返す誤分類や手戻りが分かったら該当する分類を修正・統合し、一度きりの事例のために毎回項目を増やさない。
-- 参考：OpenAI Docsのモデル一覧 https://developers.openai.com/api/docs/models 、GPT-6系の更新 https://developers.openai.com/api/docs/changelog 、effort・Max・Ultraの説明 https://learn.chatgpt.com/docs/models?surface=app 、共通指示の仕様 https://learn.chatgpt.com/docs/agent-configuration/agents-md 、標準のサブエージェント仕様 https://learn.chatgpt.com/docs/agent-configuration/subagents （モデル一覧・更新履歴は2026-09-24確認）。
+- 参考：OpenAI Docsのモデル一覧 https://developers.openai.com/api/docs/models 、GPT-6系の更新 https://developers.openai.com/api/docs/changelog 、effort・Max・Ultraの説明 https://learn.chatgpt.com/docs/models?surface=app 、共通指示の仕様 https://learn.chatgpt.com/docs/agent-configuration/agents-md 、標準のサブエージェント仕様 https://learn.chatgpt.com/docs/agent-configuration/subagents 、GPT-6.1 Solの更新 https://learn.chatgpt.com/docs/changelog#month-2026-09 （GPT-6.1 SolのモデルIDと更新履歴は2026-09-30確認、その他の参照は2026-09-24確認）。
