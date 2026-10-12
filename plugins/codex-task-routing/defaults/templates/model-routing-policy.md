@@ -1,6 +1,7 @@
 {{principles.policy_intro}}
 {{principles.policy_effort}}
 {{principles.policy_timing}}
+{{principles.policy_local_auth}}
 {{principles.policy_reading}}
 {{principles.policy_classification}}
 {{principles.policy_test_image}}

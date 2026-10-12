@@ -25,6 +25,7 @@ effortの設定値は `medium`、`high`、`xhigh`、`max` で、下限≤標準�
 | policy_timing | 選定のタイミング |
 | policy_reading | 読む範囲 |
 | policy_classification | 作業分類 |
+| policy_local_auth | 認証工程のローカル引継ぎ |
 | policy_test_image | テストと画像 |
 | policy_originals | 原本と必須項目 |
 | policy_luna_timing | Lunaを検討する条件 |
