@@ -73,6 +73,14 @@ python plugins/codex-task-routing/scripts/routing.py render --output-dir outputs
 
 ## 任意機能
 
+### 認証工程をローカルへ引き継ぐ
+
+パスワードやAPIキーの入力・保管・転送、OAuth JSONやCookieを扱う工程は、通常のモデル選定より先にローカル経路を確認します。開始・再開フックがこの方針を渡すため、各タスクに個別の引継ぎ文を貼る手間を減らせます。認証方式の公開仕様や秘密を含まないコードは、通常の分担で扱います。
+
+別途導入済みの`local-auth-lfm` MCP（受付protocol `0.3.0`）を使い、`local_auth_status` → `local_auth_handoffs` → 登録済みpresetで依頼・準備確認 → 承認済みの対応工程を専用ツールで実行、という順で進めます。実行側の単一モデルと共有runtimeを使うため、Task Routingにモデルを追加保存しません。ツール未提供・非対応protocol・preset不足・未実装処理は、その不足を報告します。
+
+受付登録、本人操作待ち、実ログイン/API検証を区別し、秘密値・Cookie・認証画面はクラウドへ返しません。フックは秘密ファイルを読まず、MCPやモデルを起動しません。アプリ起動承認や本人確認を含む既存の承認条件を維持します。`chat_plan.py`でも`requires_private_auth: true`を指定すると、Chatの選定より先に`local_auth`を返します。分類だけで実行を承認する機能ではありません。[ローカル認証の手順](plugins/codex-task-routing/skills/task-routing/references/local-auth.md)
+
 ### 通常Chatの一時Chat（GPT-6 Pro）へ渡す
 
 通常Chat経路は明示的に有効にした場合だけ使います。確認済み接続の操作・範囲・有効期限をローカル台帳に保持し、`chat_plan.py` が必要な項目だけ機械照合します。分類専用のAI呼出しや全接続の再調査を避け、`chat_transfer.py` の一回限りのローカルフォームで、準備済み本文と最終回答をBrowser内の変数のまま受け渡せます。親のモデルへ全文を出力して再転記する必要を減らします。[接続と分類](plugins/codex-task-routing/skills/task-routing/references/chat-capabilities.md)、[転送補助](plugins/codex-task-routing/skills/task-routing/references/chat-transfer.md)。これらは明示実行の補助で、フックから起動・送信しません。

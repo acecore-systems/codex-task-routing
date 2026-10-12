@@ -709,6 +709,7 @@ def _chatgpt_context(home: Path, plugin_root: Path) -> str:
         f"\nOpt-in ChatGPT Chat route is enabled (required UI model: 6 Pro; transport: {transport}{legacy_suffix}). "
         "This is a user-enabled alternative to standard Codex children for substantial, independent "
         "research, analysis, design, drafting, review and explicitly authorized implementation/testing/PR tasks. Before assigning a substantial work unit, "
+        "first keep credential entry, storage and transfer on the local authentication route; "
         "evaluate this Chat route first: prefer 6 Pro when approved materials and verified tools suffice and "
         "handoff, waiting, acceptance and rework costs are proportionate. Do not require another plugin mention. "
         "Use Chat as the initial main specialist, not a redundant final review. Include implementation/PR work only with actual tools, scoped write approval and a sufficient test environment. Keep short work or repeated access to Codex-only local resources in Codex. "
@@ -755,6 +756,23 @@ def hook_payload(
         detail_refs = "\n".join(
             f"- {name}: {references[name]}" for name in DETAILED_TEMPLATE_NAMES
         )
+        local_auth_reference = _absolute(
+            policy.plugin_root / "skills" / "task-routing" / "references" / "local-auth.md"
+        )
+        local_auth_context = (
+            "Private authentication: before cloud model selection, inspect the available local-auth-lfm MCP "
+            "with local_auth_status and local_auth_handoffs. Pass only a registered preset to "
+            "local_auth_request_handoff and local_auth_check_handoff. Tool availability, owner approval, "
+            "implemented stages and verified authentication are separate. A queued request is not completed "
+            "authentication. Keep credentials, OAuth JSON, cookies and private screens local. Hooks never "
+            "start workers or models. Read the handoff instructions when this stage is needed: "
+            f"{local_auth_reference}."
+        )
+        if event == "SubagentStart":
+            local_auth_context += (
+                " Return authentication requirements to the parent; do not initiate enrollment, authentication "
+                "or messages to another task from a child."
+            )
         # Observation state is deliberately treated as optional diagnostics.
         # A corrupt or unavailable ledger must never suppress policy delivery.
         observation = observation_status(codex_home=home, policy=policy)
@@ -822,6 +840,7 @@ def hook_payload(
                 route_context = _chatgpt_context(home, plugin_root)
             except (RoutingError, OSError, ImportError, ValueError):
                 route_diagnostic = "ChatGPT route not applied: invalid configuration or unavailable helper. Run chatgpt_route.py status."
+        context += "\n" + local_auth_context
         context += "\nUse this single effective policy set. Standard child agents only; do not change the parent model or effort."
         if route_context:
             context += "\nException explicitly enabled by the user for the root parent:" + route_context

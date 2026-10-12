@@ -17,7 +17,7 @@ class HookCommandTest(unittest.TestCase):
         plugin = base / "plugin with spaces"
         base.mkdir(parents=True)
         try:
-            for directory in ("scripts", "defaults", "hooks", ".codex-plugin"):
+            for directory in ("scripts", "defaults", "hooks", ".codex-plugin", "skills"):
                 shutil.copytree(source / directory, plugin / directory,
                                 ignore=shutil.ignore_patterns("__pycache__"))
             home = base / "home"
@@ -41,6 +41,9 @@ class HookCommandTest(unittest.TestCase):
                     self.assertEqual(context["hookEventName"], event)
                     self.assertIn("policy hash", context["additionalContext"])
                     self.assertIn("gpt-6-luna", context["additionalContext"])
+                    reference = plugin / "skills/task-routing/references/local-auth.md"
+                    self.assertTrue(reference.is_file())
+                    self.assertIn(str(reference), context["additionalContext"])
                     self.assertLessEqual(len(context["additionalContext"]), 8000)
         finally:
             shutil.rmtree(base)

@@ -12,6 +12,7 @@ from chatgpt_route import ChatRouteError, _load_json_object, _require_keys, _req
 
 FLAGS = {"substantial", "parent_has_independent_work", "materials_approved",
          "handoff_proportionate", "requires_repeated_local_access"}
+PRIVATE_AUTH_FLAG = "requires_private_auth"
 STATES = {"advertised", "permission_checked", "verified", "blocked"}
 
 
@@ -124,10 +125,13 @@ def check_live(live, *, now):
 def plan(facts, inventory=None, *, now=None, live=None):
     if not isinstance(facts, dict):
         raise ChatRouteError("facts must be an object")
-    _require_keys(facts, required=FLAGS | {"needs"}, allowed=FLAGS | {"needs", "delegation"}, purpose="facts")
+    _require_keys(facts, required=FLAGS | {"needs"},
+                  allowed=FLAGS | {"needs", "delegation", PRIVATE_AUTH_FLAG}, purpose="facts")
     delegation = _delegation(facts)
     if any(type(facts[k]) is not bool for k in FLAGS):
         raise ChatRouteError("suitability flags must be JSON booleans")
+    if PRIVATE_AUTH_FLAG in facts and type(facts[PRIVATE_AUTH_FLAG]) is not bool:
+        raise ChatRouteError("private authentication flag must be a JSON boolean")
     needs = facts["needs"]
     if not isinstance(needs, list) or len(needs) > 16:
         raise ChatRouteError("needs must be a list of at most sixteen capabilities")
@@ -135,6 +139,11 @@ def plan(facts, inventory=None, *, now=None, live=None):
         _keys(need, {"tool", "operation", "scope"}, "need")
         for val in need.values():
             _text(val)
+    # Select the private boundary before Chat capabilities, quota or suitability.
+    # This result is a handoff recommendation, never permission to authenticate.
+    if facts.get(PRIVATE_AUTH_FLAG, False):
+        return {"route": "local_auth", "reason": "private_authentication_requires_local_worker",
+                "dispatch_authorized": False}
     if inventory is not None:
         validate_inventory(inventory)
     # The caller supplies semantic judgments once. No classifier model is run.
@@ -185,6 +194,10 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         facts = _load_json_object(args.facts, purpose="facts")
+        if facts.get(PRIVATE_AUTH_FLAG) is True:
+            # Private work must not read even a supplied Chat inventory/live file.
+            print(json.dumps(plan(facts), ensure_ascii=False, separators=(",", ":")))
+            return 0
         inventory = _load_json_object(args.inventory, purpose="inventory") if args.inventory else None
         live = _load_json_object(args.live, purpose="live") if args.live else None
         print(json.dumps(plan(facts, inventory, live=live), ensure_ascii=False, separators=(",", ":")))

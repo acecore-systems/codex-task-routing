@@ -20,6 +20,10 @@ GitHubでは承認されたrepoの原文・差分・Issue・CIの読取りを使
 
 ## 入力と結果
 
+秘密値の入力・保管・転送を要する認証工程には、factsへ`requires_private_auth: true`を追加する。`chat_plan.py`はChatの適合・接続・利用枠より先に`route: local_auth`を返し、CLIでは指定されたChatのinventory/liveファイルも読み込まない。値や画面をfactsに含めない。この結果はローカルMCPの利用可否や実行承認の証明ではなく、[ローカル認証手順](local-auth.md)への引継ぎである。
+
+この任意booleanの省略またはfalseは既存入力の互換用で、認証が不要・材料に秘密がないことの保証ではない。親が工程を判断し、秘密を含まない公開仕様やコードだけを通常の分担へ渡す。
+
 接続台帳の最小例（架空）:
 
 ```json
@@ -59,6 +63,7 @@ python <plugin-root>/scripts/chat_plan.py --facts facts.json --inventory <CODEX_
 | route | rootの次の動作 |
 | --- | --- |
 | chat_candidate | 有効なopt-in設定、現在のChat／一時Chat／6 Pro、対象と操作の承認を確認して実依頼を準備 |
+| local_auth | 登録済みローカルMCPの対応工程・元セッション・範囲を確認し、状態だけを受け取る。分類結果だけで認証を実行しない |
 | preflight_needed | 必須の未確認・期限切れ操作だけ確認。既に材料が十分ならツール不要の依頼へ縮小 |
 | codex | 現担当で進めるか、有効方針の通常子のmodel・effort表を使う |
 | not_ready | 不足・取得不能を報告し、既存の承認内で解決。暗黙にWork/APIへ切り替えない |

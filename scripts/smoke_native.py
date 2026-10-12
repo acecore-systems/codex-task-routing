@@ -81,6 +81,19 @@ def main():
                        event={"hook_event_name": "SessionStart", "source": "startup"})
     assert "Opt-in ChatGPT" not in default_hook["hookSpecificOutput"]["additionalContext"]
     assert "Observation sample" in default_hook["hookSpecificOutput"]["additionalContext"]
+    auth_reference = script.parent.parent / 'skills/task-routing/references/local-auth.md'
+    assert auth_reference.is_file()
+    assert str(auth_reference) in default_hook['hookSpecificOutput']['additionalContext']
+    private_facts = base / 'private-facts.json'
+    private_facts.write_text(json.dumps(dict(substantial=False, parent_has_independent_work=False,
+                                            materials_approved=False, handoff_proportionate=False,
+                                            requires_repeated_local_access=False, requires_private_auth=True,
+                                            needs=[])), encoding='utf-8')
+    private_plan = run([sys.executable, str(script.parent / 'chat_plan.py'), '--facts', str(private_facts),
+                        '--inventory', str(base / 'missing-chat-inventory.json'),
+                        '--live', str(base / 'missing-chat-live.json')])
+    assert private_plan['route'] == 'local_auth' and private_plan['dispatch_authorized'] is False
+    results.append('installed private-authentication route and bundled reference passed without dispatch')
     chat_config.write_text(json.dumps({"schema_version": 1, "enabled": True,
                                      "required_model": "6 Pro", "transport": "codex-app-tools"}), encoding="utf-8")
     before[chat_config] = chat_config.read_bytes()
@@ -99,6 +112,7 @@ def main():
         context = payload["hookSpecificOutput"]
         assert context["hookEventName"] == event
         assert payload.get("continue", True) and "policy hash" in context["additionalContext"]
+        assert 'Private authentication:' in context['additionalContext']
         assert ("Opt-in ChatGPT Chat route is enabled" in context["additionalContext"]) == (event == "SessionStart")
         if event == "SessionStart":
             assert "transport: codex-app-tools (legacy)" in context["additionalContext"]
