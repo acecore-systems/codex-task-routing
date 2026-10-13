@@ -85,6 +85,7 @@ class LocalAuthenticationRoutingTests(unittest.TestCase):
                                        codex_home=self.home, cwd=self.home)
         self.assertNotIn('systemMessage', payload)
         context = payload['hookSpecificOutput']['additionalContext']
+        self.assertIn('| ローカル認証 | local-auth-lfmの共有モデル |', context)
         self.assertLess(context.index('Private authentication:'), context.index('Opt-in ChatGPT'))
         for text in ('local_auth_status', 'local_auth_handoffs', 'local_auth_request_handoff',
                      'local_auth_check_handoff', 'local-auth.md', 'A queued request is not completed'):

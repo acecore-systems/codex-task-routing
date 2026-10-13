@@ -609,6 +609,15 @@ def status_payload(
                 "present": policy.override_present,
                 "applied_keys": list(policy.applied_override_keys),
             },
+            # Resolved requests, not evidence of runtime model execution.
+            # The legacy terra role is accepted for compatibility but never routed.
+            "configured_child_models": {
+                role: {
+                    "id": policy.config["models"][role]["id"],
+                    "default_effort": policy.config["models"][role]["default_effort"],
+                }
+                for role in ("luna", "sol", "astra")
+            },
             "python": {"version": sys.version.split()[0], "executable": sys.executable},
             "bundled_hook_available": _hook_available(policy.plugin_root),
             "host": {
