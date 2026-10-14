@@ -57,6 +57,26 @@ class ChatHookTests(unittest.TestCase):
         self.assertNotIn("Opt-in ChatGPT", child)
         self.assertNotIn("evaluate this Chat route first", child)
 
+    def test_installed_long_path_keeps_enabled_chat_within_hook_limit(self):
+        # A native installation adds cache namespaces to an already long
+        # workspace path. The optional root context must still deliver policy.
+        installed = self.home / 'plugins/cache/codex-task-routing/codex-task-routing/0.13.0'
+        shutil.copytree(routing.PLUGIN_ROOT, installed,
+                        ignore=shutil.ignore_patterns('__pycache__'))
+        settings = dict(schema_version=1, enabled=True, required_model='Pro')
+        for transport in ('browser-temporary', 'codex-app-tools'):
+            with self.subTest(transport=transport):
+                self.settings({**settings, 'transport': transport})
+                payload = routing.hook_payload(event='SessionStart', source='resume',
+                    plugin_root=installed, codex_home=self.home, cwd=self.home)
+                self.assertNotIn('systemMessage', payload)
+                context = payload['hookSpecificOutput']['additionalContext']
+                self.assertLessEqual(len(context), routing.MAX_ADDITIONAL_CONTEXT_CHARS)
+                for phrase in ('Opt-in ChatGPT Chat route is enabled', 'Keep a suitable existing owner',
+                               'unknown authorization blocks dispatch', 'observation start',
+                               'local_auth_status', 'never Work or a model API'):
+                    self.assertIn(phrase, context)
+
     def test_invalid_route_does_not_disable_standard_policy_or_echo_values(self):
         self.settings({"schema_version": 1, "enabled": True, "required_model": "secret-value", "transport": "api"})
         payload = self.payload()

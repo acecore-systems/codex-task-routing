@@ -716,22 +716,30 @@ def _chatgpt_context(home: Path, plugin_root: Path) -> str:
     legacy_suffix = " (legacy)" if transport == "codex-app-tools" else ""
     return (
         f"\nOpt-in ChatGPT Chat route is enabled (required UI model: Pro (legacy: 6 Pro / GPT-6 Pro); transport: {transport}{legacy_suffix}). "
-        "This is a user-enabled alternative to standard Codex children for substantial, independent "
-        "research, analysis, design, drafting, review and explicitly authorized implementation/testing/PR tasks. Before assigning a substantial work unit, "
-        "first keep credential entry, storage and transfer on the local authentication route; "
-        "evaluate this Chat route first: prefer Pro when approved materials and verified tools suffice and "
-        "handoff, waiting, acceptance and rework costs are proportionate. Do not require another plugin mention. "
-        "Use Chat as the initial main specialist, not a redundant final review. Include implementation/PR work only with actual tools, scoped write approval and a sufficient test environment. Keep short work or repeated access to Codex-only local resources in Codex. "
-        "Parallel delegation requires useful independent parent work. Serial specialist delegation requires explicit host permission and concrete added value; never invent parent work or bypass host rules. Check required information, sources/freshness, "
-        "allowed tool capabilities, return format and stop conditions before dispatch. "
-        "Read the route instructions before use: "
+        "Root-only alternative for substantial independent research, analysis, design, drafting, review and "
+        "authorized implementation/testing/PR. Before a new unit, separate private authentication and evaluate "
+        "this Chat route first: prefer Pro with approved materials, verified tools, scoped actions and test "
+        "environment. Keep a suitable existing owner. Use Pro as main specialist, not duplicate final review; "
+        "handoff/waiting/acceptance/rework must be proportionate. No new plugin mention is needed. Short work or "
+        "repeated Codex-only access stays in Codex. "
+        "Parallel delegation requires useful independent parent work. Serial specialist delegation requires explicit "
+        "host permission and concrete added value; never invent work or bypass host rules. "
+        "Read route instructions before use: "
         f"{reference}. "
-        "Before dispatch use chat_plan.py --live with fresh observations; supplied flags are not proof of permission. Confirm the permitted transport separately from quota and opt-in; unknown authorization blocks dispatch. Use --phase inspect for permitted preflight before transfer is established; do not send a probe message. Reuse existing permission using browser_checks or legacy transport_authorized:true, not both. transport_evidence is optional. Do not demand a new provider exception merely because supported controls do not mention delegation. A passed preflight returns next_action:send_once; --phase receive collects an existing request without re-sending or requiring new-generation quota. See chat-authorization.md beside chatgpt.md. This inter-Chat gate does not apply to native tools used inside the current Chat. Use normal Chat only; never Work or a model API. Verify the Chat surface and Pro in the UI "
-        "before dispatch and verify the model after completion; tool replies do not attest a backend model. "
+        "Check required information, sources/freshness, tool capabilities, return format and stop conditions. "
+        "Use chat_plan.py --live with fresh observations before dispatch; flags do not prove permission. "
+        "Quota/opt-in are separate from transport; unknown authorization blocks dispatch. --phase inspect is "
+        "preflight only, with no probe send. Reuse approval via browser_checks or legacy transport_authorized:true, "
+        "not both; transport_evidence is optional. No new provider exception without a specific applicable "
+        "constraint. Passed dispatch returns next_action:send_once; --phase receive collects the existing request "
+        "without resend or new-generation quota. See chat-authorization.md. This inter-Chat gate does not apply "
+        "to native tools inside the current Chat. Use normal Chat only; never Work or a model API. Verify surface "
+        "and Pro before dispatch and after completion; UI/tool replies do not attest the backend. "
         + transport_note
-        + "Use an isolated conversation per task, request IDs and input hashes. Missing tools, unknown model "
-        "or quota failure blocks dispatch, not permitted inspection or separately authorized collection; report it, do not silently substitute a billed API or Work. "
-        "Do not route from subagents or start models from hooks. Preserve the parent model and effort."
+        + "Use one isolated conversation per task, request IDs and input hashes. Missing tools, unknown model "
+        "or quota failure blocks dispatch, not permitted inspection or authorized collection; report missing "
+        "conditions without API/Work fallback. Do not route from subagents or start models from hooks. "
+        "Preserve the parent model and effort."
     )
 
 
@@ -835,7 +843,7 @@ def hook_payload(
                 [
                     f"Codex Task Routing manifest {policy.version}; policy hash {policy.content_hash}.",
                     f"Configured child-routing reference only; it does not change the parent: {model_matrix}.",
-                    "Do not create a child solely to hand off ordinary parent work. Follow the parent-specified scope and acceptance criteria; return specialist questions to the parent rather than re-delegating, and distinguish unverified work from confirmed results.",
+                    "Do not create a child solely to transfer work to the same model. Keep the agreed complete work unit with the same owner through ordinary investigation, fixes, tests, authorized PR creation and agreed review findings. Follow the parent-specified endpoint, scope and acceptance criteria; return important exceptions and authentication requirements to the parent rather than re-delegating, and distinguish unverified work from confirmed results.",
                     f"Effective policy: {references['effective.md']}",
                     "Detailed policy references:",
                     detail_refs,
