@@ -10,7 +10,7 @@
 
 認証情報の入力・保管・転送が必要になった場合は、秘密値を取得する前に親へ必要な工程と対象範囲だけ返す。子の独自判断で認証処理や別タスクへの送信を始めない。
 
-Luna/maxは明確な定型工程、Sol/highは複雑な実装・原因・重要レビュー、Astra/highは難しい前提・重大判断を担当する。model IDを明示し、再開でも観測値を推測しない。repoでは絶対cwd、repo/worktree、branch/HEAD、対象の未commit差分を示す。不一致をresetや探索で補わせない。
+Luna/maxは明確な定型工程、Sol/maxは複雑な実装・原因・重要レビュー、Astra/highは難しい前提・重大判断を担当する。model IDを明示し、再開でも観測値を推測しない。repoでは絶対cwd、repo/worktree、branch/HEAD、対象の未commit差分を示す。不一致をresetや探索で補わせない。
 
 ## 通常Chat 6 Pro
 

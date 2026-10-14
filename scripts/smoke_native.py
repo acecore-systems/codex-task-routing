@@ -39,7 +39,7 @@ def main():
     override = home / PLUGIN_NAME / "overrides.json"
     override.parent.mkdir()
     override.write_text(json.dumps({"schema_version": 1, "models": {
-        "sol": {"default_effort": "xhigh"}}}), encoding="utf-8")
+        "sol": {"default_effort": "high"}}}), encoding="utf-8")
     chat_config = home / PLUGIN_NAME / "chatgpt.json"
     before = {p: p.read_bytes() for p in (guidance, override)}
     env = {**os.environ, "CODEX_HOME": str(home),
@@ -72,6 +72,10 @@ def main():
     script = installed_runtime(initial_version)
     status = run([sys.executable, str(script), "status", "--json"])
     assert status["ok"] and status["override"]["present"]
+    assert status['configured_child_models']['sol'] == {
+        'id': 'gpt-6.1-sol', 'default_effort': 'high'}
+    installed_defaults = json.loads((script.parent.parent / 'defaults/config.json').read_text(encoding='utf-8'))
+    assert installed_defaults['models']['sol']['default_effort'] == 'max'
     assert status["host"]["trust_state"] == "unknown"
     results.append("native install and installed runtime status passed")
     route_script = script.parent / "chatgpt_route.py"
@@ -116,6 +120,10 @@ def main():
         assert ("Opt-in ChatGPT Chat route is enabled" in context["additionalContext"]) == (event == "SessionStart")
         if event == "SessionStart":
             assert "transport: codex-app-tools (legacy)" in context["additionalContext"]
+            assert '| Sol子 | gpt-6.1-sol | high |' in context['additionalContext']
+            assert 'Sol/high' in context['additionalContext']
+        else:
+            assert 'Sol=gpt-6.1-sol (high)' in context['additionalContext']
         assert "systemMessage" not in payload, payload.get("systemMessage")
     results.append("installed hook commands produced the official event-specific output for both events")
 
@@ -128,6 +136,10 @@ def main():
     updated = run([sys.executable, str(installed_runtime(next_version)), "status", "--json"])
     assert updated["ok"] and updated["manifest_version"] == next_version
     assert updated["override"]["present"] and updated["policy_hash"] != status["policy_hash"]
+    assert updated['configured_child_models'] == status['configured_child_models']
+    updated_hook = run([sys.executable, str(installed_runtime(next_version)), 'hook'],
+                       event={'hook_event_name': 'SubagentStart', 'source': 'startup'})
+    assert 'Sol=gpt-6.1-sol (high)' in updated_hook['hookSpecificOutput']['additionalContext']
     assert chat_config.read_bytes() == before[chat_config]
     updated_route = installed_runtime(next_version).parent / "chatgpt_route.py"
     updated_route_status = run([sys.executable, str(updated_route), "status"])

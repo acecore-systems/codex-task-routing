@@ -1,5 +1,16 @@
 # 検証記録
 
+## 0.10.1: Sol子maxと設定診断・担当表の整合
+
+2026-10-14、Windows / Python 3.13.15の専用作業ツリーで147件のテストと`python scripts/check_package.py`が成功しました。
+
+- Sol子は`gpt-6.1-sol`、既定と上限を`max`へ変更。個別設定を反映した要約・詳細・SessionStart・SubagentStart・診断の一致を検証しました。明示された旧モデル・effortのoverrideは保持します。
+- 旧設定でhighまたはxhighの上限だけを指定した場合は`invalid_effort_range`となり、両フックが方針を注入せず、原本を書き換えないことを検証しました。対応する標準値を明示すれば解決します。
+- `status.configured_child_models`は子の指定値を返し、親の実行モデル・effortはunknownのままです。statusがキャッシュを作成しないこと、不正設定から指定値を返さないことを検証しました。
+- `python scripts/smoke_native.py --output-dir <new-local-output>`の6段階が成功。隔離Codexホームで導入・両フック・再導入・解除を確認し、配布既定maxに対する非既定highのoverrideが実値として保持されることを確認しました。
+- ローカル認証の優先分類、両フック、秘密値を読み取らずワーカーを起動しない回帰テストは成功しています。担当表の追記は対象範囲を変更しません。
+- 稼働中プラグインの入替、実ホストのフック再配送、Sol/maxの実バックエンド、ローカルモデルの実認証・一般作業への委譲、品質・利用量比較はこの検証に含みません。他OSの結果はPRのCIで別途確認します。
+
 ## 0.10.0: 認証工程のローカル引継ぎ
 
 2026-10-12、Windows / Python 3.13の専用作業ツリーで145件のテスト、`python scripts/check_package.py`、`git diff --check`が成功しました。新規10件は、秘密値を扱う工程の優先分類、従来入力の互換、型・未知キーの拒否、Chat用ファイルを開かないCLI、両フック、秘密ファイルの非読取りとワーカー非起動を確認します。

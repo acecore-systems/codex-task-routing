@@ -117,7 +117,7 @@ class FixedRoutingTests(unittest.TestCase):
     def test_fixed_defaults_and_child_hook_uses_sol_6_1(self):
         policy = routing.load_policy(codex_home=self.home)
         self.assertEqual({k:v['default_effort'] for k,v in policy.config['models'].items()},
-                         dict(luna='max', terra='xhigh', sol='high', astra='high'))
+                         dict(luna='max', terra='xhigh', sol='max', astra='high'))
         self.assertEqual({k:v['id'] for k,v in policy.config['models'].items()},
                          dict(luna='gpt-6-luna', terra='gpt-6.1-sol',
                               sol='gpt-6.1-sol', astra='gpt-6-astra'))
@@ -133,7 +133,7 @@ class FixedRoutingTests(unittest.TestCase):
         context = child['hookSpecificOutput']['additionalContext']
         self.assertNotIn('Terra=gpt-', context)
         self.assertIn('Luna=gpt-6-luna (max)', context)
-        self.assertIn('Sol=gpt-6.1-sol (high)', context)
+        self.assertIn('Sol=gpt-6.1-sol (max)', context)
         self.assertNotIn('gpt-5.6', context)
         self.assertNotIn('gpt-6-sol', context)
         self.assertIn('Do not create a child solely', context)
@@ -151,6 +151,45 @@ class FixedRoutingTests(unittest.TestCase):
         self.assertEqual(before, path.read_bytes())
         self.assertFalse((self.home/'config.toml').exists())
 
+    def test_overrides_match_summary_details_status_and_both_hooks(self):
+        path = self.home/'codex-task-routing/overrides.json'
+        path.parent.mkdir()
+        path.write_text(json.dumps({'schema_version': 1, 'models': {
+            'luna': {'default_effort': 'xhigh'},
+            'sol': {'default_effort': 'high'},
+            'astra': {'default_effort': 'max'},
+        }}), encoding='utf-8')
+        before = path.read_bytes()
+        policy = routing.load_policy(codex_home=self.home)
+        documents = policy.rendered_documents()
+        for name in ('effective.md', 'model-routing-policy.md'):
+            with self.subTest(name=name):
+                self.assertNotIn('Luna/max', documents[name])
+                self.assertNotIn('Astra/high', documents[name])
+                self.assertIn('Sol/high', documents[name])
+                self.assertIn('Luna/xhigh', documents[name])
+                self.assertIn('Astra/max', documents[name])
+        status = routing.status_payload(codex_home=self.home, cwd=self.home)
+        self.assertEqual(status['configured_child_models'], {
+            'luna': {'id': 'gpt-6-luna', 'default_effort': 'xhigh'},
+            'sol': {'id': 'gpt-6.1-sol', 'default_effort': 'high'},
+            'astra': {'id': 'gpt-6-astra', 'default_effort': 'max'},
+        })
+        self.assertEqual(status['host']['runtime_model'], 'unknown')
+        self.assertEqual(status['host']['runtime_effort'], 'unknown')
+        self.assertFalse((self.home/'codex-task-routing/cache').exists())
+        for event in ('SessionStart', 'SubagentStart'):
+            context = routing.hook_payload(event=event, source='startup',
+                codex_home=self.home, cwd=self.home)['hookSpecificOutput']['additionalContext']
+            if event == 'SessionStart':
+                self.assertIn('| Sol子 | gpt-6.1-sol | high |', context)
+                self.assertIn('Sol/high', context)
+                self.assertNotIn('Luna/max', context)
+            else:
+                self.assertIn('Sol=gpt-6.1-sol (high)', context)
+        self.assertEqual(before, path.read_bytes())
+        self.assertFalse((self.home/'config.toml').exists())
+
     def test_existing_partial_override_is_not_deleted_or_rejected(self):
         path = self.home/'codex-task-routing/overrides.json'
         path.parent.mkdir()
@@ -164,6 +203,29 @@ class FixedRoutingTests(unittest.TestCase):
         self.assertEqual(before, path.read_bytes())
         self.assertFalse((self.home/'config.toml').exists())
         self.assertFalse(route.load_config(self.home)['enabled'])
+
+    def test_old_sol_ceiling_requires_explicit_compatible_default(self):
+        path = self.home/'codex-task-routing/overrides.json'
+        path.parent.mkdir()
+        for ceiling in ('high', 'xhigh'):
+            with self.subTest(ceiling=ceiling):
+                override = {'schema_version': 1, 'models': {'sol': {'max_effort': ceiling}}}
+                path.write_text(json.dumps(override), encoding='utf-8')
+                before = path.read_bytes()
+                status = routing.status_payload(codex_home=self.home, cwd=self.home)
+                self.assertFalse(status['ok'])
+                self.assertEqual(status['error_code'], 'invalid_effort_range')
+                self.assertNotIn('configured_child_models', status)
+                for event in ('SessionStart', 'SubagentStart'):
+                    hook = routing.hook_payload(event=event, source='startup',
+                                                codex_home=self.home, cwd=self.home)
+                    self.assertNotIn('hookSpecificOutput', hook)
+                self.assertEqual(before, path.read_bytes())
+                override['models']['sol']['default_effort'] = ceiling
+                path.write_text(json.dumps(override), encoding='utf-8')
+                repaired = routing.status_payload(codex_home=self.home, cwd=self.home)
+                self.assertTrue(repaired['ok'])
+                self.assertEqual(repaired['configured_child_models']['sol']['default_effort'], ceiling)
 
     def test_current_prompt_is_scoped_and_preserves_v3_inflight_bundle(self):
         request = dict(task='Implement the approved change and create a PR; do not merge.',

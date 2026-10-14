@@ -10,9 +10,12 @@ Acecoreが日常利用で改善している分担原則を既定値として同�
 | --- | --- | --- |
 | 親の参考基準 | GPT-6.1 Sol/xhigh | 通常の調査・実装・検証・進行 |
 | 子 | GPT-6 Luna/max | 明確な定型工程 |
-| 子 | GPT-6.1 Sol/high | 複雑な実装・原因・重要レビュー |
+| 子 | GPT-6.1 Sol/max | 複雑な実装・原因・重要レビュー |
 | 子 | GPT-6 Astra/high | 難しい設計・重大な不確実性 |
 | 別経路 | 通常Chat 6 Pro | 適合するまとまった工程の主担当候補 |
+| ローカル認証経路 | local-auth-lfmの共有ローカルモデル | 秘密値の入力・保管・転送を伴う登録済み認証工程。クラウド選定より先に確認 |
+
+ローカル経路は一般的な実装・文章作成の振り分け先ではありません。実際のモデル・対応工程・本人操作待ちはMCPで確認し、接続済み・受付済みだけでは認証成功と扱いません。
 
 旧`terra`キーはschema 1の既存overrideの読取り互換用です。分担候補には出しません。同モデルへの無用な移管を避けます。min/max設定は互換性のため残し、自動選定は有効なdefault_effortに固定します。既存overrideと他モデル親は保持します。並列分担には親の独立作業が必要で、直列の専門委譲は具体的な追加価値とホストの許可を確認した場合だけ使います。
 
@@ -58,13 +61,15 @@ python plugins/codex-task-routing/scripts/routing.py render --output-dir outputs
 
 上書きは `$CODEX_HOME/codex-task-routing/overrides.json` へ保存します。`CODEX_HOME` が未設定なら `~/.codex` です。上書きがなければ作者の既定値を使います。旧版の`luna`・`sol`の`id`を5.6系や旧`gpt-6-sol`へ固定した上書きは自動で書き換えないため、移行時に`status --json`の適用キーを確認してください。Solの旧ID指定は`gpt-6.1-sol`へ変更してください。プラグインの更新・解除でこの上書きファイルを編集・削除しません。
 
-例として、Sol子の標準effortだけ変更する場合は次のように指定します。
+`status --json` の `configured_child_models` で、上書き適用後の子のモデルIDと固定effortを確認できます。これは実行時の指定値であり、実際にそのモデルで動いた証明ではありません。親の実設定は `host.runtime_model` / `host.runtime_effort` と区別し、取得できない場合は `unknown` のままにします。
+
+Sol子を配布版の既定値変更にかかわらず `max` に固定する場合は、次のように指定します。
 
 ```json
 {
   "schema_version": 1,
   "models": {
-    "sol": { "default_effort": "xhigh" }
+    "sol": { "default_effort": "max", "max_effort": "max" }
   }
 }
 ```

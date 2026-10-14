@@ -611,6 +611,7 @@ class RoutingTestCase(unittest.TestCase):
         )
         invalid = routing.status_payload(plugin_root=self.plugin, codex_home=self.home, cwd=self.base)
         self.assertFalse(invalid["ok"])
+        self.assertNotIn("configured_child_models", invalid)
         self.assertNotIn("secret-value-never-stdout", json.dumps(invalid))
 
 

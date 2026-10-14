@@ -1,6 +1,6 @@
 # 作業分類表 — 固定effortと通常Chat優先
 
-この表は担当候補であり、親の設定変更・送信・外部書込みの許可ではない。短い通常作業は親で終える。参考基準は親Sol/xhigh、子はLuna/max・Sol/high・Astra/high。既存overrideの有効な固定値を使う。
+この表は担当候補であり、親の設定変更・送信・外部書込みの許可ではない。短い通常作業は親で終える。参考基準は親Sol/xhigh、子はLuna/max・Sol/max・Astra/high。既存overrideの有効な固定値を使う。
 
 ## 選定の順序
 

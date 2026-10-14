@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
   "models": {
-    "sol": { "default_effort": "xhigh" }
+    "sol": { "default_effort": "max", "max_effort": "max" }
   }
 }
