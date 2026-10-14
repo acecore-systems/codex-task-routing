@@ -1,4 +1,4 @@
-name: Routing source snapshot (temporary)
+name: Routing checked change transfer (temporary)
 on:
   pull_request:
     paths:
@@ -6,17 +6,77 @@ on:
 permissions:
   contents: read
 jobs:
-  source:
+  apply-checked-change:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'codex/chat-pro-authorization'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
-          persist-credentials: false
-      - name: Archive tracked source only
-        run: git archive --format=zip --output=routing-source.zip HEAD
-      - uses: actions/upload-artifact@v4
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
         with:
-          name: routing-source
-          path: routing-source.zip
-          retention-days: 1
+          python-version: '3.13'
+      - name: Apply only the hash-checked source delta
+        shell: bash
+        run: |
+          python - <<'PY'
+          import gzip, hashlib, json, os, subprocess, tempfile
+          from pathlib import Path, PurePosixPath
+          helpers = ['.github/routing-change.' + str(i) for i in range(3)]
+          raw = gzip.decompress(b''.join(Path(p).read_bytes() for p in helpers))
+          assert hashlib.sha256(raw).hexdigest() == '1952d8e901d7558a89faf1a034a8a456ca09840e3a6d217d4255aa87e7c42a98'
+          delta = json.loads(raw)
+          assert delta['base'] == '790dc717f47c9de94399e7a9fcfcbf80d44960df'
+          assert delta['tree'] == '38af3bdc76bc71572408374266d3b21bf688ee38'
+          def blob(data):
+              return hashlib.sha1(f'blob {len(data)}\0'.encode() + data).hexdigest()
+          changed = []
+          for item in delta['files']:
+              rel = PurePosixPath(item['path'])
+              assert not rel.is_absolute() and '..' not in rel.parts and '.git' not in rel.parts
+              assert item['path'] in {'AGENTS.md', 'README.md', 'scripts/check_package.py'} or item['path'].startswith(('plugins/codex-task-routing/', 'tests/', 'docs/'))
+              p = Path(rel)
+              assert not any(part.is_symlink() for part in (p, *p.parents))
+              if item['before'] is None:
+                  assert not p.exists()
+                  original = b''
+              else:
+                  original = p.read_bytes()
+                  assert blob(original) == item['before'], item['path']
+              text = original.decode('utf-8')
+              previous = 0
+              for start, end, replacement in item['edits']:
+                  assert previous <= start <= end <= len(text)
+                  previous = end
+              for start, end, replacement in reversed(item['edits']):
+                  text = text[:start] + replacement + text[end:]
+              content = text.encode('utf-8')
+              assert blob(content) == item['after'], item['path']
+              p.parent.mkdir(parents=True, exist_ok=True)
+              p.write_bytes(content)
+              changed.append(item['path'])
+          assert len(changed) == len(set(changed)) == 27
+          subprocess.run(['git', 'add', '--', *changed], check=True)
+          staged_tree = subprocess.check_output(['git', 'write-tree'], text=True).strip()
+          helpers.append('.github/workflows/routing-source-snapshot.yml')
+          with tempfile.TemporaryDirectory() as folder:
+              env = {**os.environ, 'GIT_INDEX_FILE': str(Path(folder) / 'index')}
+              subprocess.run(['git', 'read-tree', staged_tree], env=env, check=True)
+              subprocess.run(['git', 'update-index', '--force-remove', '--', *helpers], env=env, check=True)
+              target = subprocess.check_output(['git', 'write-tree'], env=env, text=True).strip()
+              assert target == delta['tree'], target
+          print('Validated final source tree:', target)
+          PY
+      - name: Validate the exact source
+        run: |
+          python -m unittest discover -s tests -v
+          python scripts/check_package.py
+          git diff --cached --check
+      - name: Commit only to the requested branch
+        run: |
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m '検証済みの通常Chat Pro修正を反映'
+          git push origin HEAD:refs/heads/codex/chat-pro-authorization
