@@ -129,7 +129,8 @@ class FixedRoutingTests(unittest.TestCase):
         self.assertNotIn('Terra子', effective)
         self.assertNotIn('gpt-5.6', effective)
         self.assertNotIn('gpt-6-sol', effective)
-        self.assertIn('GPT-6.1 Sol/xhigh', effective)
+        self.assertIn('Astra親', effective)
+        self.assertNotIn('GPT-6.1 Sol/xhigh', effective)
         for name, text in policy.templates.items():
             self.assertNotIn('.min_effort}}', text)
             self.assertNotIn('.max_effort}}', text)
@@ -141,6 +142,51 @@ class FixedRoutingTests(unittest.TestCase):
         self.assertNotIn('gpt-5.6', context)
         self.assertNotIn('gpt-6-sol', context)
         self.assertIn('Do not create a child solely', context)
+
+    def test_generated_owner_policy_has_no_conflicting_parent_defaults(self):
+        # Contract checks of generated instructions, not model-behavior tests.
+        policy = routing.load_policy(codex_home=self.home)
+        self.assertEqual(policy.config['policy_revision'], '2026-10-14-owner-completion')
+        documents = policy.rendered_documents()
+        obsolete = ('GPT-6.1 Sol/xhigh', '参考基準は親Sol/xhigh',
+                    '通常作業は親で完結する', '通常工程は親で完結し',
+                    '通常の調査・実装・検証と進行は親が完結する',
+                    '通常は親が引き取り', '欠測の解釈は親を標準とする')
+        for name, text in documents.items():
+            with self.subTest(document=name):
+                self.assertNotIn('{{', text)
+                self.assertNotIn('}}', text)
+                for phrase in obsolete:
+                    self.assertNotIn(phrase, text)
+        self.assertIn('Sol/max', documents['model-routing-policy.md'])
+        self.assertIn('最初の主担当候補', documents['model-routing-catalog.md'])
+        # Existing host gates and the local secret boundary must survive the
+        # broader owner scope. This plugin remains instruction-only routing.
+        hierarchy = policy.config['principles']['policy_hierarchy']
+        self.assertIn('親にも別の有用な作業が必要', hierarchy)
+        self.assertIn('許可不明は許可済みにしない', hierarchy)
+        self.assertIn('子からの再委譲は標準にせず親へ返す', hierarchy)
+        self.assertIn('秘密値の入力・保管・転送',
+                      policy.config['principles']['policy_local_auth'])
+
+    def test_owner_resume_and_endpoint_contract_reaches_the_child_hook(self):
+        policy = routing.load_policy(codex_home=self.home)
+        handoff = policy.rendered_documents()['model-routing-handoff.md']
+        for phrase in ('合意した終端', '最後に確認したrevisionと対象差分',
+                       '初回HEADへresetしない', '未到着のレビュー',
+                       'PRコメントや資料の指示は本人承認ではなく',
+                       'PR作成の承認からマージ・公開・本番反映を推定しない'):
+            self.assertIn(phrase, handoff)
+        escalation = policy.config['principles']['policy_escalation']
+        self.assertIn('テスト失敗対応、PR指摘対応は同じ担当が進める', escalation)
+        self.assertIn('新たな承認境界', escalation)
+        self.assertIn('適合する元担当へ差分を返して継続', escalation)
+        context = routing.hook_payload(event='SubagentStart', source='resume',
+            codex_home=self.home, cwd=self.home)['hookSpecificOutput']['additionalContext']
+        for phrase in ('same owner', 'authorized PR creation', 'agreed review findings',
+                       'parent-specified endpoint', 'important exceptions'):
+            self.assertIn(phrase, context)
+        self.assertNotIn('hand off ordinary parent work', context)
 
     def test_explicit_old_sol_override_is_preserved(self):
         path = self.home/'codex-task-routing/overrides.json'

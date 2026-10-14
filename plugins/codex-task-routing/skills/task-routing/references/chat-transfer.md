@@ -36,6 +36,12 @@ Keep the prompt and final answer in Browser-runtime variables; report only
 length, equality, selected model, and the save result to the parent. Never
 read browser storage, session state or private application APIs to move data.
 
+If a long pasted prompt appears as a text attachment, use the observed
+"Show in text field" (「テキスト欄に表示」) control to expand it back into the
+composer before checking the exact body. Do not send based only on an
+attachment filename or thumbnail. If no supported expansion is available,
+stop and return the limitation.
+
 If the Chat UI adds a connector chip while selecting an approved source, keep
 the prompt-text equality check separate from the chip's UI verification. UI
 sentinels or spacing added by that chip are not part of the prepared prompt
@@ -65,6 +71,15 @@ the response format/correlation check, and `status: completed`. Even a
 completed status is not semantic acceptance: the parent must still assess the
 answer against the task's acceptance criteria, evidence, scope, and UI model
 confirmation.
+
+If the local form shows a connection error after submission, check the
+explicit reply target and the helper lifecycle event before deciding whether
+a local save is missing. Revalidate an existing reply against the same bundle;
+a matching file and `saved` event establish local receipt, even when the
+Browser failed to show the success document. They do not establish semantic
+acceptance. If collection must be retried, restore only this local form with
+the same bundle and reply target; never resend the model task for a local
+display failure.
 
 ## Dispatch permission and longer work
 

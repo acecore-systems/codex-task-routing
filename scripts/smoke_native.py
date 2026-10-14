@@ -45,6 +45,7 @@ def main():
     env = {**os.environ, "CODEX_HOME": str(home),
            "PATH": str(Path(sys.executable).parent) + os.pathsep + os.environ.get("PATH", "")}
     results = []
+    hook_context_chars = {}
 
     def run(command, *, event=None):
         result = subprocess.run(command, cwd=base, env=env,
@@ -114,6 +115,7 @@ def main():
         assert process.returncode == 0, process.stderr
         payload = json.loads(process.stdout)
         context = payload["hookSpecificOutput"]
+        hook_context_chars[event] = len(context["additionalContext"])
         assert context["hookEventName"] == event
         assert payload.get("continue", True) and "policy hash" in context["additionalContext"]
         assert 'Private authentication:' in context['additionalContext']
@@ -153,6 +155,7 @@ def main():
     assert not config.get("plugins", {}).get(PLUGIN_ID, {}).get("enabled", False)
     results.append("native removal preserved unrelated settings, guidance, and override")
     report = {"ok": True, "checks": results,
+              "hook_context_chars": hook_context_chars,
               "not_verified": ["host hook trust and live event delivery", "model session routing"]}
     (base / "result.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(json.dumps(report))
