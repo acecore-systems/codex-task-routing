@@ -68,7 +68,7 @@ class ChatGptRouteTestCase(unittest.TestCase):
             {
                 "schema_version": 1,
                 "enabled": False,
-                "required_model": "6 Pro",
+                "required_model": "Pro",
                 "transport": "browser-temporary",
             },
         )

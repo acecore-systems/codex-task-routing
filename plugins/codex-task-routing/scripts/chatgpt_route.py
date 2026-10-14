@@ -24,7 +24,26 @@ from typing import Any, Mapping
 
 CONFIG_RELATIVE = Path("codex-task-routing") / "chatgpt.json"
 SCHEMA_VERSION = 1
-REQUIRED_MODEL = "6 Pro"
+# A UI selection, not an API/backend model identifier or a subscription badge.
+REQUIRED_MODEL = "Pro"
+REQUIRED_MODEL_LABELS = ("Pro", "6 Pro", "GPT-6 Pro")
+
+
+def is_required_model(value: Any) -> bool:
+    """Recognize supported selected-model labels without inferring a backend.
+
+    Only case and surrounding/repeated whitespace are normalized. A partial
+    match (for example Sol Pro or a Pro plan badge) is not a model selection.
+    The caller must obtain the value from the actual model selector.
+    """
+    return (
+        isinstance(value, str)
+        and len(value) <= 64
+        and " ".join(value.split()).casefold()
+        in {label.casefold() for label in REQUIRED_MODEL_LABELS}
+    )
+
+
 BROWSER_TEMPORARY_TRANSPORT = "browser-temporary"
 LEGACY_TRANSPORT = "codex-app-tools"
 TRANSPORT = BROWSER_TEMPORARY_TRANSPORT
@@ -233,8 +252,8 @@ def _validate_config(value: Mapping[str, Any]) -> dict[str, Any]:
         raise ChatRouteError("chat route config has an unsupported schema version")
     if type(value["enabled"]) is not bool:
         raise ChatRouteError("chat route config enabled must be a JSON boolean")
-    if value["required_model"] != REQUIRED_MODEL:
-        raise ChatRouteError("chat route config required_model must be 6 Pro")
+    if not is_required_model(value["required_model"]):
+        raise ChatRouteError("chat route config required_model must be Pro (legacy: 6 Pro / GPT-6 Pro)")
     if not isinstance(value["transport"], str) or value["transport"] not in SUPPORTED_TRANSPORTS:
         raise ChatRouteError("chat route config transport must be browser-temporary or codex-app-tools")
     return {
@@ -572,6 +591,9 @@ def main(argv: list[str] | None = None) -> int:
                     "ok": True,
                     "enabled": config["enabled"],
                     "required_model": config["required_model"],
+                    "accepted_ui_labels": list(REQUIRED_MODEL_LABELS),
+                    "model_selection_observed": False,
+                    "backend_model": "unknown",
                     "transport": config["transport"],
                     "config_path": str(path),
                 },

@@ -12,7 +12,7 @@ Acecoreが日常利用で改善している分担原則を既定値として同�
 | 子 | GPT-6 Luna/max | 明確な定型工程 |
 | 子 | GPT-6.1 Sol/max | 複雑な実装・原因・重要レビュー |
 | 子 | GPT-6 Astra/high | 難しい設計・重大な不確実性 |
-| 別経路 | 通常Chat 6 Pro | 適合するまとまった工程の主担当候補 |
+| 別経路 | 通常Chat Pro | 適合するまとまった工程の主担当候補 |
 | ローカル認証経路 | local-auth-lfmの共有ローカルモデル | 秘密値の入力・保管・転送を伴う登録済み認証工程。クラウド選定より先に確認 |
 
 ローカル経路は一般的な実装・文章作成の振り分け先ではありません。実際のモデル・対応工程・本人操作待ちはMCPで確認し、接続済み・受付済みだけでは認証成功と扱いません。
@@ -86,13 +86,18 @@ Sol子を配布版の既定値変更にかかわらず `max` に固定する場�
 
 受付登録、本人操作待ち、実ログイン/API検証を区別し、秘密値・Cookie・認証画面はクラウドへ返しません。フックは秘密ファイルを読まず、MCPやモデルを起動しません。アプリ起動承認や本人確認を含む既存の承認条件を維持します。`chat_plan.py`でも`requires_private_auth: true`を指定すると、Chatの選定より先に`local_auth`を返します。分類だけで実行を承認する機能ではありません。[ローカル認証の手順](plugins/codex-task-routing/skills/task-routing/references/local-auth.md)
 
-### 通常Chatの一時Chat（GPT-6 Pro）へ渡す
+### 通常Chatの一時Chat（Pro）へ渡す
+
+`Pro`はモデル選択欄の値です。旧`6 Pro`/`GPT-6 Pro`の設定・観測も互換として受理し、既存設定を自動書換えしません。契約バッジやAPIモデルIDは代用できず、実行backendは確認できなければ不明です。表示と実行の違い、公式・ホスト・repoの制約、`transport_authorized`の根拠は[許可判定の詳細](plugins/codex-task-routing/skills/task-routing/references/chat-authorization.md)にまとめています。
+
+通常Chat内の接続済みGitHubで、実際の権限と実行環境がそろえば、調査・修正・テスト・PR・CI確認・明示承認済みのマージをまとめて扱えます。この直接作業にCodexから別Chatへの転送許可は不要です。一方、Codexから別Chatへ送受信する場合の未確認許可を、ネイティブGitHub操作の成功で代用してはいけません。
+
 
 通常Chat経路は明示的に有効にした場合だけ使います。確認済み接続の操作・範囲・有効期限をローカル台帳に保持し、`chat_plan.py` が必要な項目だけ機械照合します。分類専用のAI呼出しや全接続の再調査を避け、`chat_transfer.py` の一回限りのローカルフォームで、準備済み本文と最終回答をBrowser内の変数のまま受け渡せます。親のモデルへ全文を出力して再転記する必要を減らします。[接続と分類](plugins/codex-task-routing/skills/task-routing/references/chat-capabilities.md)、[転送補助](plugins/codex-task-routing/skills/task-routing/references/chat-transfer.md)。これらは明示実行の補助で、フックから起動・送信しません。
 
-通常ChatのGPT-6 ProはWork/Codexと別枠ですが、親の準備・操作・検収はCodex側に残ります。6 Proには契約別の上限があり、無制限ではありません。モデルや残量は実際のUIで確認し、第三者ツール固有の料金まで無料と扱いません。[公式の利用枠](https://help.openai.com/en/articles/20001354)、[Work/Codexの共有枠](https://learn.chatgpt.com/docs/pricing)。
+通常ChatのProはWork/Codexと別枠ですが、親の準備・操作・検収はCodex側に残ります。Proには契約別の上限があり、無制限ではありません。モデルや残量は実際のUIで確認し、第三者ツール固有の料金まで無料と扱いません。[公式の利用枠](https://help.openai.com/en/articles/20001354)、[Work/Codexの共有枠](https://learn.chatgpt.com/docs/pricing)。
 
-有効なroot経路では、6 Proを分析・設計・比較・文案・レビューの**最初の主担当候補**にします。実際の接続・書込み権限・検証環境がそろう実装・テスト・PR作成も対象です。短い仕事やCodex側の現物との頻繁な往復は親または専門子に残します。分類だけで外部書込みやマージを承認せず、同じ分析を別のAstraで全面再実行しません。
+有効なroot経路では、Proを分析・設計・比較・文案・レビューの**最初の主担当候補**にします。実際の接続・書込み権限・検証環境がそろう実装・テスト・PR作成も対象です。短い仕事やCodex側の現物との頻繁な往復は親または専門子に残します。分類だけで外部書込みやマージを承認せず、同じ分析を別のAstraで全面再実行しません。
 
 Pro $200の週次枠を積極活用する運用ですが、契約価格だけで経路を有効化しません。[最新上限・送受信方法の許可・比較計画](plugins/codex-task-routing/skills/task-routing/references/chat-limits.md)を確認してください。送信直前は`chat_plan.py --live`で新しい観測を照合し、上限・モデル変更・許可不明で停止します。自動抽出に関する例外の許可は本プラグインでは確認していません。
 
@@ -104,14 +109,14 @@ Pro $200の週次枠を積極活用する運用ですが、契約価格だけで
 {
   "schema_version": 1,
   "enabled": true,
-  "required_model": "6 Pro",
+  "required_model": "Pro",
   "transport": "browser-temporary"
 }
 ```
 
 新しいタスクのフックに `Opt-in ChatGPT Chat route is enabled` が表示されることを確認します。`enabled` を `false` にすると、この経路への新しい依頼を停止できます。切替後は新しいタスクから確認してください。進行中のChatを自動停止する設定ではありません。設定を有効にしただけでメッセージは送信されず、接続先の権限も増えません。
 
-この経路には、通常Chatへログイン済みのBrowserと、UIで選択・確認できる `6 Pro` が必要です。タスクごとに一時Chatを作り、Chatであること、一時Chatであること、`6 Pro` 表示を送信前後で確認します。準備済みの実依頼を一度だけ送信し、最終回答を依頼IDと材料hashで照合してから必要な結果だけを保存し、一時Chatは保存せず閉じます。複数行の本文は `paste({format:'text'})` またはサポートされた `fill` で入力し、全文一致を確認して送信ボタンを一回だけ使います。モデルAPIキーは使わず、WorkやモデルAPIへ暗黙に切り替えません。バックエンドのモデルIDは取得できないため、UI表示と実行メタデータを区別します。
+この経路には、通常Chatへログイン済みのBrowserと、UIで選択・確認できる `Pro` が必要です。タスクごとに一時Chatを作り、Chatであること、一時Chatであること、`Pro` 表示を送信前後で確認します。準備済みの実依頼を一度だけ送信し、最終回答を依頼IDと材料hashで照合してから必要な結果だけを保存し、一時Chatは保存せず閉じます。複数行の本文は `paste({format:'text'})` またはサポートされた `fill` で入力し、全文一致を確認して送信ボタンを一回だけ使います。モデルAPIキーは使わず、WorkやモデルAPIへ暗黙に切り替えません。バックエンドのモデルIDは取得できないため、UI表示と実行メタデータを区別します。
 
 一時Chatでは `send_message_to_thread` を使いません。内部で `isTemporaryChat: false` となるためです。既に明示した `"transport": "codex-app-tools"` はlegacyとして互換を保ちますが、自動で書き換えず、一時Chatの作成・操作には使いません。既存の承認済みMCPは材料の受け渡しに使えます。独自MCPサーバーの公開・書き戻し・自動ファイル添付は含みません。通常Chatの生成はChatの枠、親の処理はCodexの枠を使い、接続先サービスやサーバーの費用は別途確認します。[運用手順・制約](plugins/codex-task-routing/skills/task-routing/references/chatgpt.md) と [browser不要化の課題](docs/backlog.md) を参照してください。
 
@@ -194,7 +199,7 @@ codex plugin remove codex-task-routing@codex-task-routing
 - **`status --json` がエラーを返す:** `error_code` で原因の種類を、`hint` で秘密値を含まない対処を確認します。既存の `error` フィールドも互換性のため維持します。設定ファイルを自動修正する診断ではありません。各コードの意味は[設定の詳細](plugins/codex-task-routing/skills/task-routing/references/configuration.md)を参照してください。
 - **既存の分担指示との競合が表示される:** Codexホームや作業先の `AGENTS.md` / `AGENTS.override.md` に既知の分担指示があると、二重適用を防ぐためフックは新方針を追加しません。旧指示を自動削除しないため、バックアップして対象の分担節だけ移行し、新しいタスクで適用を確認します。異なる表現の類似方針をすべて機械検出できるわけではありません。
 - **要求したモデルやeffortで動いたか不明:** `status` の要求値だけでは実行を証明できません。子の起動時のツールと実行結果を確認します。モデルとeffortの利用可否はホストごとに異なります。
-- **通常Chat経路が有効にならない:** `chatgpt.json`、新しいタスクのフック表示、ログイン済みBrowser、UIの `6 Pro` 表示を順に確認します。上限・モデル変更・許可不明の場合は送信しません。
+- **通常Chat経路が有効にならない:** `chatgpt.json`、新しいタスクのフック表示、ログイン済みBrowser、UIの `Pro` 表示を順に確認します。上限・モデル変更・許可不明の場合は送信しません。
 - **自動更新されない:** `install_updater.py status` と `last-sync.json` を確認します。CodexかChatGPTが稼働中、稼働状態が不明、別更新が実行中、PCが休止・ログオフ中の場合は更新を見送ります。
 - **別の版へ戻す、または固定する:** 実行中のCodexアプリ・CLIを終了し、上の再登録手順でcommit SHAまたは公開タグを指定します。上書きは自動削除されません。
 

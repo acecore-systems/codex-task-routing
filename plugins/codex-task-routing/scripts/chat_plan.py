@@ -8,7 +8,10 @@ import json
 from pathlib import Path
 import sys
 
-from chatgpt_route import ChatRouteError, _load_json_object, _require_keys, _require_nonempty_string
+from chatgpt_route import (
+    ChatRouteError, _load_json_object, _require_keys,
+    _require_nonempty_string, is_required_model,
+)
 
 FLAGS = {"substantial", "parent_has_independent_work", "materials_approved",
          "handoff_proportionate", "requires_repeated_local_access"}
@@ -42,8 +45,8 @@ def validate_inventory(value):
     _keys(value, {"schema_version", "surface", "model", "installed_plugins", "capabilities"}, "inventory")
     if type(value["schema_version"]) is not int or value["schema_version"] != 1:
         raise ChatRouteError("unsupported inventory schema")
-    if value["surface"] not in ("chat-temporary", "chat") or value["model"] != "6 Pro":
-        raise ChatRouteError("inventory must describe normal Chat with 6 Pro")
+    if value["surface"] not in ("chat-temporary", "chat") or not is_required_model(value["model"]):
+        raise ChatRouteError("inventory must describe normal Chat with the selected Pro UI label")
     installed, caps = value["installed_plugins"], value["capabilities"]
     if not isinstance(installed, list) or len(installed) > 128:
         raise ChatRouteError("installed_plugins must be a bounded list")
@@ -89,14 +92,54 @@ def _delegation(facts):
     return "serial_specialist" if decision["host_allows_serial"] else "serial_disallowed"
 
 
+def _transport_evidence(live):
+    """Validate scoped, caller-supplied evidence; never grant transport access.
+
+    No provider exception is universally required: a supported host tool
+    contract may establish the exact operation. It cannot override applicable
+    provider terms or a host denial. References are not fetched or attested.
+    """
+    evidence = live.get("transport_evidence")
+    if evidence is None:
+        return "transport_evidence_missing"
+    _keys(evidence, {"basis", "reference", "transport", "operations"}, "transport evidence")
+    for name in ("basis", "reference", "transport"):
+        _text(evidence[name])
+    if evidence["basis"] not in {"host_tool_contract", "official_documentation", "provider_permission"}:
+        raise ChatRouteError("transport evidence requires a supported permission basis")
+    operations = evidence["operations"]
+    if (not isinstance(operations, list) or len(operations) > 2
+            or any(not isinstance(item, str) or item not in {"send", "receive"} for item in operations)
+            or len(set(operations)) != len(operations)):
+        raise ChatRouteError("transport evidence operations must be distinct send/receive values")
+    if evidence["transport"] != live["transport"]:
+        return "transport_evidence_scope_mismatch"
+    if set(operations) != {"send", "receive"}:
+        return "transport_evidence_incomplete"
+    return None
+
+
+def _transport_not_ready(reason):
+    # This is the repository's conservative classification, not a finding
+    # that OpenAI bans the operation. A denial must never become permission.
+    return {"route": "not_ready", "reason": reason,
+            "constraint_layer": "repository_preflight", "dispatch_authorized": False,
+            "next_check": "Check the exact send/receive tool contract, applicable terms and host restrictions; "
+                          "reuse existing scoped approval, do not infer permission from opt-in or a paid plan. "
+                          "See references/chat-authorization.md."}
+
+
 def check_live(live, *, now):
     """Check supplied observations, not the account; never attest actual execution.
 
     A short-lived snapshot prevents a saved quota or UI observation from being
     treated as a permanent permission. No remaining-message total is inferred.
     """
-    _keys(live, {"is_root", "route_enabled", "surface", "model", "transport",
-                 "transport_authorized", "actions_authorized", "quota_state", "observed_at"}, "live")
+    required = {"is_root", "route_enabled", "surface", "model", "transport",
+                "transport_authorized", "actions_authorized", "quota_state", "observed_at"}
+    if not isinstance(live, dict):
+        raise ChatRouteError("live must be an object")
+    _require_keys(live, required=required, allowed=required | {"transport_evidence"}, purpose="live")
     for name in ("is_root", "route_enabled", "transport_authorized", "actions_authorized"):
         if type(live[name]) is not bool:
             raise ChatRouteError("live gates must be JSON booleans")
@@ -107,11 +150,16 @@ def check_live(live, *, now):
     observed = _time(live["observed_at"])
     for name in ("is_root", "route_enabled", "transport_authorized", "actions_authorized"):
         if not live[name]:
+            if name == "transport_authorized":
+                return _transport_not_ready("transport_authorized_not_established")
             return {"route": "not_ready", "reason": name + "_not_established"}
     expected_surface = {"browser-temporary": "chat-temporary", "codex-app-tools": "chat"}.get(live["transport"])
     if expected_surface is None or live["surface"] != expected_surface:
         return {"route": "not_ready", "reason": "wrong_surface_or_transport"}
-    if live["model"] != "6 Pro":
+    evidence_problem = _transport_evidence(live)
+    if evidence_problem is not None:
+        return _transport_not_ready(evidence_problem)
+    if not is_required_model(live["model"]):
         return {"route": "not_ready", "reason": "required_model_not_observed"}
     if live["quota_state"] == "exhausted":
         return {"route": "not_ready", "reason": "quota_exhausted"}
@@ -183,7 +231,9 @@ def plan(facts, inventory=None, *, now=None, live=None):
     if live is None and any(c["state"] == "permission_checked" for c in checks):
         return {"route": "preflight_needed", "reason": "fresh_live_required_for_unexercised_capability", "checks": checks}
     return {"route": "chat_candidate", "reason": "verify_live_surface_model_and_permissions", "checks": checks,
-            "live_checked": live is not None, "delegation_mode": delegation}
+            "live_checked": live is not None, "delegation_mode": delegation,
+            "observation_source": "caller_supplied", "backend_model": "unknown",
+            "authorization_attested": False}
 
 
 def main(argv=None):
