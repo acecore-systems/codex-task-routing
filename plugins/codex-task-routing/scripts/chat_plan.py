@@ -180,6 +180,49 @@ def _transport_not_ready(reason, *, unknown=False):
     return result
 
 
+def _actor_problem(live):
+    """Check declared scope only; neither actor IDs nor flags attest the host.
+
+    Existing root callers need no actor object. A non-root caller must declare
+    its assigned routing role, root-relative depth and current request owner.
+    host_allows_chat records applicable host instructions, not a new approval.
+    """
+    actor = live.get("actor")
+    if "actor" not in live:
+        return None if live["is_root"] else "is_root_not_established"
+    _keys(actor, {"role", "depth", "executor_id", "owner_id", "host_allows_chat"}, "actor")
+    for field in ("role", "executor_id", "owner_id"):
+        _text(actor[field])
+    if type(actor["depth"]) is not int or actor["depth"] < 0:
+        raise ChatRouteError("actor depth must be a nonnegative JSON integer")
+    if type(actor["host_allows_chat"]) is not bool:
+        raise ChatRouteError("actor host gate must be a JSON boolean")
+    if live["is_root"]:
+        if actor["role"] != "root" or actor["depth"] != 0:
+            return "actor_root_context_mismatch"
+    else:
+        if actor["role"] == "root" or actor["depth"] == 0:
+            return "actor_root_context_mismatch"
+        if actor["role"] != "sol" or actor["depth"] != 1:
+            return "actor_not_eligible"
+        if live["transport"] != "browser-temporary":
+            return "child_requires_browser_temporary"
+    if actor["executor_id"] != actor["owner_id"]:
+        return "actor_request_owner_mismatch"
+    if not actor["host_allows_chat"]:
+        return "actor_host_permission_not_established"
+    return None
+
+
+def _owner_scoped(result, live):
+    # Permission gaps stay with the eligible Sol owner; human/administrator
+    # decisions keep their original owners. No private identity is echoed.
+    if (not live["is_root"] and "resolution" in result
+            and result["resolution"]["owner"] == "codex_root"):
+        result["resolution"]["owner"] = "sol_child_owner"
+    return result
+
+
 def inspection_plan(live):
     """Plan only the non-dispatch inspection. No Chat prompt or reply is moved.
 
@@ -190,29 +233,33 @@ def inspection_plan(live):
         raise ChatRouteError("inspection requires a live object")
     required = {"is_root", "route_enabled", "transport"}
     allowed = required | {"surface", "model", "transport_authorized", "transport_evidence",
-                          "actions_authorized", "quota_state", "observed_at", "browser_checks"}
+                          "actions_authorized", "quota_state", "observed_at", "browser_checks", "actor"}
     _require_keys(live, required=required, allowed=allowed, purpose="inspection live")
     for field in ("is_root", "route_enabled"):
         if type(live[field]) is not bool:
             raise ChatRouteError("inspection gates must be JSON booleans")
-        if not live[field]:
-            return {"route": "not_ready", "reason": field + "_not_established",
-                    "dispatch_authorized": False, "preflight_complete": False}
+    actor_problem = _actor_problem(live)
+    if actor_problem is not None:
+        return {"route": "not_ready", "reason": actor_problem,
+                "dispatch_authorized": False, "preflight_complete": False}
+    if not live["route_enabled"]:
+        return {"route": "not_ready", "reason": "route_enabled_not_established",
+                "dispatch_authorized": False, "preflight_complete": False}
     if live["transport"] != "browser-temporary":
         return {"route": "not_ready", "reason": "inspection_requires_browser_temporary",
                 "dispatch_authorized": False, "preflight_complete": False}
     checks = _browser_checks(live)
     state = checks["inspect"] if checks else "unknown"
     if state not in BROWSER_CONFIRMED:
-        return _browser_gap("inspect", state)
-    return {"route": "preflight_needed", "reason": "observe_live_chat_ui",
+        return _owner_scoped(_browser_gap("inspect", state), live)
+    return _owner_scoped({"route": "preflight_needed", "reason": "observe_live_chat_ui",
             "next_action": "inspect_chat_ui", "dispatch_authorized": False,
             "preflight_complete": False,
             "resolution": {"operation": "inspect", "owner": "codex_root",
                            "where": "The approved Browser on chatgpt.com, in a new empty Temporary Chat",
                            "action": "Observe Chat (not Work), Temporary Chat, selected Pro and limit notices. "
                                      "Do not enter a task, submit a prompt or collect a model reply. "
-                                     "User handles sign-in; do not read credentials, old chats or memory."}}
+                                     "User handles sign-in; do not read credentials, old chats or memory."}}, live)
 
 
 def _check_transport(live, *, phase="dispatch"):
@@ -255,7 +302,7 @@ def check_live(live, *, now, phase="dispatch"):
     if not isinstance(live, dict):
         raise ChatRouteError("live must be an object")
     _require_keys(live, required=required,
-                  allowed=required | {"quota_state", "transport_authorized", "transport_evidence", "browser_checks"}, purpose="live")
+                  allowed=required | {"quota_state", "transport_authorized", "transport_evidence", "browser_checks", "actor"}, purpose="live")
     for name in ("is_root", "route_enabled", "actions_authorized"):
         if type(live[name]) is not bool:
             raise ChatRouteError("live gates must be JSON booleans")
@@ -266,7 +313,10 @@ def check_live(live, *, now, phase="dispatch"):
     if quota not in {"unknown", "no_limit_notice", "exhausted"}:
         raise ChatRouteError("invalid quota observation")
     observed = _time(live["observed_at"])
-    for name in ("is_root", "route_enabled", "actions_authorized"):
+    actor_problem = _actor_problem(live)
+    if actor_problem is not None:
+        return {"route": "not_ready", "reason": actor_problem}
+    for name in ("route_enabled", "actions_authorized"):
         if not live[name]:
             return {"route": "not_ready", "reason": name + "_not_established"}
     expected_surface = {"browser-temporary": "chat-temporary", "codex-app-tools": "chat"}.get(live["transport"])
@@ -274,7 +324,7 @@ def check_live(live, *, now, phase="dispatch"):
         return {"route": "not_ready", "reason": "wrong_surface_or_transport"}
     transport_problem = _check_transport(live, phase=phase)
     if transport_problem is not None:
-        return transport_problem
+        return _owner_scoped(transport_problem, live)
     if not is_required_model(live["model"]):
         return {"route": "not_ready", "reason": "required_model_not_observed"}
     if phase == "dispatch" and quota == "exhausted":

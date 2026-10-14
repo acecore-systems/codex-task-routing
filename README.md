@@ -19,7 +19,7 @@ Acecoreが日常利用で改善している分担原則を既定値として同�
 
 ローカル経路は一般的な実装・文章作成の振り分け先ではありません。実際のモデル・対応工程・本人操作待ちはMCPで確認し、接続済み・受付済みだけでは認証成功と扱いません。
 
-旧`terra`キーはschema 1の既存overrideの読取り互換用です。分担候補には出しません。同モデルへの無用な移管を避けます。min/max設定は互換性のため残し、自動選定は有効なdefault_effortに固定します。既存overrideと他モデル親は保持します。並列分担には親の独立作業が必要で、直列の専門委譲は具体的な追加価値とホストの許可を確認した場合だけ使います。
+旧`terra`キーはschema 1の既存overrideの読取り互換用です。分担候補には出しません。同モデルへの無用な移管を避けます。標準孫は割当て役割としてAstra子→Sol/Luna、Sol子→Lunaまで。Luna子・孫から先と同モデル/上位役割は禁止し、役割・深さ不明はrootへ返します。これは一般的なモデル性能順位ではありません。min/max設定は互換性のため残し、自動選定は有効なdefault_effortに固定します。既存overrideと他モデル親は保持します。並列分担には委譲する担当自身の独立作業が必要で、直列の専門委譲は具体的な追加価値とホストの許可を確認した場合だけ使います。
 
 ## 導入
 
@@ -95,11 +95,11 @@ Sol子を配布版の既定値変更にかかわらず `max` に固定する場�
 通常Chat内の接続済みGitHubで、実際の権限と実行環境がそろえば、調査・修正・テスト・PR・CI確認・明示承認済みのマージをまとめて扱えます。この直接作業にCodexから別Chatへの転送許可は不要です。一方、Codexから別Chatへ送受信する場合の未確認許可を、ネイティブGitHub操作の成功で代用してはいけません。
 
 
-通常Chat経路は明示的に有効にした場合だけ使います。確認済み接続の操作・範囲・有効期限をローカル台帳に保持し、`chat_plan.py` が必要な項目だけ機械照合します。分類専用のAI呼出しや全接続の再調査を避け、`chat_transfer.py` の一回限りのローカルフォームで、準備済み本文と最終回答をBrowser内の変数のまま受け渡せます。親のモデルへ全文を出力して再転記する必要を減らします。[接続と分類](plugins/codex-task-routing/skills/task-routing/references/chat-capabilities.md)、[転送補助](plugins/codex-task-routing/skills/task-routing/references/chat-transfer.md)。これらは明示実行の補助で、フックから起動・送信しません。
+通常Chat経路は明示的に有効にした場合だけ使います。root直下Sol子はbrowser-temporaryで依頼の準備・送信・回収・内容受入・承認済み修正まで所有できます。Astra/Luna子と孫からChatは使えず、legacy経路はroot専用です。SubagentStartだけで役割や深さを推測せず、元の引継ぎ・現在のホスト許可と照合します。Sol→Proは標準Codex孫と別経路です。所有者が変わっても同じタブ/依頼ID/input hashと送信済み状態を引き継ぎ、再送しません。確認済み接続の操作・範囲・有効期限をローカル台帳に保持し、`chat_plan.py` が必要な項目だけ機械照合します。分類専用のAI呼出しや全接続の再調査を避け、`chat_transfer.py` の一回限りのローカルフォームで、準備済み本文と最終回答をBrowser内の変数のまま受け渡せます。親のモデルへ全文を出力して再転記する必要を減らします。[接続と分類](plugins/codex-task-routing/skills/task-routing/references/chat-capabilities.md)、[転送補助](plugins/codex-task-routing/skills/task-routing/references/chat-transfer.md)。これらは明示実行の補助で、フックから起動・送信しません。
 
 通常ChatのProはWork/Codexと別枠ですが、親の準備・操作・検収はCodex側に残ります。Proには契約別の上限があり、無制限ではありません。モデルや残量は実際のUIで確認し、第三者ツール固有の料金まで無料と扱いません。[公式の利用枠](https://help.openai.com/en/articles/20001354)、[Work/Codexの共有枠](https://learn.chatgpt.com/docs/pricing)。
 
-有効なroot経路では、Proを分析・設計・比較・文案・レビューの**最初の主担当候補**にします。実際の接続・書込み権限・検証環境がそろう実装・テスト・PR作成も対象です。短い仕事や引継ぎ負担が大きい仕事は現在の適任担当で終え、Codex側の現物との頻繁な往復はSolを主担当にします。分類だけで外部書込みやマージを承認せず、同じ分析を別のAstraで全面再実行しません。
+有効なrootまたはroot直下Sol子のbrowser経路では、Proを分析・設計・比較・文案・レビューの**最初の主担当候補**にします。実際の接続・書込み権限・検証環境がそろう実装・テスト・PR作成も対象です。短い仕事や引継ぎ負担が大きい仕事は現在の適任担当で終え、Codex側の現物との頻繁な往復はSolを主担当にします。分類だけで外部書込みやマージを承認せず、同じ分析を別のAstraで全面再実行しません。
 
 Pro $200の週次枠を積極活用する運用ですが、契約価格だけで経路を有効化しません。[最新上限・送受信方法の許可・比較計画](plugins/codex-task-routing/skills/task-routing/references/chat-limits.md)を確認してください。送信直前は`chat_plan.py --live`で新しい観測を照合し、上限・モデル変更・許可不明で停止します。自動抽出に関する例外の許可は本プラグインでは確認していません。
 

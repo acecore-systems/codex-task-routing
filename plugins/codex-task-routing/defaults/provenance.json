@@ -1,5 +1,5 @@
 {
-  "policy_revision": "2026-10-14-owner-completion",
+  "policy_revision": "2026-10-14-bounded-descendants",
   "source_sha256": {
     "AGENTS.md": "bd2584d350c204f1ffbc8c005c084fc34360acddf8812557504350820e34be42",
     "model-routing-policy.md": "9335ccec4516bc71b68d01f9304d6e71d3b5efcd77a210476571cd7d060c476c",
@@ -20,12 +20,13 @@
     "0.10.1 intentional effort update: Sol child max with max ceiling; parameterized summary and intro efforts; configured child diagnostics; explicit overrides preserved",
     "0.11.0: normalize current Pro UI and legacy labels; scoped transport evidence and native-Chat/bridge distinction; no backend attestation, parent or child model/effort changes",
     "0.12.0 runtime preflight: reuse confirmed transport without mandatory duplicate evidence; operation observations and inspect/dispatch/receive phases; default policy and all model/effort settings unchanged",
-    "0.13.0 intentional policy change: user-selected Astra parent concentrates on decisions and acceptance; suitable new work considers Pro first; Codex-local complete units stay with Sol through authorized PR and scoped findings; schema, all model/effort settings and user overrides preserved; historical source hashes retained"
+    "0.13.0 intentional policy change: user-selected Astra parent concentrates on decisions and acceptance; suitable new work considers Pro first; Codex-local complete units stay with Sol through authorized PR and scoped findings; schema, all model/effort settings and user overrides preserved; historical source hashes retained",
+    "0.14.0 intentional policy change: bounded assigned-role grandchildren and root-direct Sol ownership of browser Pro; shared caller-supplied actor checks across inspect/dispatch/receive; legacy root calls, model settings, efforts, overrides and authentication boundaries preserved; historical source hashes retained"
   ],
   "source_policy_revision": "2026-09-14",
   "rendered_sha256": {
-    "model-routing-policy.md": "5e0a349cb63cbae3dfc0b59237847d145628640805d415c70ac3998551e0ec18",
-    "model-routing-catalog.md": "cded17fd73ab091a2d680b076142b4928c36df66c0531ebd1c5c0ccb2ce445da",
-    "model-routing-handoff.md": "5dfe06fe6a0eafdf98949bfe3abfca841f890a3f2df9cb8dbc316af837e0a25a"
+    "model-routing-policy.md": "459053e9354d91eca7d220c30cca8565d6ca5a27fa8eb6e755db4c9768d55199",
+    "model-routing-catalog.md": "11c53b91bcb72620750c02f03ee371ffcd1ce73f9988e65fc41dd0d66ddae416",
+    "model-routing-handoff.md": "97d6c09baabde8efafbcda516bde37eeb433dffdfea4421d95604efdda36fb43"
   }
 }

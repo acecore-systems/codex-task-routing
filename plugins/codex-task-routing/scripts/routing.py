@@ -684,7 +684,7 @@ def _unapplied_hook_response() -> dict[str, Any]:
     }
 
 
-def _chatgpt_context(home: Path, plugin_root: Path) -> str:
+def _chatgpt_context(home: Path, plugin_root: Path, *, for_child: bool = False) -> str:
     """Expose opt-in instructions only; never start a chat from a hook."""
     config = _assert_safe_ancestors(home / "codex-task-routing" / "chatgpt.json")
     if not os.path.lexists(config):
@@ -699,7 +699,7 @@ def _chatgpt_context(home: Path, plugin_root: Path) -> str:
         settings = module.load_config(home)
     except ValueError as exc:
         raise RoutingError("ChatGPT route configuration invalid") from exc
-    if not settings["enabled"]:
+    if not settings["enabled"] or (for_child and settings["transport"] != "browser-temporary"):
         return ""
     reference = _assert_safe_ancestors(
         plugin_root / "skills" / "task-routing" / "references" / "chatgpt.md"
@@ -714,32 +714,37 @@ def _chatgpt_context(home: Path, plugin_root: Path) -> str:
         "or operate a Temporary Chat. "
     )
     legacy_suffix = " (legacy)" if transport == "codex-app-tools" else ""
+    eligibility = (
+        "Conditional only: root-direct Sol child, depth=1, may own preparation/send/collection/acceptance "
+        "and authorized fixes. Astra/Luna children and all grandchildren must not use Chat. "
+        "SubagentStart does not prove role/depth; check actual context and root handoff, not model ID. "
+        "Unknown scope or current host prohibition returns to root. "
+        if for_child else
+        "Root or a root-direct Sol child may own this browser route; legacy transport stays root-only. "
+    )
     return (
         f"\nOpt-in ChatGPT Chat route is enabled (required UI model: Pro (legacy: 6 Pro / GPT-6 Pro); transport: {transport}{legacy_suffix}). "
-        "Root-only alternative for substantial independent research, analysis, design, drafting, review and "
-        "authorized implementation/testing/PR. Before a new unit, separate private authentication and evaluate "
-        "this Chat route first: prefer Pro with approved materials, verified tools, scoped actions and test "
-        "environment. Keep a suitable existing owner. Use Pro as main specialist, not duplicate final review; "
-        "handoff/waiting/acceptance/rework must be proportionate. No new plugin mention is needed. Short work or "
-        "repeated Codex-only access stays in Codex. "
-        "Parallel delegation requires useful independent parent work. Serial specialist delegation requires explicit "
-        "host permission and concrete added value; never invent work or bypass host rules. "
-        "Read route instructions before use: "
-        f"{reference}. "
-        "Check required information, sources/freshness, tool capabilities, return format and stop conditions. "
-        "Use chat_plan.py --live with fresh observations before dispatch; flags do not prove permission. "
-        "Quota/opt-in are separate from transport; unknown authorization blocks dispatch. --phase inspect is "
-        "preflight only, with no probe send. Reuse approval via browser_checks or legacy transport_authorized:true, "
-        "not both; transport_evidence is optional. No new provider exception without a specific applicable "
-        "constraint. Passed dispatch returns next_action:send_once; --phase receive collects the existing request "
-        "without resend or new-generation quota. See chat-authorization.md. This inter-Chat gate does not apply "
-        "to native tools inside the current Chat. Use normal Chat only; never Work or a model API. Verify surface "
-        "and Pro before dispatch and after completion; UI/tool replies do not attest the backend. "
+        + eligibility
+        + "For substantial research/design/review and authorized implementation/testing/PR, evaluate this Chat "
+        "route first with approved materials, verified tools, scope and test environment. Keep a suitable "
+        "existing owner. Short work or repeated Codex-local access stays in Codex. "
+        "Parallel delegation requires useful independent parent work from the delegating owner itself. "
+        "Serial specialist delegation requires explicit host permission and concrete added value; no invented work. "
+        f"Read before use: {reference}. "
+        "Use chat_plan.py --live; optional actor declares role/depth/executor/owner/host_allows_chat. Legacy "
+        "is_root:true remains valid; is_root:false alone does not. Declared host checks reuse valid approval "
+        "and never attest authority. unknown authorization blocks dispatch. Keep private authentication local. "
+        "--phase inspect is no-send preflight; dispatch yields next_action:send_once; --phase receive collects "
+        "without resend/new-generation quota. Reuse browser_checks or legacy transport_authorized:true, not "
+        "both; transport_evidence is optional. Preserve source/freshness/tool/return/stop conditions. See "
+        "chat-authorization.md. No extra provider exception without an applicable constraint; native tools "
+        "inside current Chat are outside the transfer gate. Use normal Chat only; never Work or a model API. "
+        "Verify Chat/Pro before sending and after completion; no backend attestation. "
         + transport_note
-        + "Use one isolated conversation per task, request IDs and input hashes. Missing tools, unknown model "
-        "or quota failure blocks dispatch, not permitted inspection or authorized collection; report missing "
-        "conditions without API/Work fallback. Do not route from subagents or start models from hooks. "
-        "Preserve the parent model and effort."
+        + "One request owner and same tab/request ID/input hash; handoff records sent/collected state and "
+        "never causes another send. Owner performs semantic acceptance; root handles important exceptions. "
+        "Missing capability, permission or scope returns to root without fallback. Permitted inspection and "
+        "collection remain distinct from send/quota. Hooks never start models; preserve parent settings."
     )
 
 
@@ -843,7 +848,7 @@ def hook_payload(
                 [
                     f"Codex Task Routing manifest {policy.version}; policy hash {policy.content_hash}.",
                     f"Configured child-routing reference only; it does not change the parent: {model_matrix}.",
-                    "Do not create a child solely to transfer work to the same model. Keep the agreed complete work unit with the same owner through ordinary investigation, fixes, tests, authorized PR creation and agreed review findings. Follow the parent-specified endpoint, scope and acceptance criteria; return important exceptions and authentication requirements to the parent rather than re-delegating, and distinguish unverified work from confirmed results.",
+                    "Do not create a child solely to transfer work to the same model. Keep the agreed complete work unit with the same owner through ordinary investigation, fixes, tests, authorized PR creation and agreed review findings. Follow the parent-specified endpoint, scope and acceptance criteria; distinguish unverified results. Standard grandchildren only: Astra child to Sol/Luna; Sol child to Luna; Luna children and grandchildren cannot delegate. No same/up-role or further depth; use effective default efforts. Check assigned role/depth from actual context and handoff, not SubagentStart or a model ID. Unknown scope and important exceptions return to root. Parallel work requires the delegator's own independent work; host restrictions still apply.",
                     f"Effective policy: {references['effective.md']}",
                     "Detailed policy references:",
                     detail_refs,
@@ -852,15 +857,15 @@ def hook_payload(
             )
         route_diagnostic = None
         route_context = ""
-        if event == "SessionStart":
+        if event in {"SessionStart", "SubagentStart"}:
             try:
-                route_context = _chatgpt_context(home, plugin_root)
+                route_context = _chatgpt_context(home, plugin_root, for_child=event == "SubagentStart")
             except (RoutingError, OSError, ImportError, ValueError):
                 route_diagnostic = "ChatGPT route not applied: invalid configuration or unavailable helper. Run chatgpt_route.py status."
         context += "\n" + local_auth_context
         context += "\nUse this single effective policy set. Standard child agents only; do not change the parent model or effort."
         if route_context:
-            context += "\nException explicitly enabled by the user for the root parent:" + route_context
+            context += "\nUser-enabled conditional Chat route; current host instructions still apply:" + route_context
         if len(context) > MAX_ADDITIONAL_CONTEXT_CHARS:
             raise RoutingError("hook context exceeds the configured limit")
     except (RoutingError, OSError):

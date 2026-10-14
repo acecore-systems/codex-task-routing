@@ -129,6 +129,26 @@ def main():
         assert "systemMessage" not in payload, payload.get("systemMessage")
     results.append("installed hook commands produced the official event-specific output for both events")
 
+    # Check conditional child delivery with the installed runtime as well as
+    # legacy root compatibility; no role/depth is inferred from this event.
+    chat_config.write_text(json.dumps({"schema_version": 1, "enabled": True,
+                                     "required_model": "Pro", "transport": "browser-temporary"}), encoding="utf-8")
+    browser_hook_context_chars = {}
+    for event in ("SessionStart", "SubagentStart"):
+        payload = run([sys.executable, str(script), "hook"],
+                      event={"hook_event_name": event, "source": "startup"})
+        assert "systemMessage" not in payload, payload.get("systemMessage")
+        context = payload["hookSpecificOutput"]["additionalContext"]
+        browser_hook_context_chars[event] = len(context)
+        assert len(context) <= 8000
+        assert "Opt-in ChatGPT Chat route is enabled" in context
+        if event == "SubagentStart":
+            assert "Conditional only: root-direct Sol child, depth=1" in context
+            assert "SubagentStart does not prove role/depth" in context
+            assert "all grandchildren must not use Chat" in context
+    chat_config.write_bytes(before[chat_config])
+    results.append("installed browser route delivered conditional root-direct Sol guidance without dispatch")
+
     manifest_path = plugin / ".codex-plugin" / "plugin.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     next_version = initial_version.split('+')[0] + '+codex.native-test'
@@ -156,6 +176,7 @@ def main():
     results.append("native removal preserved unrelated settings, guidance, and override")
     report = {"ok": True, "checks": results,
               "hook_context_chars": hook_context_chars,
+              "browser_hook_context_chars": browser_hook_context_chars,
               "not_verified": ["host hook trust and live event delivery", "model session routing"]}
     (base / "result.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(json.dumps(report))

@@ -24,7 +24,7 @@ Open the printed URL using the supported Browser. The stable `Request prompt`
 readonly field and `Response JSON` field are plain HTML DOM controls, so a
 Browser automation surface can read and fill them without page-script
 evaluation. Move the prompt to a new, approved temporary normal Chat only
-after the parent has confirmed the content is authorized for that destination,
+after the request owner (root or an eligible root-direct Sol child) has confirmed the content is authorized for that destination,
 the selected UI model is `Pro`, and the temporary-Chat conditions hold. The
 helper does not make those checks and does not send anything itself.
 
@@ -68,7 +68,7 @@ verified response`. The helper calls `chatgpt_route.validate_exchange` before
 writing. An identical retry is idempotent; a different value can never replace
 an existing reply. `Transfer status` distinguishes a saved server submission,
 the response format/correlation check, and `status: completed`. Even a
-completed status is not semantic acceptance: the parent must still assess the
+completed status is not semantic acceptance: the request owner must still assess the
 answer against the task's acceptance criteria, evidence, scope, and UI model
 confirmation.
 
