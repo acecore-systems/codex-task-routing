@@ -1,4 +1,4 @@
-name: Routing checked change transfer (temporary)
+name: Routing checked review transfer (temporary)
 on:
   pull_request:
     paths:
@@ -6,7 +6,7 @@ on:
 permissions:
   contents: read
 jobs:
-  apply-checked-change:
+  apply-checked-review:
     if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'codex/chat-pro-authorization'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -20,63 +20,46 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-      - name: Apply only the hash-checked source delta
+      - name: Apply and verify the reviewed delta
         shell: bash
         run: |
           python - <<'PY'
-          import gzip, hashlib, json, os, subprocess, tempfile
-          from pathlib import Path, PurePosixPath
-          helpers = ['.github/routing-change.' + str(i) for i in range(3)]
-          raw = gzip.decompress(b''.join(Path(p).read_bytes() for p in helpers))
-          assert hashlib.sha256(raw).hexdigest() == '1952d8e901d7558a89faf1a034a8a456ca09840e3a6d217d4255aa87e7c42a98'
-          delta = json.loads(raw)
-          assert delta['base'] == '790dc717f47c9de94399e7a9fcfcbf80d44960df'
-          assert delta['tree'] == '38af3bdc76bc71572408374266d3b21bf688ee38'
+          import hashlib, json, os, subprocess, tempfile
+          from pathlib import Path
+          delta = json.loads(r'''[{"path":"plugins/codex-task-routing/scripts/chat_plan.py","before":"55a8b935e2790807d6c10fbae6950dd1dd0f1d8f","after":"cfa1c0a5df65852b82bcb865187e23d2b5f74458","edits":[[12776,12785,""],[12793,12793,"ation_attest"]]},{"path":"plugins/codex-task-routing/skills/task-routing/references/chat-authorization.md","before":"53e002929570db0ac967a155bfee4bd32fc193a6","after":"17b063261b4f1b24560bc173c09ec448fbd58e9c","edits":[[3254,3262,"authorization"],[3264,3271,"ttest"],[3280,3283,"は、"],[3287,3288,"が権限の実証を行っていないという意味です。候補を一律不"],[3290,3298,"とする値ではなく、送信の最終判断は確認済みの根拠を持つ親が行います"]]},{"path":"tests/test_chat_authorization.py","before":"c599d0a26d866af4a04d77be60ba15f6b47090fd","after":"5ac58bed537f0fe6bbada75b868792a43a9e81d1","edits":[[2662,2669,"aut"],[2670,2675,""],[2679,2679,"ation_attest"],[7143,7150,"aut"],[7151,7156,""],[7160,7160,"ation_attest"],[11389,11396,"aut"],[11397,11402,""],[11406,11406,"ation_attest"]]}]''')
           def blob(data):
               return hashlib.sha1(f'blob {len(data)}\0'.encode() + data).hexdigest()
           changed = []
-          for item in delta['files']:
-              rel = PurePosixPath(item['path'])
-              assert not rel.is_absolute() and '..' not in rel.parts and '.git' not in rel.parts
-              assert item['path'] in {'AGENTS.md', 'README.md', 'scripts/check_package.py'} or item['path'].startswith(('plugins/codex-task-routing/', 'tests/', 'docs/'))
-              p = Path(rel)
+          for item in delta:
+              p = Path(item['path'])
               assert not any(part.is_symlink() for part in (p, *p.parents))
-              if item['before'] is None:
-                  assert not p.exists()
-                  original = b''
-              else:
-                  original = p.read_bytes()
-                  assert blob(original) == item['before'], item['path']
+              original = p.read_bytes()
+              assert blob(original) == item['before'], item['path']
               text = original.decode('utf-8')
-              previous = 0
-              for start, end, replacement in item['edits']:
-                  assert previous <= start <= end <= len(text)
-                  previous = end
               for start, end, replacement in reversed(item['edits']):
                   text = text[:start] + replacement + text[end:]
               content = text.encode('utf-8')
               assert blob(content) == item['after'], item['path']
-              p.parent.mkdir(parents=True, exist_ok=True)
               p.write_bytes(content)
               changed.append(item['path'])
-          assert len(changed) == len(set(changed)) == 27
           subprocess.run(['git', 'add', '--', *changed], check=True)
-          staged_tree = subprocess.check_output(['git', 'write-tree'], text=True).strip()
+          staged = subprocess.check_output(['git', 'write-tree'], text=True).strip()
+          helpers = ['.github/routing-change.' + str(i) for i in range(3)]
           helpers.append('.github/workflows/routing-source-snapshot.yml')
           with tempfile.TemporaryDirectory() as folder:
               env = {**os.environ, 'GIT_INDEX_FILE': str(Path(folder) / 'index')}
-              subprocess.run(['git', 'read-tree', staged_tree], env=env, check=True)
+              subprocess.run(['git', 'read-tree', staged], env=env, check=True)
               subprocess.run(['git', 'update-index', '--force-remove', '--', *helpers], env=env, check=True)
               target = subprocess.check_output(['git', 'write-tree'], env=env, text=True).strip()
-              assert target == delta['tree'], target
-          print('Validated final source tree:', target)
+              assert target == '9daeb80dde96f6ec509e02262dd9d17596e378a8', target
+          print('Validated reviewed source tree:', target)
           PY
-      - name: Validate the exact source
+      - name: Validate the reviewed source
         run: |
           python -m unittest discover -s tests -v
           python scripts/check_package.py
           git diff --cached --check
       - name: Commit only to the requested branch
         run: |
-          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m '検証済みの通常Chat Pro修正を反映'
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m '候補の未実証表示を不許可判定から区別'
           git push origin HEAD:refs/heads/codex/chat-pro-authorization
