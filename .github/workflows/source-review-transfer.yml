@@ -1,0 +1,21 @@
+name: Source review transfer (temporary)
+on:
+  pull_request:
+    paths: ['.github/workflows/source-review-transfer.yml']
+permissions:
+  contents: read
+jobs:
+  source:
+    if: github.head_ref == 'codex/browser-operation-preflight'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - run: git archive --format=zip --output=source.zip HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: source-review
+          path: source.zip
+          retention-days: 1
