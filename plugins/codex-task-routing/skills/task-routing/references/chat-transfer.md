@@ -1,5 +1,8 @@
 # Browser local transfer
 
+The selected model label may be `Pro`, `6 Pro` or `GPT-6 Pro`; this is not a subscription badge or backend attestation. Confirm the specific send/receive contract as described in [authorization](chat-authorization.md) before starting a transfer.
+
+
 `chat_transfer.py` is a local loopback helper for an already approved
 `bundle.json`. It only renders that bundle's prepared `prompt` in a readonly
 Browser form and accepts one JSON response for one explicitly named
@@ -22,7 +25,7 @@ readonly field and `Response JSON` field are plain HTML DOM controls, so a
 Browser automation surface can read and fill them without page-script
 evaluation. Move the prompt to a new, approved temporary normal Chat only
 after the parent has confirmed the content is authorized for that destination,
-the selected UI model is `6 Pro`, and the temporary-Chat conditions hold. The
+the selected UI model is `Pro`, and the temporary-Chat conditions hold. The
 helper does not make those checks and does not send anything itself.
 
 Choose supported Browser operations that do not automatically emit the full

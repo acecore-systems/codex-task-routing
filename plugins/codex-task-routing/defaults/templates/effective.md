@@ -7,7 +7,7 @@
 | Luna子 | {{models.luna.id}} | {{models.luna.default_effort}} |
 | Sol子 | {{models.sol.id}} | {{models.sol.default_effort}} |
 | Astra子 | {{models.astra.id}} | {{models.astra.default_effort}} |
-| 通常Chat | UIで6 Pro | 別経路・Codex effortと換算しない |
+| 通常Chat | UIでPro | 別経路・Codex effortと換算しない |
 | ローカル認証 | local-auth-lfmの共有モデル | 秘密値を扱う登録済み工程・状態はMCPで確認 |
 
 {{principles.summary}}

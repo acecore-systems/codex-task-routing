@@ -29,6 +29,9 @@ class FixedRoutingTests(unittest.TestCase):
                            reason='Specialist reasoning on complete approved materials.')
         self.live = dict(is_root=True, route_enabled=True, surface='chat-temporary',
                          model='6 Pro', transport='browser-temporary', transport_authorized=True,
+                         transport_evidence=dict(basis='host_tool_contract',
+                             reference='Synthetic test fixture: host permits this exact send/receive flow.',
+                             transport='browser-temporary', operations=['send', 'receive']),
                          actions_authorized=True, quota_state='no_limit_notice',
                          observed_at=self.now.isoformat())
 
@@ -92,7 +95,8 @@ class FixedRoutingTests(unittest.TestCase):
         facts = {**self.facts, 'delegation': self.serial, 'needs': [{**read, 'operation': 'update_file'}]}
         self.assertEqual(cp.plan(facts, inventory, now=self.now, live=self.live)['route'], 'preflight_needed')
         facts['needs'] = [read]
-        legacy_live = {**self.live, 'surface': 'chat', 'transport': 'codex-app-tools'}
+        legacy_live = {**self.live, 'surface': 'chat', 'transport': 'codex-app-tools',
+                       'transport_evidence': {**self.live['transport_evidence'], 'transport': 'codex-app-tools'}}
         self.assertEqual(cp.plan(facts, inventory, now=self.now, live=legacy_live)['reason'], 'capability_surface_mismatch')
         inventory['surface'] = 'chat'
         self.assertEqual(cp.plan(facts, inventory, now=self.now, live=legacy_live)['route'], 'chat_candidate')

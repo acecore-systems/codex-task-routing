@@ -4,7 +4,7 @@
 
 ## 接続一覧を毎回読まない
 
-同じ工程は同じfactsファイルと一行の選定理由を再利用し、材料・範囲・必要操作・委譲方式・ホストの制約・準備や検収の負担が変わった時だけ意味判断をやり直します。期限の照合はCLIで再実行でき、分類のためにモデルへ材料を再送しません。新しいChatのUI・6 Pro・必要プラグインの提供状態は現在の画面で確認します。
+同じ工程は同じfactsファイルと一行の選定理由を再利用し、材料・範囲・必要操作・委譲方式・ホストの制約・準備や検収の負担が変わった時だけ意味判断をやり直します。期限の照合はCLIで再実行でき、分類のためにモデルへ材料を再送しません。新しいChatのUI・Pro・必要プラグインの提供状態は現在の画面で確認します。`model`は契約バッジではなくモデル選択欄の観測値です。旧`6 Pro`/`GPT-6 Pro`も受理し、backendは推測しません。
 
 初回は依頼に必要な接続だけ、利用者が一覧調査を依頼した時は既存接続のメタデータだけを確認します。サポートされたChatの設定・一時Chatのプラスメニューで確認し、Codex側のツール一覧からChatの能力を推測しません。接続の確認だけを目的にメール本文や顧客データを取得しません。
 
@@ -16,7 +16,7 @@
 - 各記録に確認日時と有効期限を付けます。最大7日で、短い期限を選べます。未来日時・期限切れはstaleとして必要分だけ再確認します。接続エラー、再ログイン、権限やアカウント変更に気づいたら期限内でも直ちにblockedまたはadvertisedへ戻します。
 - 検索は `needs` に合う操作だけ。未登録・期限切れは不存在と断定せず、必要な接続だけ確認します。本文が十分ならツールなしの依頼にできます。
 
-GitHubでは承認されたrepoの原文・差分・Issue・CIの読取りを使って調査やレビューをまとめて渡せます。Gmailは指定範囲の検索・要約、Canva/Figmaは対象デザインの読取り・提案、Stripeは承認済み範囲の調査、公式Docs MCPは仕様確認の候補です。いずれも実際のChat側の操作と対象権限を確認します。プラグインのスキルだけの導入からローカル編集・ビルド・本番実行がChatで可能とは扱いません。書込みが必要な時はその操作・対象・承認を別途確定し、読取実績を流用しません。
+GitHubでは承認されたrepoの原文・差分・Issue・CIの読取りを使って調査やレビューをまとめて渡せます。Gmailは指定範囲の検索・要約、Canva/Figmaは対象デザインの読取り・提案、Stripeは承認済み範囲の調査、公式Docs MCPは仕様確認の候補です。いずれも実際のChat側の操作と対象権限を確認します。プラグインのスキルだけの導入からローカル編集・ビルド・本番実行がChatで可能とは扱いません。書込みが必要な時はその操作・対象・承認を確定し、読取実績を流用しません。元の依頼が編集・テスト・PR・CI確認・マージを含むなら同じ承認を再利用し、試験書込みや重複承認を要求しません。実際に提供された操作を調べ、一般的な読取専用という説明だけで利用不能と判断しません。
 
 ## 入力と結果
 
@@ -30,7 +30,7 @@ GitHubでは承認されたrepoの原文・差分・Issue・CIの読取りを使
 {
   "schema_version": 1,
   "surface": "chat-temporary",
-  "model": "6 Pro",
+  "model": "Pro",
   "installed_plugins": ["GitHub"],
   "capabilities": [{
     "tool": "GitHub", "operation": "fetch_file", "scope": "example/project",
@@ -62,7 +62,7 @@ python <plugin-root>/scripts/chat_plan.py --facts facts.json --inventory <CODEX_
 
 | route | rootの次の動作 |
 | --- | --- |
-| chat_candidate | 有効なopt-in設定、現在のChat／一時Chat／6 Pro、対象と操作の承認を確認して実依頼を準備 |
+| chat_candidate | 有効なopt-in設定、現在のChat／一時Chat／Pro、対象と操作の承認を確認して実依頼を準備 |
 | local_auth | 登録済みローカルMCPの対応工程・元セッション・範囲を確認し、状態だけを受け取る。分類結果だけで認証を実行しない |
 | preflight_needed | 必須の未確認・期限切れ操作だけ確認。既に材料が十分ならツール不要の依頼へ縮小 |
 | codex | 現担当で進めるか、有効方針の通常子のmodel・effort表を使う |
@@ -81,7 +81,7 @@ CLIの終了コード0は分類処理の成功です。`chat_candidate` も送�
 従来のfactsは互換性を保ち、delegation省略時は並列として扱います。親に独立作業がないことだけで直列を許可しません。専門委譲に具体的な追加価値があり、ホストの指示・機能が許す場合だけ、factsへ次を追加します。
 
 ```json
-{"delegation":{"mode":"serial_specialist","host_allows_serial":true,"reason":"材料が完結した専門設計を6 Proへ渡し、結果を受けて実装する"}}
+{"delegation":{"mode":"serial_specialist","host_allows_serial":true,"reason":"材料が完結した専門設計をProへ渡し、結果を受けて実装する"}}
 ```
 
 `requires_repeated_local_access`は、**Codex側にしかない現物**を繰り返し参照する必要のことです。Chat自身が持つコード編集・テスト環境を使う工程は、実在と権限が確認できれば一律に除外しません。readの台帳からwriteの能力は推測せず、許された実作業の証拠または必要な事前確認を使います。
@@ -93,7 +93,7 @@ CLIの終了コード0は分類処理の成功です。`chat_candidate` も送�
   "is_root": true,
   "route_enabled": true,
   "surface": "chat-temporary",
-  "model": "6 Pro",
+  "model": "Pro",
   "transport": "browser-temporary",
   "transport_authorized": false,
   "actions_authorized": true,
@@ -102,9 +102,9 @@ CLIの終了コード0は分類処理の成功です。`chat_candidate` も送�
 }
 ```
 
-`transport_authorized`は具体的な送受信方法が許されることの確認です。利用者のopt-inだけでは足りず、[利用条件](chat-limits.md)の未解決事項を確認します。確認できなければfalseのまま、送信を止めます。`actions_authorized`は今回の対象・操作の承認です。PR作成からmerge権限を推測しません。
+`transport_authorized`はCodex親から別Chatへの具体的な送受信方法の確認です。[許可根拠](chat-authorization.md)に従い、trueなら同じliveに`transport_evidence`を添付します。これは既存の根拠の記録で、新しい提供者例外許可や利用者の重複承認を一律に要求するものではありません。根拠が確認できなければfalseのまま送信を止めます。`actions_authorized`は今回の対象・操作の承認です。PR作成だけからmerge権限を推測せず、元の依頼がmergeまで含むならその承認を使います。現在の通常Chat内のネイティブツール利用には、別Chat転送用のこのliveを要求しません。
 
-`quota_state`は`unknown`／`no_limit_notice`／`exhausted`。no_limit_noticeは現在の6 Pro選択と制限通知がないことの観測で、実残量や次の回答の保証ではありません。上限不明・選択不明・通知未確認はunknownとして必要な確認を行います。未来または2分超の観測は再確認が必要です。回答後にもsurface/model/上限通知を確認します。
+`quota_state`は`unknown`／`no_limit_notice`／`exhausted`。no_limit_noticeは現在のPro選択と制限通知がないことの観測で、実残量や次の回答の保証ではありません。上限不明・選択不明・通知未確認はunknownとして必要な確認を行います。未来または2分超の観測は再確認が必要です。回答後にもsurface/model/上限通知を確認します。
 
 `--live`なしは過去の分類呼出し互換用で、結果の`live_checked:false`を送信可能と扱いません。`true`も入力された観測の整合を検証しただけで、実UI・backendモデル・権限の機械的な証明ではありません。legacy `codex-app-tools`のsurfaceは`chat`であり、一時Chatを作成・操作しません。
 
@@ -122,7 +122,7 @@ CLIの終了コード0は分類処理の成功です。`chat_candidate` も送�
 }
 ```
 
-この状態を含む候補は、新しい`--live`によるroot・opt-in・転送方法・今回の操作承認・surface/model・利用制限の確認が通る場合だけ返します。`--live`なしではpreflight_neededです。完全一致のoperation/scope、surface、有効期限も既存と同じく検査します。古いverified記録の意味は変更しません。
+この状態を含む候補は、新しい`--live`によるroot・opt-in・転送方法・今回の操作承認・surface/model・利用制限の確認が通る場合だけ返します。`--live`なしではpreflight_neededです。完全一致のoperation/scope、surface、有効期限も既存と同じく検査します。古いverified記録の意味は変更しません。転送のtrueのみを保存した旧liveは、新しい送信の前に実際の根拠を確認・記録します。旧liveを自動的に確認済みへ移行しません。
 
 出力の`execution_verified:false`は、成功をまだ観測していないことを明示します。権限の自己申告やこの分類結果だけで実行成功とせず、本来の承認済み操作で結果と証拠を確認してからverifiedへ更新します。操作が拒否された場合はblocked等へ更新し、再送・権限拡張で押し切りません。`advertised`だけの必須操作は従来どおりpreflight_neededです。
 

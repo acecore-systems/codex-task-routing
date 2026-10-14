@@ -12,7 +12,7 @@
 
 Luna/{{models.luna.default_effort}}は明確な定型工程、Sol/{{models.sol.default_effort}}は複雑な実装・原因・重要レビュー、Astra/{{models.astra.default_effort}}は難しい前提・重大判断を担当する。model IDを明示し、再開でも観測値を推測しない。repoでは絶対cwd、repo/worktree、branch/HEAD、対象の未commit差分を示す。不一致をresetや探索で補わせない。
 
-## 通常Chat 6 Pro
+## 通常Chat Pro
 
 秘密値を扱う認証工程は先にローカル経路へ分離する。本文・材料・添付にパスワード、OAuth JSON、Cookie、秘密の写る画面を含めない。認証方式の公開仕様や秘密を含まないコードの分析は、通常の承認と能力確認で扱える。
 
@@ -27,3 +27,5 @@ Luna/{{models.luna.default_effort}}は明確な定型工程、Sol/{{models.sol.d
 結論、重要差分、合格条件との照合、検証方法・cwd・環境・終了コード・時刻・revisionと対象差分、根拠の参照、前提・反例・未解決点を必要な範囲で返す。成功／失敗／skip／未実行を区別する。HTTP成功・null・0件を不存在や完了としない。安全に残せない証拠は理由付き欠測とする。
 
 親は重要な条件と証拠を確認し、同じrevision・diff・環境の有効な結果を再利用する。追加確認は変更・矛盾・失敗・証拠不足へ絞る。重大な専門判断を自己申告だけで受け入れず、同じ判断を別Astraに重複させない。必要な人の承認は維持する。
+
+通常Chatの選択表示はPro（旧6 Pro / GPT-6 Proも可）で、契約名やbackend IDとは区別する。別Chat転送はchat-authorization.mdの根拠を確認し、現在のChat内のネイティブツール操作とは分ける。すでに明示承認された操作には同じ承認を再利用し、上位制約は省略しない。

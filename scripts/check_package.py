@@ -20,7 +20,7 @@ def check():
     for name in ['LICENSE', 'scripts/routing.py', 'scripts/chatgpt_route.py', 'scripts/updater.py', 'scripts/updater_entry.py', 'scripts/install_updater.py', 'hooks/hooks.json', 'defaults/config.json', 'skills/task-routing/SKILL.md', 'skills/task-routing/references/configuration.md', 'skills/task-routing/references/chatgpt.md', 'skills/task-routing/references/observation.md', 'skills/task-routing/references/chat-limits.md', 'skills/task-routing/references/observation-example.json']:
         assert (PLUGIN / name).is_file(), name
     hooks = json.loads((PLUGIN / 'hooks/hooks.json').read_text(encoding='utf-8'))['hooks']
-    for name in ['scripts/routing_core/__init__.py', 'scripts/routing_core/common.py', 'scripts/routing_core/observation.py', 'scripts/chat_plan.py', 'scripts/chat_transfer.py', 'skills/task-routing/references/chat-capabilities.md', 'skills/task-routing/references/chat-transfer.md', 'skills/task-routing/references/local-auth.md']:
+    for name in ['scripts/routing_core/__init__.py', 'scripts/routing_core/common.py', 'scripts/routing_core/observation.py', 'scripts/chat_plan.py', 'scripts/chat_transfer.py', 'skills/task-routing/references/chat-capabilities.md', 'skills/task-routing/references/chat-transfer.md', 'skills/task-routing/references/local-auth.md', 'skills/task-routing/references/chat-authorization.md']:
         assert (PLUGIN / name).is_file(), name
     assert set(hooks) == {'SessionStart', 'SubagentStart'}
     for groups in hooks.values():
@@ -30,7 +30,7 @@ def check():
                 assert hook['command'] == "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','routing.py'),run_name='__main__')\" hook"
                 assert hook['timeout'] <= 10
     config = json.loads((PLUGIN / 'defaults/config.json').read_text(encoding='utf-8'))
-    assert config['policy_revision'] == '2026-10-14-sol-max-routing'
+    assert config['policy_revision'] == '2026-10-14-chat-pro-authorization'
     assert 'local_auth_status' in config['principles']['policy_local_auth']
     assert config['models']['luna']['default_effort'] == 'max'
     assert config['models']['terra']['id'] == 'gpt-6.1-sol'  # legacy override key, never routed
