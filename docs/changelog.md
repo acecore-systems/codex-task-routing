@@ -1,5 +1,12 @@
 # 変更履歴
 
+## 0.14.0 — 下位役割の標準孫と直下SolによるPro所有
+
+- 標準孫をAstra子→Sol/Luna、Sol子→Lunaへ限定。Luna子・孫から先、同モデル/上位役割は不可。割当て役割とrootからの深さを照合し、不明ならrootへ返す。親の実設定・モデル/effort・overrideは保持。
+- 明示opt-inのbrowser経路はrootとroot直下Sol子だけが依頼の準備・送信・回収・内容受入・承認済み修正を所有。Sol→Proは標準孫と別経路、legacyはrootのみ。
+- inspect/dispatch/receiveで任意actorを共通照合。旧is_root:trueは互換、false単独・不適合role/depth・所有者不一致・ホスト不許可を拒否。観測は権限やbackendの証明ではなく、追加の本人承認を一律に要求しない。
+- 同一タブ/依頼ID/input hashと送信済み状態を引き継ぎ、rootへの回収handoffでも再送しない。並列の独立作業は委譲する担当自身に必要。条件付きの子フックと関連手順・生成物を同期。[検証記録](validation-0.14.0.md)。
+
 ## 0.13.0 — 判断に集中する親と同じ担当による完了単位
 
 - 親Sol/xhighを現行基準とする説明を改め、利用者が選んだAstra親は判断・優先順位・担当選定・受入・重要例外へ集中。親の実model・effort、他モデル親、既存overrideは維持。

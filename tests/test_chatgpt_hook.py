@@ -38,7 +38,7 @@ class ChatHookTests(unittest.TestCase):
         self.settings({"schema_version": 1, "enabled": False, "required_model": "6 Pro", "transport": "browser-temporary"})
         self.assertEqual(before, self.payload())
 
-    def test_enabled_only_advertised_to_session_root(self):
+    def test_enabled_child_guidance_is_conditional_without_role_inference(self):
         self.settings({"schema_version": 1, "enabled": True, "required_model": "6 Pro", "transport": "browser-temporary"})
         parent = self.payload()["hookSpecificOutput"]["additionalContext"]
         self.assertIn("Opt-in ChatGPT Chat route is enabled", parent)
@@ -54,13 +54,16 @@ class ChatHookTests(unittest.TestCase):
         self.assertIn("never Work or a model API", parent)
         self.assertLessEqual(len(parent), routing.MAX_ADDITIONAL_CONTEXT_CHARS)
         child = self.payload("SubagentStart")["hookSpecificOutput"]["additionalContext"]
-        self.assertNotIn("Opt-in ChatGPT", child)
-        self.assertNotIn("evaluate this Chat route first", child)
+        self.assertIn("Opt-in ChatGPT Chat route is enabled", child)
+        self.assertIn("Conditional only: root-direct Sol child, depth=1", child)
+        self.assertIn("SubagentStart does not prove role/depth", child)
+        self.assertIn("Astra/Luna children and all grandchildren must not use Chat", child)
+        self.assertLessEqual(len(child), routing.MAX_ADDITIONAL_CONTEXT_CHARS)
 
     def test_installed_long_path_keeps_enabled_chat_within_hook_limit(self):
         # A native installation adds cache namespaces to an already long
         # workspace path. The optional root context must still deliver policy.
-        installed = self.home / 'plugins/cache/codex-task-routing/codex-task-routing/0.13.0'
+        installed = self.home / 'plugins/cache/codex-task-routing/codex-task-routing/0.14.0'
         shutil.copytree(routing.PLUGIN_ROOT, installed,
                         ignore=shutil.ignore_patterns('__pycache__'))
         settings = dict(schema_version=1, enabled=True, required_model='Pro')
@@ -72,6 +75,13 @@ class ChatHookTests(unittest.TestCase):
                 self.assertNotIn('systemMessage', payload)
                 context = payload['hookSpecificOutput']['additionalContext']
                 self.assertLessEqual(len(context), routing.MAX_ADDITIONAL_CONTEXT_CHARS)
+                child = routing.hook_payload(event='SubagentStart', source='startup',
+                    plugin_root=installed, codex_home=self.home, cwd=self.home)
+                self.assertNotIn('systemMessage', child)
+                self.assertLessEqual(len(child['hookSpecificOutput']['additionalContext']),
+                                     routing.MAX_ADDITIONAL_CONTEXT_CHARS)
+                self.assertEqual('Opt-in ChatGPT' in child['hookSpecificOutput']['additionalContext'],
+                                 transport == 'browser-temporary')
                 for phrase in ('Opt-in ChatGPT Chat route is enabled', 'Keep a suitable existing owner',
                                'unknown authorization blocks dispatch', 'observation start',
                                'local_auth_status', 'never Work or a model API'):
@@ -99,6 +109,17 @@ class ChatHookTests(unittest.TestCase):
         self.assertEqual(status["task_ids"], ["retained-task"])
         self.assertEqual(status["remaining"], 2)
         self.assertEqual(routing.load_policy(codex_home=self.home).content_hash, policy.content_hash)
+
+    def test_disabled_invalid_and_legacy_do_not_advertise_child_chat(self):
+        for settings in (dict(schema_version=1, enabled=False, required_model='Pro', transport='browser-temporary'),
+                         dict(schema_version=1, enabled=True, required_model='unknown', transport='browser-temporary'),
+                         dict(schema_version=1, enabled=True, required_model='Pro', transport='codex-app-tools')):
+            with self.subTest(settings=settings):
+                self.settings(settings)
+                payload = self.payload('SubagentStart')
+                context = payload['hookSpecificOutput']['additionalContext']
+                self.assertNotIn('Opt-in ChatGPT', context)
+                self.assertIn('policy hash', context)
 
     def test_explicit_legacy_transport_remains_available_but_is_not_temporary(self):
         self.settings({"schema_version": 1, "enabled": True, "required_model": "6 Pro", "transport": "codex-app-tools"})

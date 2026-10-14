@@ -146,7 +146,7 @@ class FixedRoutingTests(unittest.TestCase):
     def test_generated_owner_policy_has_no_conflicting_parent_defaults(self):
         # Contract checks of generated instructions, not model-behavior tests.
         policy = routing.load_policy(codex_home=self.home)
-        self.assertEqual(policy.config['policy_revision'], '2026-10-14-owner-completion')
+        self.assertEqual(policy.config['policy_revision'], '2026-10-14-bounded-descendants')
         documents = policy.rendered_documents()
         obsolete = ('GPT-6.1 Sol/xhigh', '参考基準は親Sol/xhigh',
                     '通常作業は親で完結する', '通常工程は親で完結し',
@@ -163,9 +163,12 @@ class FixedRoutingTests(unittest.TestCase):
         # Existing host gates and the local secret boundary must survive the
         # broader owner scope. This plugin remains instruction-only routing.
         hierarchy = policy.config['principles']['policy_hierarchy']
-        self.assertIn('親にも別の有用な作業が必要', hierarchy)
+        self.assertIn('委譲する担当自身にも別の有用な作業が必要', hierarchy)
         self.assertIn('許可不明は許可済みにしない', hierarchy)
-        self.assertIn('子からの再委譲は標準にせず親へ返す', hierarchy)
+        self.assertIn('Luna子からの委譲、孫から先、同モデル・上位役割への委譲は不可', hierarchy)
+        self.assertIn('一般的なモデル性能順位ではない', hierarchy)
+        self.assertIn('割当て役割だけ', hierarchy)
+        self.assertIn('override後のモデルIDやSubagentStartだけから推測しない', hierarchy)
         self.assertIn('秘密値の入力・保管・転送',
                       policy.config['principles']['policy_local_auth'])
 
