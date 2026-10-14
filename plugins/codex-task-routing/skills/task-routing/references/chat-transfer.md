@@ -1,6 +1,6 @@
 # Browser local transfer
 
-The selected model label may be `Pro`, `6 Pro` or `GPT-6 Pro`; this is not a subscription badge or backend attestation. Confirm the specific send/receive contract as described in [authorization](chat-authorization.md) before starting a transfer.
+The selected model label may be `Pro`, `6 Pro` or `GPT-6 Pro`; this is not a subscription badge or backend attestation. Use [operation-specific preflight](chat-authorization.md): inspect before dispatch, reuse existing scoped approvals, then send once. An additional transport_evidence object is not required. Actual host denials and unresolved provider conditions still stop the affected operation.
 
 
 `chat_transfer.py` is a local loopback helper for an already approved
@@ -29,9 +29,8 @@ the selected UI model is `Pro`, and the temporary-Chat conditions hold. The
 helper does not make those checks and does not send anything itself.
 
 Choose supported Browser operations that do not automatically emit the full
-page on navigation. For example, once the documented Browser runtime is
-initialized, create a tab with its `tabs.new()` method and navigate with
-`goto()`, then read only the relevant DOM fields. A wrapper that automatically
+page on navigation. Use only tab/navigation and field-reading operations actually exposed by
+the current Browser runtime; do not assume a method name or add another driver. A wrapper that automatically
 prints its initial AX tree can echo the entire prompt and defeat this saving.
 Keep the prompt and final answer in Browser-runtime variables; report only
 length, equality, selected model, and the save result to the parent. Never
@@ -69,8 +68,12 @@ confirmation.
 
 ## Dispatch permission and longer work
 
-Before any Chat send/collection, follow [usage and authorization gates](chat-limits.md)
-and pass fresh observations to `chat_plan.py --live`. Local transfer validation
+Before a new Chat send, follow [usage and authorization gates](chat-limits.md)
+and pass fresh observations to `chat_plan.py --live`. For collection of the
+existing request, use `chat_plan.py --phase receive --live receive-live.json
+--request bundle.json`. Collection requires its own confirmed scope, but not
+new-generation quota or permission for another send. `--phase inspect` plans
+only permitted contract/UI inspection and never sends or collects a reply. Local transfer validation
 is not permission for an otherwise unapproved automated extraction method.
 
 The helper deadline is a local transport lifetime, not proof that Chat failed

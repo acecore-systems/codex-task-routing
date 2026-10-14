@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local, deterministic suitability checks; never discover tools or send work."""
+"""Local inspection/dispatch checks; never discover tools, grant access or send work."""
 from __future__ import annotations
 
 import argparse
@@ -10,13 +10,18 @@ import sys
 
 from chatgpt_route import (
     ChatRouteError, _load_json_object, _require_keys,
-    _require_nonempty_string, is_required_model,
+    _require_nonempty_string, _expected_request, is_required_model,
 )
 
 FLAGS = {"substantial", "parent_has_independent_work", "materials_approved",
          "handoff_proportionate", "requires_repeated_local_access"}
 PRIVATE_AUTH_FLAG = "requires_private_auth"
 STATES = {"advertised", "permission_checked", "verified", "blocked"}
+BROWSER_OPERATIONS = ("inspect", "send", "receive")
+BROWSER_STATES = {"unknown", "permission_checked", "verified", "confirmation_required",
+                  "unavailable", "blocked", "provider_review"}
+BROWSER_CONFIRMED = {"permission_checked", "verified"}
+
 
 
 def _keys(value, required, purpose):
@@ -92,7 +97,7 @@ def _delegation(facts):
     return "serial_specialist" if decision["host_allows_serial"] else "serial_disallowed"
 
 
-def _transport_evidence(live):
+def _transport_evidence(live, *, operations=("send", "receive")):
     """Validate scoped, caller-supplied evidence; never grant transport access.
 
     No provider exception is universally required: a supported host tool
@@ -101,73 +106,201 @@ def _transport_evidence(live):
     """
     evidence = live.get("transport_evidence")
     if evidence is None:
-        return "transport_evidence_missing"
+        # A second serialized proof never established real permission. Reuse
+        # the caller's existing scoped confirmation; do not demand paperwork.
+        return None
     _keys(evidence, {"basis", "reference", "transport", "operations"}, "transport evidence")
     for name in ("basis", "reference", "transport"):
         _text(evidence[name])
     if evidence["basis"] not in {"host_tool_contract", "official_documentation", "provider_permission"}:
         raise ChatRouteError("transport evidence requires a supported permission basis")
-    operations = evidence["operations"]
-    if (not isinstance(operations, list) or len(operations) > 2
-            or any(not isinstance(item, str) or item not in {"send", "receive"} for item in operations)
-            or len(set(operations)) != len(operations)):
+    supplied = evidence["operations"]
+    if (not isinstance(supplied, list) or len(supplied) > 2
+            or any(not isinstance(item, str) or item not in {"send", "receive"} for item in supplied)
+            or len(set(supplied)) != len(supplied)):
         raise ChatRouteError("transport evidence operations must be distinct send/receive values")
     if evidence["transport"] != live["transport"]:
         return "transport_evidence_scope_mismatch"
-    if set(operations) != {"send", "receive"}:
+    if not set(operations) <= set(supplied):
         return "transport_evidence_incomplete"
     return None
 
 
-def _transport_not_ready(reason):
-    # This is the repository's conservative classification, not a finding
-    # that OpenAI bans the operation. A denial must never become permission.
-    return {"route": "not_ready", "reason": reason,
-            "constraint_layer": "repository_preflight", "dispatch_authorized": False,
-            "next_check": "Check the exact send/receive tool contract, applicable terms and host restrictions; "
-                          "reuse existing scoped approval, do not infer permission from opt-in or a paid plan. "
-                          "See references/chat-authorization.md."}
+def _browser_checks(live):
+    """Read operation observations, not a new approval or permission database."""
+    if "browser_checks" not in live:
+        return None
+    checks = live["browser_checks"]
+    if not isinstance(checks, dict):
+        raise ChatRouteError("browser_checks must be an object")
+    _require_keys(checks, required=set(), allowed=set(BROWSER_OPERATIONS), purpose="browser checks")
+    if any(not isinstance(state, str) or state not in BROWSER_STATES for state in checks.values()):
+        raise ChatRouteError("unsupported browser check state")
+    if live["transport"] != "browser-temporary":
+        raise ChatRouteError("browser_checks only describe browser-temporary")
+    return {op: checks.get(op, "unknown") for op in BROWSER_OPERATIONS}
 
 
-def check_live(live, *, now):
+def _browser_gap(operation, state):
+    """Concrete next steps for supplied observations, never inferred denials."""
+    resolutions = {
+        "unknown": ("codex_root", "Current Browser skill and tool schemas in the Codex session",
+                    "Check the documented controls for this operation, the exact destination, "
+                    "existing user approval and applicable host/provider conditions. Reuse valid "
+                    "checks; do not ask for a special delegation exception merely because the "
+                    "operation uses ordinary page controls.", "inspect_operation_contract"),
+        "confirmation_required": ("user", "The actual Browser site/action confirmation prompt",
+                    "Respond only to the host's pending request for this site/action. Reuse an "
+                    "existing valid site/action approval; do not ask again in repository prose.", "resolve_host_confirmation"),
+        "unavailable": ("user_or_workspace_admin", "ChatGPT desktop app: Plugins > Browser; Settings > Browser",
+                    "Enable the supported Browser in the intended Codex session when permitted. "
+                    "CLI, another Chat session or a different browser is not evidence of access.", "enable_supported_browser"),
+        "blocked": ("user_or_workspace_admin", "Browser site/action denial and managed browser policy",
+                    "Read the exact denial. Only the authorized settings owner can change it; "
+                    "otherwise keep this operation stopped. Do not switch tools to evade it.", "resolve_host_denial"),
+        "provider_review": ("user_and_openai_support", "OpenAI Help Center support; Terms of Use > Using our Services",
+                    "Ask whether this exact first-party Browser flow may submit one approved "
+                    "request to Temporary Chat Pro and read its completed displayed reply into "
+                    "the local form, and how the automatic Output-extraction clause applies. "
+                    "Include the Browser version and relevant instruction, not credentials or chat history.", "resolve_provider_scope"),
+    }
+    owner, where, action, next_action = resolutions[state]
+    return {"route": "not_ready" if state in {"blocked", "unavailable"} else "preflight_needed",
+            "reason": "browser_" + operation + "_" + state,
+            "constraint_layer": "provider_scope_unresolved" if state == "provider_review" else "host_observation",
+            "dispatch_authorized": False, "preflight_complete": False,
+            "next_action": next_action,
+            "resolution": {"operation": operation, "owner": owner, "where": where, "action": action}}
+
+
+def _transport_not_ready(reason, *, unknown=False):
+    result = _browser_gap("send_and_receive", "unknown")
+    result.update(route="preflight_needed" if unknown else "not_ready", reason=reason,
+                  constraint_layer="repository_preflight")
+    return result
+
+
+def inspection_plan(live):
+    """Plan only the non-dispatch inspection. No Chat prompt or reply is moved.
+
+    In particular, an unknown/false *transfer* flag cannot prevent learning the
+    Browser contract. Actual restrictions on inspection itself still apply.
+    """
+    if not isinstance(live, dict):
+        raise ChatRouteError("inspection requires a live object")
+    required = {"is_root", "route_enabled", "transport"}
+    allowed = required | {"surface", "model", "transport_authorized", "transport_evidence",
+                          "actions_authorized", "quota_state", "observed_at", "browser_checks"}
+    _require_keys(live, required=required, allowed=allowed, purpose="inspection live")
+    for field in ("is_root", "route_enabled"):
+        if type(live[field]) is not bool:
+            raise ChatRouteError("inspection gates must be JSON booleans")
+        if not live[field]:
+            return {"route": "not_ready", "reason": field + "_not_established",
+                    "dispatch_authorized": False, "preflight_complete": False}
+    if live["transport"] != "browser-temporary":
+        return {"route": "not_ready", "reason": "inspection_requires_browser_temporary",
+                "dispatch_authorized": False, "preflight_complete": False}
+    checks = _browser_checks(live)
+    state = checks["inspect"] if checks else "unknown"
+    if state not in BROWSER_CONFIRMED:
+        return _browser_gap("inspect", state)
+    return {"route": "preflight_needed", "reason": "observe_live_chat_ui",
+            "next_action": "inspect_chat_ui", "dispatch_authorized": False,
+            "preflight_complete": False,
+            "resolution": {"operation": "inspect", "owner": "codex_root",
+                           "where": "The approved Browser on chatgpt.com, in a new empty Temporary Chat",
+                           "action": "Observe Chat (not Work), Temporary Chat, selected Pro and limit notices. "
+                                     "Do not enter a task, submit a prompt or collect a model reply. "
+                                     "User handles sign-in; do not read credentials, old chats or memory."}}
+
+
+def _check_transport(live, *, phase="dispatch"):
+    authorized = live.get("transport_authorized")
+    if authorized is not None and type(authorized) is not bool:
+        raise ChatRouteError("transport_authorized must be a JSON boolean or null")
+    checks = _browser_checks(live)
+    # Legacy false is never silently reinterpreted or overridden. The old
+    # format conflated unknown with denied; resolving it requires a real check.
+    if authorized is False:
+        return _transport_not_ready("transport_authorized_not_established")
+    if checks is not None:
+        # More specific current observations take precedence over legacy true.
+        # A reported denial must not be hidden behind another unknown step.
+        operations = BROWSER_OPERATIONS if phase == "dispatch" else ("inspect", "receive")
+        for state in ("blocked", "unavailable", "provider_review", "confirmation_required", "unknown"):
+            for operation in operations:
+                if checks[operation] == state:
+                    return _browser_gap(operation, state)
+    elif authorized is not True:
+        return _transport_not_ready("transport_authorization_unobserved", unknown=True)
+    evidence_problem = _transport_evidence(live, operations=("send", "receive") if phase == "dispatch" else ("receive",))
+    if evidence_problem is not None:
+        return _transport_not_ready(evidence_problem)
+    return None
+
+
+def check_live(live, *, now, phase="dispatch"):
     """Check supplied observations, not the account; never attest actual execution.
 
     A short-lived snapshot prevents a saved quota or UI observation from being
     treated as a permanent permission. No remaining-message total is inferred.
     """
+    if phase not in {"dispatch", "receive"}:
+        raise ChatRouteError("unsupported live phase")
     required = {"is_root", "route_enabled", "surface", "model", "transport",
-                "transport_authorized", "actions_authorized", "quota_state", "observed_at"}
+                "actions_authorized", "observed_at"}
+    if phase == "dispatch":
+        required.add("quota_state")
     if not isinstance(live, dict):
         raise ChatRouteError("live must be an object")
-    _require_keys(live, required=required, allowed=required | {"transport_evidence"}, purpose="live")
-    for name in ("is_root", "route_enabled", "transport_authorized", "actions_authorized"):
+    _require_keys(live, required=required,
+                  allowed=required | {"quota_state", "transport_authorized", "transport_evidence", "browser_checks"}, purpose="live")
+    for name in ("is_root", "route_enabled", "actions_authorized"):
         if type(live[name]) is not bool:
             raise ChatRouteError("live gates must be JSON booleans")
-    for name in ("surface", "model", "transport", "quota_state"):
+    for name in ("surface", "model", "transport"):
         _text(live[name])
-    if live["quota_state"] not in {"unknown", "no_limit_notice", "exhausted"}:
+    quota = live.get("quota_state", "unknown")
+    _text(quota)
+    if quota not in {"unknown", "no_limit_notice", "exhausted"}:
         raise ChatRouteError("invalid quota observation")
     observed = _time(live["observed_at"])
-    for name in ("is_root", "route_enabled", "transport_authorized", "actions_authorized"):
+    for name in ("is_root", "route_enabled", "actions_authorized"):
         if not live[name]:
-            if name == "transport_authorized":
-                return _transport_not_ready("transport_authorized_not_established")
             return {"route": "not_ready", "reason": name + "_not_established"}
     expected_surface = {"browser-temporary": "chat-temporary", "codex-app-tools": "chat"}.get(live["transport"])
     if expected_surface is None or live["surface"] != expected_surface:
         return {"route": "not_ready", "reason": "wrong_surface_or_transport"}
-    evidence_problem = _transport_evidence(live)
-    if evidence_problem is not None:
-        return _transport_not_ready(evidence_problem)
+    transport_problem = _check_transport(live, phase=phase)
+    if transport_problem is not None:
+        return transport_problem
     if not is_required_model(live["model"]):
         return {"route": "not_ready", "reason": "required_model_not_observed"}
-    if live["quota_state"] == "exhausted":
+    if phase == "dispatch" and quota == "exhausted":
         return {"route": "not_ready", "reason": "quota_exhausted"}
     if not timedelta(0) <= now - observed <= timedelta(minutes=2):
         return {"route": "preflight_needed", "reason": "refresh_live_observations"}
-    if live["quota_state"] == "unknown":
+    if phase == "dispatch" and quota == "unknown":
         return {"route": "preflight_needed", "reason": "check_model_and_limit_notice"}
     return None
+
+
+def collection_plan(live, request, *, now=None):
+    """Collect only a known request; never restart generation to restore a form."""
+    request_id, input_sha256 = _expected_request(request)
+    instant = now or datetime.now(timezone.utc)
+    if not isinstance(instant, datetime) or instant.tzinfo is None:
+        raise ChatRouteError("now requires a timezone-aware datetime")
+    blocked = check_live(live, now=instant, phase="receive")
+    if blocked is not None:
+        return blocked
+    return {"route": "chat_collection", "reason": "supplied_collection_checks_passed",
+            "next_action": "collect_reply", "preflight_complete": True,
+            "dispatch_authorized": False, "dispatch_performed": False,
+            "request_id": request_id, "input_sha256": input_sha256,
+            "observation_source": "caller_supplied", "backend_model": "unknown",
+            "authorization_attested": False}
 
 
 def plan(facts, inventory=None, *, now=None, live=None):
@@ -230,23 +363,45 @@ def plan(facts, inventory=None, *, now=None, live=None):
         return {"route": "preflight_needed", "reason": "verify_only_required_capabilities", "checks": checks}
     if live is None and any(c["state"] == "permission_checked" for c in checks):
         return {"route": "preflight_needed", "reason": "fresh_live_required_for_unexercised_capability", "checks": checks}
-    return {"route": "chat_candidate", "reason": "verify_live_surface_model_and_permissions", "checks": checks,
-            "live_checked": live is not None, "delegation_mode": delegation,
+    return {"route": "chat_candidate",
+            "reason": "supplied_dispatch_checks_passed" if live is not None else "inspect_live_surface_model_and_permissions",
+            "next_action": "send_once" if live is not None else "inspect_browser",
+            "preflight_complete": live is not None, "dispatch_performed": False,
+            "checks": checks, "live_checked": live is not None, "delegation_mode": delegation,
             "observation_source": "caller_supplied", "backend_model": "unknown",
             "authorization_attested": False}
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--facts", type=Path, required=True)
+    parser.add_argument("--phase", choices=("inspect", "dispatch", "receive"), default="dispatch")
+    parser.add_argument("--facts", type=Path)
+    parser.add_argument("--request", type=Path, help="existing prepared bundle/request for receive only")
     parser.add_argument("--inventory", type=Path)
     parser.add_argument("--live", type=Path, help="fresh, explicitly supplied dispatch observations")
     args = parser.parse_args(argv)
+    if args.phase == "dispatch" and args.facts is None:
+        parser.error("--facts is required for dispatch")
+    if args.phase in {"inspect", "receive"} and args.live is None:
+        parser.error("--live is required for inspection/receive")
+    if args.phase == "receive" and args.request is None:
+        parser.error("--request is required for receive")
     try:
-        facts = _load_json_object(args.facts, purpose="facts")
+        facts = _load_json_object(args.facts, purpose="facts") if args.facts else {}
         if facts.get(PRIVATE_AUTH_FLAG) is True:
             # Private work must not read even a supplied Chat inventory/live file.
             print(json.dumps(plan(facts), ensure_ascii=False, separators=(",", ":")))
+            return 0
+        if args.phase == "inspect":
+            # No task suitability, Chat capability inventory, quota, transfer
+            # attestation or model observation is needed just to plan inspection.
+            live = _load_json_object(args.live, purpose="inspection live")
+            print(json.dumps(inspection_plan(live), ensure_ascii=False, separators=(",", ":")))
+            return 0
+        if args.phase == "receive":
+            live = _load_json_object(args.live, purpose="receive live")
+            request = _load_json_object(args.request, purpose="existing request")
+            print(json.dumps(collection_plan(live, request), ensure_ascii=False, separators=(",", ":")))
             return 0
         inventory = _load_json_object(args.inventory, purpose="inventory") if args.inventory else None
         live = _load_json_object(args.live, purpose="live") if args.live else None

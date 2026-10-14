@@ -11,3 +11,5 @@
 - 基準運用は親GPT-6.1 Sol/xhigh、子GPT-6 Luna/max・GPT-6.1 Sol/max・GPT-6 Astra/high、適合工程は通常Chat Proを優先する。親の実設定は変更せず、同モデルへの無用な移管をしない。並列は親の独立作業、直列の専門委譲は具体的追加価値とホストの許可を確認し、上位指示を迂回しない。
 
 - 通常Chatの選択表示はPro（旧6 Pro / GPT-6 Proも受理）。backendは推測しない。転送許可の根拠は`chat-authorization.md`に従い、ネイティブ接続操作と別Chatへの転送を分ける。元の依頼の承認を再利用し、ホストの実際の承認要求・上位制約は維持する。
+
+- Browser経路の調査は`chat_plan.py --phase inspect`、新規送信は既定dispatch、既存依頼の回収は`--phase receive`で分ける。有効な既存承認を再利用し、transport_evidenceを重ねて要求しない。実Browser未検証をローカルテスト/GitHub成功で代替しない。

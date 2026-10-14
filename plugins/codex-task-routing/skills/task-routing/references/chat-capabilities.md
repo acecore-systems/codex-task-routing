@@ -95,14 +95,14 @@ CLIの終了コード0は分類処理の成功です。`chat_candidate` も送�
   "surface": "chat-temporary",
   "model": "Pro",
   "transport": "browser-temporary",
-  "transport_authorized": false,
+  "browser_checks": {"inspect": "unknown", "send": "unknown", "receive": "unknown"},
   "actions_authorized": true,
   "quota_state": "unknown",
   "observed_at": "2026-09-15T00:00:00Z"
 }
 ```
 
-`transport_authorized`はCodex親から別Chatへの具体的な送受信方法の確認です。[許可根拠](chat-authorization.md)に従い、trueなら同じliveに`transport_evidence`を添付します。これは既存の根拠の記録で、新しい提供者例外許可や利用者の重複承認を一律に要求するものではありません。根拠が確認できなければfalseのまま送信を止めます。`actions_authorized`は今回の対象・操作の承認です。PR作成だけからmerge権限を推測せず、元の依頼がmergeまで含むならその承認を使います。現在の通常Chat内のネイティブツール利用には、別Chat転送用のこのliveを要求しません。
+`browser_checks`は対象Codexで確認したinspect/send/receiveの状態で、未確認はunknownのままです。具体的な操作仕様・対象許可・既存の本人承認・適用条件を確認できた操作はpermission_checked、さらに実行済みならverifiedです。初回送信に試験送信は不要です。[許可根拠と三段階の手順](chat-authorization.md)に従い、旧transport_authorized:trueも有効な同一範囲なら再利用できます。追加のtransport_evidenceは必須ではありません。旧falseや具体的な拒否を上書きしません。actions_authorizedは対象・操作の承認で、元の依頼が含む承認を再利用します。現在の通常Chat内のネイティブ操作にはこの別Chat転送用liveを要求しません。
 
 `quota_state`は`unknown`／`no_limit_notice`／`exhausted`。no_limit_noticeは現在のPro選択と制限通知がないことの観測で、実残量や次の回答の保証ではありません。上限不明・選択不明・通知未確認はunknownとして必要な確認を行います。未来または2分超の観測は再確認が必要です。回答後にもsurface/model/上限通知を確認します。
 
@@ -122,7 +122,7 @@ CLIの終了コード0は分類処理の成功です。`chat_candidate` も送�
 }
 ```
 
-この状態を含む候補は、新しい`--live`によるroot・opt-in・転送方法・今回の操作承認・surface/model・利用制限の確認が通る場合だけ返します。`--live`なしではpreflight_neededです。完全一致のoperation/scope、surface、有効期限も既存と同じく検査します。古いverified記録の意味は変更しません。転送のtrueのみを保存した旧liveは、新しい送信の前に実際の根拠を確認・記録します。旧liveを自動的に確認済みへ移行しません。
+この状態を含む候補は、新しい`--live`によるroot・opt-in・転送方法・今回の操作承認・surface/model・利用制限の確認が通る場合だけ返します。`--live`なしではpreflight_neededです。完全一致のoperation/scope、surface、有効期限も既存と同じく検査します。古いverified記録の意味は変更しません。旧liveで実際に確認済みの転送許可は、ホスト・方式・対象範囲・適用条件が変わらず有効なら再利用します。UI日時だけの更新で承認を取り直さず、旧falseや未確認を自動的に確認済みへ移行しません。
 
 出力の`execution_verified:false`は、成功をまだ観測していないことを明示します。権限の自己申告やこの分類結果だけで実行成功とせず、本来の承認済み操作で結果と証拠を確認してからverifiedへ更新します。操作が拒否された場合はblocked等へ更新し、再送・権限拡張で押し切りません。`advertised`だけの必須操作は従来どおりpreflight_neededです。
 

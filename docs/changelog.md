@@ -1,5 +1,13 @@
 # 変更履歴
 
+## 0.12.0 — Browserの重複判定と確認・送信・回収の分離
+
+- PR #17が残した必須のtransport_evidenceを撤回し、既存の有効な確認を再利用。旧false・具体的な拒否・未確認は昇格しない。
+- 新規入力はbrowser_checksでinspect/send/receiveを確認し、旧booleanと証拠ファイルを重ねて要求しない。permission_checkedは実行成功とは区別。
+- --phase inspectは調査だけ、既定dispatchはsend_once、--phase receiveは既存bundleに対するcollect_reply。回収だけなら新規生成枠と新規送信許可を要求せず、回収の許可・モデル・対応照合は維持。
+- 不足時に担当・場所・操作・具体的解消手順を返す。公式Browser資料の対応範囲とOutput抽出条項の未解決点を分け、実ホスト未確認・実往復未検証を明示。
+- Sol子gpt-6.1-sol/max、親実設定、認証、既定のモデル/effort・通常起動・フック・更新方式は変更しない。[検証と利用環境への引継ぎ](validation-0.12.0.md)。
+
 ## 0.11.0 — 通常Chat Proの表示互換と許可根拠
 
 - 選択UIの`Pro`、旧`6 Pro`/`GPT-6 Pro`を共通判定し、既存設定を非破壊で読み込みます。希望条件・観測・backendを区別し、未確認のbackendはunknownとします。
