@@ -96,16 +96,18 @@ class ChatAuthorizationTests(unittest.TestCase):
                     self.assertIn('transport_evidence', context)
                     self.assertEqual(path.read_bytes(), before)
 
-    def test_true_without_evidence_cannot_become_a_verified_permission(self):
+    def test_confirmed_transport_needs_no_second_evidence_object(self):
         for remove in (False, True):
             live = {**self.live, 'transport_evidence': None}
             if remove:
                 del live['transport_evidence']
             before = copy.deepcopy(live)
             result = plan.plan(self.facts, now=self.now, live=live)
-            self.assertEqual(result['reason'], 'transport_evidence_missing')
-            self.assertEqual(result['constraint_layer'], 'repository_preflight')
-            self.assertFalse(result['dispatch_authorized'])
+            self.assertEqual(result['reason'], 'supplied_dispatch_checks_passed')
+            self.assertEqual(result['next_action'], 'send_once')
+            self.assertTrue(result['preflight_complete'])
+            self.assertFalse(result['authorization_attested'])
+            self.assertFalse(result['dispatch_performed'])
             self.assertEqual(live, before)
 
     def test_evidence_never_turns_false_gates_true(self):

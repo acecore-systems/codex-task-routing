@@ -18,7 +18,8 @@
     "0.9.0 intentional policy change: GPT-6 Luna/Sol defaults, Sol/xhigh parent reference, inactive legacy terra override key; historical source hashes retained",
     "0.9.1 intentional default model update: GPT-6.1 Sol for sol and inactive legacy terra; GPT-6.1 Sol/xhigh parent reference; efforts and explicit overrides preserved; historical source hashes retained",
     "0.10.1 intentional effort update: Sol child max with max ceiling; parameterized summary and intro efforts; configured child diagnostics; explicit overrides preserved",
-    "0.11.0: normalize current Pro UI and legacy labels; scoped transport evidence and native-Chat/bridge distinction; no backend attestation, parent or child model/effort changes"
+    "0.11.0: normalize current Pro UI and legacy labels; scoped transport evidence and native-Chat/bridge distinction; no backend attestation, parent or child model/effort changes",
+    "0.12.0 runtime preflight: reuse confirmed transport without mandatory duplicate evidence; operation observations and inspect/dispatch/receive phases; default policy and all model/effort settings unchanged"
   ],
   "source_policy_revision": "2026-09-14",
   "rendered_sha256": {

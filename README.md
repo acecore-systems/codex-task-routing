@@ -88,7 +88,7 @@ Sol子を配布版の既定値変更にかかわらず `max` に固定する場�
 
 ### 通常Chatの一時Chat（Pro）へ渡す
 
-`Pro`はモデル選択欄の値です。旧`6 Pro`/`GPT-6 Pro`の設定・観測も互換として受理し、既存設定を自動書換えしません。契約バッジやAPIモデルIDは代用できず、実行backendは確認できなければ不明です。表示と実行の違い、公式・ホスト・repoの制約、`transport_authorized`の根拠は[許可判定の詳細](plugins/codex-task-routing/skills/task-routing/references/chat-authorization.md)にまとめています。
+`Pro`はモデル選択欄の値です。旧`6 Pro`/`GPT-6 Pro`の設定・観測も互換として受理し、既存設定を自動書換えしません。契約バッジやAPIモデルIDは代用できず、実行backendは確認できなければ不明です。0.12.0では既存の有効な転送確認に`transport_evidence`を重ねて要求せず、Browserのinspect/send/receiveを個別に扱います。`--phase inspect`で確認操作、既定のdispatchで一度の送信、`--phase receive`で再送なしの既存回答回収を分けます。未確認・明示false・実際の拒否を許可済みに変換しません。表示と実行の違い、公式・ホスト・repoの制約、不足条件の担当と解消手順は[許可判定の詳細](plugins/codex-task-routing/skills/task-routing/references/chat-authorization.md)にまとめています。
 
 通常Chat内の接続済みGitHubで、実際の権限と実行環境がそろえば、調査・修正・テスト・PR・CI確認・明示承認済みのマージをまとめて扱えます。この直接作業にCodexから別Chatへの転送許可は不要です。一方、Codexから別Chatへ送受信する場合の未確認許可を、ネイティブGitHub操作の成功で代用してはいけません。
 

@@ -726,11 +726,11 @@ def _chatgpt_context(home: Path, plugin_root: Path) -> str:
         "allowed tool capabilities, return format and stop conditions before dispatch. "
         "Read the route instructions before use: "
         f"{reference}. "
-        "Before dispatch use chat_plan.py --live with fresh observations; supplied flags are not proof of permission. Confirm the permitted transport separately from quota and opt-in; unknown authorization blocks dispatch. Record scoped transport_evidence; do not demand a new provider exception when the exact supported host contract already establishes permission. See chat-authorization.md beside chatgpt.md. This inter-Chat gate does not apply to native tools used inside the current Chat. Use normal Chat only; never Work or a model API. Verify the Chat surface and Pro in the UI "
+        "Before dispatch use chat_plan.py --live with fresh observations; supplied flags are not proof of permission. Confirm the permitted transport separately from quota and opt-in; unknown authorization blocks dispatch. Use --phase inspect for permitted preflight before transfer is established; do not send a probe message. Reuse existing permission using browser_checks or legacy transport_authorized:true, not both. transport_evidence is optional. Do not demand a new provider exception merely because supported controls do not mention delegation. A passed preflight returns next_action:send_once; --phase receive collects an existing request without re-sending or requiring new-generation quota. See chat-authorization.md beside chatgpt.md. This inter-Chat gate does not apply to native tools used inside the current Chat. Use normal Chat only; never Work or a model API. Verify the Chat surface and Pro in the UI "
         "before dispatch and verify the model after completion; tool replies do not attest a backend model. "
         + transport_note
         + "Use an isolated conversation per task, request IDs and input hashes. Missing tools, unknown model "
-        "or quota failure blocks this route; report it, do not silently substitute a billed API or Work. "
+        "or quota failure blocks dispatch, not permitted inspection or separately authorized collection; report it, do not silently substitute a billed API or Work. "
         "Do not route from subagents or start models from hooks. Preserve the parent model and effort."
     )
 
