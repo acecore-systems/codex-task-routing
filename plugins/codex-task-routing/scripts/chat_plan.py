@@ -233,7 +233,7 @@ def plan(facts, inventory=None, *, now=None, live=None):
     return {"route": "chat_candidate", "reason": "verify_live_surface_model_and_permissions", "checks": checks,
             "live_checked": live is not None, "delegation_mode": delegation,
             "observation_source": "caller_supplied", "backend_model": "unknown",
-            "dispatch_authorized": False}
+            "authorization_attested": False}
 
 
 def main(argv=None):

@@ -49,7 +49,7 @@ class ChatAuthorizationTests(unittest.TestCase):
                 self.assertEqual(result['route'], 'chat_candidate')
                 self.assertEqual(result['backend_model'], 'unknown')
                 self.assertEqual(result['observation_source'], 'caller_supplied')
-                self.assertFalse(result['dispatch_authorized'])
+                self.assertFalse(result['authorization_attested'])
 
     def test_alias_only_changes_between_inventory_and_live_do_not_block(self):
         for saved, current in [('6 Pro', 'Pro'), ('Pro', 'GPT-6 Pro')]:
@@ -121,7 +121,7 @@ class ChatAuthorizationTests(unittest.TestCase):
         for basis in ('host_tool_contract', 'official_documentation', 'provider_permission'):
             result = self.evaluate(transport_evidence={**self.evidence, 'basis': basis})
             self.assertEqual(result['route'], 'chat_candidate')
-            self.assertFalse(result['dispatch_authorized'])
+            self.assertFalse(result['authorization_attested'])
             self.assertEqual(result['observation_source'], 'caller_supplied')
 
     def test_opt_in_paid_plan_advertisement_and_success_are_not_permission_bases(self):
@@ -183,7 +183,7 @@ class ChatAuthorizationTests(unittest.TestCase):
         result = plan.plan(self.facts, self.inventory, now=self.now)
         self.assertEqual(result['route'], 'chat_candidate')
         self.assertFalse(result['live_checked'])
-        self.assertFalse(result['dispatch_authorized'])
+        self.assertFalse(result['authorization_attested'])
         self.assertEqual(result['backend_model'], 'unknown')
 
 

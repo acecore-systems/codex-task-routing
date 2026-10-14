@@ -46,7 +46,7 @@
 
 これはliveへの追加フィールドで、単独の入力ではありません。`transport_authorized:false`のままでは、証拠オブジェクトがあっても候補になりません。trueでも根拠なしは`transport_evidence_missing`、transport不一致は`transport_evidence_scope_mismatch`、片方向のみは`transport_evidence_incomplete`です。`constraint_layer:repository_preflight`はrepoが証拠不足として停止したという意味で、OpenAIが当該操作を禁止したとの判定ではありません。
 
-CLIは参照先を取得せず、内容の真偽・適用性を検証しません。親は根拠を確認したうえで入力します。`observation_source:caller_supplied`と`dispatch_authorized:false`を伴う候補結果も許可証ではありません。既存の有効な証拠は再利用し、ホスト・方法・範囲・適用条件が変わった部分だけ確認し直します。別経路の許可が未確認なら、既存承認内のCodex作業や利用者自身の通常Chat依頼を案内しますが、停止した自動転送を別手段で押し通しません。
+CLIは参照先を取得せず、内容の真偽・適用性を検証しません。親は根拠を確認したうえで入力します。`observation_source:caller_supplied`と`authorization_attested:false`は、候補結果が権限の実証を行っていないという意味です。候補を一律不許可とする値ではなく、送信の最終判断は確認済みの根拠を持つ親が行います。既存の有効な証拠は再利用し、ホスト・方法・範囲・適用条件が変わった部分だけ確認し直します。別経路の許可が未確認なら、既存承認内のCodex作業や利用者自身の通常Chat依頼を案内しますが、停止した自動転送を別手段で押し通しません。
 
 ## ProのUI確認とバックエンド
 
