@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "policy_revision": "2026-10-14-bounded-descendants",
+  "policy_revision": "2026-10-20-sol-xhigh-astra-medium",
   "models": {
     "luna": {
       "id": "gpt-6-luna",
@@ -17,13 +17,13 @@
     "sol": {
       "id": "gpt-6.1-sol",
       "min_effort": "medium",
-      "default_effort": "max",
+      "default_effort": "xhigh",
       "max_effort": "max"
     },
     "astra": {
       "id": "gpt-6-astra",
-      "min_effort": "high",
-      "default_effort": "high",
+      "min_effort": "medium",
+      "default_effort": "medium",
       "max_effort": "max"
     }
   },

@@ -121,7 +121,7 @@ class FixedRoutingTests(unittest.TestCase):
     def test_fixed_defaults_and_child_hook_uses_sol_6_1(self):
         policy = routing.load_policy(codex_home=self.home)
         self.assertEqual({k:v['default_effort'] for k,v in policy.config['models'].items()},
-                         dict(luna='max', terra='xhigh', sol='max', astra='high'))
+                         dict(luna='max', terra='xhigh', sol='xhigh', astra='medium'))
         self.assertEqual({k:v['id'] for k,v in policy.config['models'].items()},
                          dict(luna='gpt-6-luna', terra='gpt-6.1-sol',
                               sol='gpt-6.1-sol', astra='gpt-6-astra'))
@@ -138,7 +138,7 @@ class FixedRoutingTests(unittest.TestCase):
         context = child['hookSpecificOutput']['additionalContext']
         self.assertNotIn('Terra=gpt-', context)
         self.assertIn('Luna=gpt-6-luna (max)', context)
-        self.assertIn('Sol=gpt-6.1-sol (max)', context)
+        self.assertIn('Sol=gpt-6.1-sol (xhigh)', context)
         self.assertNotIn('gpt-5.6', context)
         self.assertNotIn('gpt-6-sol', context)
         self.assertIn('Do not create a child solely', context)
@@ -146,7 +146,7 @@ class FixedRoutingTests(unittest.TestCase):
     def test_generated_owner_policy_has_no_conflicting_parent_defaults(self):
         # Contract checks of generated instructions, not model-behavior tests.
         policy = routing.load_policy(codex_home=self.home)
-        self.assertEqual(policy.config['policy_revision'], '2026-10-14-bounded-descendants')
+        self.assertEqual(policy.config['policy_revision'], '2026-10-20-sol-xhigh-astra-medium')
         documents = policy.rendered_documents()
         obsolete = ('GPT-6.1 Sol/xhigh', '参考基準は親Sol/xhigh',
                     '通常作業は親で完結する', '通常工程は親で完結し',
@@ -158,7 +158,7 @@ class FixedRoutingTests(unittest.TestCase):
                 self.assertNotIn('}}', text)
                 for phrase in obsolete:
                     self.assertNotIn(phrase, text)
-        self.assertIn('Sol/max', documents['model-routing-policy.md'])
+        self.assertIn('Sol/xhigh', documents['model-routing-policy.md'])
         self.assertIn('最初の主担当候補', documents['model-routing-catalog.md'])
         # Existing host gates and the local secret boundary must survive the
         # broader owner scope. This plugin remains instruction-only routing.
@@ -218,7 +218,7 @@ class FixedRoutingTests(unittest.TestCase):
         for name in ('effective.md', 'model-routing-policy.md'):
             with self.subTest(name=name):
                 self.assertNotIn('Luna/max', documents[name])
-                self.assertNotIn('Astra/high', documents[name])
+                self.assertNotIn('Astra/medium', documents[name])
                 self.assertIn('Sol/high', documents[name])
                 self.assertIn('Luna/xhigh', documents[name])
                 self.assertIn('Astra/max', documents[name])
@@ -257,10 +257,32 @@ class FixedRoutingTests(unittest.TestCase):
         self.assertFalse((self.home/'config.toml').exists())
         self.assertFalse(route.load_config(self.home)['enabled'])
 
+    def test_new_defaults_validate_partial_overrides_without_rewriting(self):
+        path = self.home/'codex-task-routing/overrides.json'
+        path.parent.mkdir()
+        cases = [
+            ('sol', {'max_effort': 'xhigh'}, True, 'xhigh'),
+            ('sol', {'default_effort': 'max'}, True, 'max'),
+            ('astra', {'default_effort': 'high'}, True, 'high'),
+            ('astra', {'min_effort': 'high'}, False, None),
+            ('astra', {'min_effort': 'high', 'default_effort': 'high'}, True, 'high'),
+        ]
+        for role, values, valid, effort in cases:
+            with self.subTest(role=role, values=values):
+                path.write_text(json.dumps({'schema_version': 1, 'models': {role: values}}), encoding='utf-8')
+                before = path.read_bytes()
+                status = routing.status_payload(codex_home=self.home, cwd=self.home)
+                self.assertEqual(status['ok'], valid)
+                if valid:
+                    self.assertEqual(status['configured_child_models'][role]['default_effort'], effort)
+                else:
+                    self.assertEqual(status['error_code'], 'invalid_effort_range')
+                self.assertEqual(path.read_bytes(), before)
+
     def test_old_sol_ceiling_requires_explicit_compatible_default(self):
         path = self.home/'codex-task-routing/overrides.json'
         path.parent.mkdir()
-        for ceiling in ('high', 'xhigh'):
+        for ceiling in ('high',):
             with self.subTest(ceiling=ceiling):
                 override = {'schema_version': 1, 'models': {'sol': {'max_effort': ceiling}}}
                 path.write_text(json.dumps(override), encoding='utf-8')
