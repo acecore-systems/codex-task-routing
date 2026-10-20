@@ -92,7 +92,7 @@ Sol子を配布版の既定値変更にかかわらず `max` に固定する場�
 
 担当/model/effortと、実行環境の選択を分けます。現在会話、標準子、既存/新規ローカルセッション、Codexクラウド、通常Chat Proを比較し、別目的・独立成果物・別repo/PR・継続管理の利点が引継ぎ負担を上回る時だけ分割を提案します。適合する既存担当を優先し、未確認は再利用確認へ返します。長文脈・利用枠回避・同モデル移管だけでは分割しません。
 
-`session_plan.py`は提案と、クラウドのinspect / dispatch-plan / receive / acceptを機械照合するローカルhelperです。ネットワーク・モデル・CLIを起動せず、タスク作成や送信を行いません。提案・実行準備・本人承認を区別し、既存の同一範囲の承認を再利用します。クラウドは通常Chat opt-inと別で、この版は計画専用、実行runtime未実装・実クラウド未検証です。送信済み/結果不明は再送せず元taskを回収します。新規トップレベルセッションは本人の明示依頼と現ホスト条件を確認し、model/thinkingの既定を維持します。[使い方と入力契約](plugins/codex-task-routing/skills/task-routing/references/session-routing.md)、[0.15.0の検証範囲](docs/validation-0.15.0.md)。
+`session_plan.py`は提案と、クラウドのinspect / dispatch-plan / receive / acceptを機械照合するローカルhelperです。ネットワーク・モデル・CLIを起動せず、タスク作成や送信を行いません。提案・実行準備・本人承認を区別し、既存の同一範囲の承認を再利用します。クラウドは通常Chat opt-inと別で、計画helperとは別に、許可されたホストで明示呼出しするcloud_run.pyのCLI transportと永久claimを備えます。実クラウドの送信・回収は未検証です。送信済み/結果不明は再送せず元taskを回収します。新規トップレベルセッションは本人の明示依頼と現ホスト条件を確認し、model/thinkingの既定を維持します。[使い方と入力契約](plugins/codex-task-routing/skills/task-routing/references/session-routing.md)、[明示transportと永続記録](plugins/codex-task-routing/skills/task-routing/references/cloud-transport.md)、[0.15.0の検証範囲](docs/validation-0.15.0.md)。
 
 ### 通常Chatの一時Chat（Pro）へ渡す
 

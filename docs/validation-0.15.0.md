@@ -1,6 +1,6 @@
 # 0.15.0 の検証範囲とクラウド実行への引継ぎ
 
-確認日: 2026-10-20。
+確認日: 2026-10-20、追確認: 2026-10-21（日本時間）。
 
 ## この変更の範囲
 
@@ -8,13 +8,13 @@
 担当モデル・固定effortの変更ではなく、現在の担当を継続するか、独立した仕事として分けるかの判断を追加する方針変更である。
 ヘルパーは入力された観測を検査する。実際の認証、ホストの許可、環境の実在、モデルの実行、テスト成功を証明しない。
 
-この版は送信を実行するruntimeを持たない。フックからネットワーク、モデル、別CLIセッションを起動しない。
+計画ヘルパーとは別に、許可されたホストから明示的に使うCLI runtimeを追加する。フックからネットワーク、モデル、別CLIセッションを起動しない。
 通常Chatのopt-inをクラウドの実行承認へ転用しない。既存の有効な承認は対象と操作の範囲内で再利用し、実際のホスト制約を維持する。
 稼働中の利用環境へのインストール、ユーザーの設定変更、クラウドタスクの投入、マージは実施していない。
 
-## ローカル検証
+## 計画機能の初回検証（2026-10-20）
 
-Windows / Python 3.13.15で、最終差分に対して以下を実行した。
+Windows / Python 3.13.15で、初回の計画機能の差分に対して以下を実行した。
 
 | 検証 | 結果 |
 | --- | --- |
@@ -34,6 +34,33 @@ GitHub CIでも実装commit `a6b42b8aef87ab67f9f8d047f19384238152e585`に対し�
 Windows/Python 3.11・3.13、Ubuntu/Python 3.11、macOS/Python 3.11の4構成が成功した。
 [Checks #70](https://github.com/acecore-systems/codex-task-routing/actions/runs/39410826998)。
 これは各OSでのテスト・配布・版更新検証であり、実クラウドへの投入やアプリ連携の実証ではない。
+
+## 明示CLI実行機能の追加検証（2026-10-21）
+
+`cloud_run.py`と`cloud_record.py`を追加した差分について、Windows / Python 3.13.15で以下を確認した。
+
+| 検証 | 結果 |
+| --- | --- |
+| `python -m unittest discover -s tests -v` | 251件成功、skipなし、終了コード0 |
+| `python scripts/check_package.py` | 成功、終了コード0 |
+| `python scripts/check_release.py --base e550e90151bc6dc8680a4ed1d56da495019d0ee1` | 成功、終了コード0 |
+| `git diff --check` | 成功、終了コード0 |
+
+追加21件はfixture transportを使い、同時実行時の一度限りの送信、timeout、不完全なclaim、
+receipt保存失敗、原依頼・cwd・revision照合、元taskの読取り回収、stdin/argv、
+送信先override拒否、壊れた記録の非公開診断を確認した。
+実Pythonプロセスの強制終了後にもclaimが残り、OS lockが解放され、再送しないことを確認した。
+これらはnative Codex Cloudの認証や実送信・回収を実証するテストではない。
+
+初回の全体検証では、短い有効要約の導線を`cloud_run.py`へ変更したことに対し、
+すべての文書に`session_plan.py`を要求する旧アサーション1件が失敗した。
+要約は明示実行の導線、詳細文書は計画helperの導線を検証する形へ修正し、最終251件の成功を確認した。
+8000文字のhook上限、モデル・effort、通常Chatの有効化条件は維持した。
+一時Codexホームでfixture/provenanceを同期し、テスト用保存先は清掃した。
+
+CLI adapterは公式sourceの形式を実装するが、profileの指定だけでinstalled binary互換性や実権限を証明しない。
+差分bytesの保存と内容受入を分け、適用・commit・push・マージ・本番反映をrunnerから自動実行しない。
+詳細は[明示CLI transport](../plugins/codex-task-routing/skills/task-routing/references/cloud-transport.md)を参照。
 
 ## 公式資料と実際の入口
 
@@ -63,6 +90,29 @@ Windowsで `codex-cli 0.163.0-alpha.10.2` のヘルプを確認した。
 - 新規トップレベルタスクの作成・他タスクへの送信には、それぞれ現在のツールが要求する本人の指示が必要。サブエージェントの選定規則で代替しない。
 
 ## 実クラウドで残る確認
+
+### 2026-10-21の実機確認
+
+- インストール済みCLIは引き続き`0.163.0-alpha.10.2`。helpの読取りのみで、新規モデルセッションは開始していない。
+- 公式CLIのtag `rust-v0.163.0-alpha.10`が指すcommit
+  [`cd643519fb56011557d09b41053a3a4c0e013e1f`](https://github.com/openai/codex/blob/cd643519fb56011557d09b41053a3a4c0e013e1f/codex-rs/cloud-tasks/src/lib.rs)
+  で、execは単一task URL、statusは状態を含む人間向け3行、diffは選択したattemptの本文を出力することを確認した。
+  execのquery `-`は標準入力のUTF-8本文を使う。statusはREADY以外で終了コード1を返すため、
+  非0終了だけで通信失敗と判定しない。READYもテスト合格の証拠にはしない。
+- 公開sourceとインストール済みalpha派生版のbinary同一性や、実応答の形式は未検証。
+- Browserで`https://chatgpt.com/codex`を開くと、当初Cloudflare確認画面になった。
+  本人がクリックを承認した後、ブラウザ操作が中断したため、クリック成立は確認できなかった。
+  復元時には確認画面を経ず公式紹介ページへ進み、そこで表示された「Cloudへ移動」
+  （`https://chatgpt.com/codex/cloud`）からChatGPTのクラウド選択画面へ遷移した。
+- 同画面の環境選択に「公開済みの環境はありません」と表示された。
+  これは表示されたアカウント・画面の範囲の観測であり、旧CLI用環境の不存在や新旧互換性の証明ではない。
+  環境作成・公開・タスク送信は行っていない。
+- 現ホストの有効方針は標準子の利用を指定しており、Cloud CLIで別モデルを起動できる許可は確認できない。
+  通常Chatのopt-inや入力JSONを代替許可にしない。クラウド実行を許すホストと実環境でのpilotが残る。
+- 認証の必要性を確認するためローカル認証の状態・登録済みhandoffを調べたが、ChatGPT用presetはなかった。
+  認証情報や会話履歴は取得していない。今回作成したBrowserタブは閉じ、残存なしを確認した。
+
+### 再開時の手順
 
 1. 実行ホストが許すCodex Cloud専用の入口、対象環境ID、repoへの接続と実行権限を確認する。CLIの存在や申告値だけでは実行可能としない。
 2. 対象branchと期待revisionを固定し、クラウドが取得する材料・実行するテスト・返却先・完了条件を引き継ぐ。ローカル未commit変更やローカル専用MCPの自動引継ぎを前提にしない。

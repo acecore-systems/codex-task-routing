@@ -2,7 +2,7 @@
 
 model・effortと、仕事を置く実行環境は別に選びます。短い仕事、適任担当の継続、Codex側の現物への反復アクセスは現在の担当に残します。別目的・独立成果物・別repo/PR・継続管理の利点が引継ぎ・受入の負担を上回る場合だけ別セッションを提案します。長文脈、利用枠回避、同モデルへの移管だけでは分割しません。
 
-この版の`session_plan.py`はPython標準ライブラリによるローカル計画だけです。ネットワーク、モデル、CLI、ブラウザー、タスクを起動せず、認証・会話履歴・個人メモリ・稼働Codexホームも読みません。入力JSON以外を探索せず、状態ファイルを更新しません。`execution_authorized`は常にfalse、クラウド出力は`planning_only:true`、`runtime_implemented:false`です。`preflight_complete:true`も、供給された観測の機械照合が通ったという意味です。実接続・送信・テスト・ホストの許可の証明ではありません。実クラウドのruntimeは未実装、live pilotは未実行です。
+この版の`session_plan.py`はPython標準ライブラリによるローカル計画だけです。ネットワーク、モデル、CLI、ブラウザー、タスクを起動せず、認証・会話履歴・個人メモリ・稼働Codexホームも読みません。入力JSON以外を探索せず、状態ファイルを更新しません。`execution_authorized`は常にfalse、クラウド出力は`planning_only:true`、`runtime_implemented:false`です。`preflight_complete:true`も、供給された観測の機械照合が通ったという意味です。実接続・送信・テスト・ホストの許可の証明ではありません。別入口[cloud_run.py](cloud-transport.md)は明示CLI transportと永続claimを実装しています。runtime_implemented:falseはplanner自身が非実行という既存契約で、配布版全体の未実装を意味しません。実クラウドへのlive pilotは未実行です。
 
 ## 候補の提案
 
@@ -67,11 +67,11 @@ python <plugin-root>/scripts/session_plan.py cloud --handoff <handoff.json> --ph
 ```
 
 - `inspect`: 元taskまたはenvironmentを調べるためのホスト機能/読取り範囲を照合します。liveがなければ不足情報を返し、送信しません。
-- `dispatch-plan`: 新規送信の準備条件を照合します。全部通っても`review_actual_host_dispatch_contract`で止まり、送信可能・許可済みと宣言しません。実runtimeの追加・実ホスト条件の確認は別工程です。
+- `dispatch-plan`: 新規送信の準備条件を照合します。全部通っても`review_actual_host_dispatch_contract`で止まり、送信可能・許可済みと宣言しません。実ホスト条件の確認と別transportの明示呼出しは別工程です。
 - `receive`: 元task IDの回収条件だけを照合します。dispatchの承認・材料送信・利用枠を要求し直しません。読取りにも実ホストの許可と同じ対象の既存承認が必要です。
 - `accept`: 元ID/hash、実repo/base revision、変更成果物、必須検証、所有者の意味確認を照合します。完了・失敗・部分・未検証を区別し、実行や状態更新は行いません。
 
-`state.submission`はnot_sent/sent/unknown_outcome/collected/acceptedです。sent/collected/acceptedには元task IDが必要です。timeout等で送信結果が分からなければunknown_outcomeへ進め、task IDが不明でも再送しません。dispatch-planはnot_sent以外から新規送信へ進まず、既存taskの回収・照合・受入を返します。引継ぎや所有者交代も再送理由にはしません。helperは永続台帳を持たないため、所有者は元の依頼記録で状態を保持し、not_sentへ戻さない責任があります。宣言を書き換えて二重送信を防げるruntimeがあるとは主張しません。
+`state.submission`はnot_sent/sent/unknown_outcome/collected/acceptedです。sent/collected/acceptedには元task IDが必要です。timeout等で送信結果が分からなければunknown_outcomeへ進め、task IDが不明でも再送しません。dispatch-planはnot_sent以外から新規送信へ進まず、既存taskの回収・照合・受入を返します。引継ぎや所有者交代も再送理由にはしません。helperは永続台帳を持たないため、所有者は元の依頼記録で状態を保持し、not_sentへ戻さない責任があります。別cloud_run.pyは同じprivate保存先/request IDの永久claimを実装します。plannerの宣言変更や保存先変更で再送を迂回しません。
 
 ## live観測の形式
 
@@ -107,20 +107,20 @@ ChatGPT Workのタスク作成、cloud非対応のhandoff、simulated prototype�
 
 1. 元依頼記録で所有者、request ID/hash、許可範囲、task IDと送信状態を確認します。既存taskがあれば同じtaskを照合し、新規execを実行しません。結果不明なら先に元の実行結果・限定した対象情報から照合します。一致するtaskを特定できなければ未解決のまま返し、再送しません。
 2. 今回のCLI/UIで公式入口と操作を確認します。2026-10-20にローカルCLI `0.163.0-alpha.10.2` のhelpだけで観測した構文は下記です。helpの成功は認証や接続成功ではありません。published environment、新規workspace、既存taskのsaved stateを区別し、repo・権限・environment・テスト環境・branchが期待revisionを指すことを実確認します。execのbranch指定はcommit SHA固定機能の証明ではなく、branch更新競合も確認します。モデル/effort指定の反映保証は未確認です。
-3. 承認済み材料を同じpromptに固定し、dispatch-planの不足を解消します。実送信直前に元記録へ送信中/unknown_outcomeを残し、下記execまたは実確認したUIで一度だけ送ります。返却task IDを同じ記録へ保存してsentへ進めます。timeoutやID不明はunknown_outcomeのままにし、execを繰り返しません。`--attempts 1`はbest-of-Nのassistant attempt数で、無制限の再試行指示ではありません。
+3. 承認済み材料を同じpromptに固定し、dispatch-planの不足を解消します。実送信直前に元記録へ送信中/unknown_outcomeを残し、cloud_run.pyの明示dispatchで一度だけ送ります。返却task IDを同じ記録へ保存してsentへ進めます。timeoutやID不明はunknown_outcomeのままにし、execを繰り返しません。`--attempts 1`はbest-of-Nのassistant attempt数で、無制限の再試行指示ではありません。
 4. 同じtask IDのstatusを確認します。既存の読取り範囲でreceiveの不足を解消し、終わった元taskのdiffと結果・検証証拠を回収します。必要な場合だけ対象environment/件数を限定したlistを使い、他の会話履歴を一括収集しません。listだけで依頼同一性を推定しません。attemptを選ぶ場合は同じ1-based番号をdiff/apply/結果記録へそろえます。
 5. repo/base revision、実差分、実行したcheckとその環境/結果、合格条件を意味確認してacceptへ進みます。diff表示だけではテスト実行済みと扱いません。ローカルテストに適用が必要なら、承認済みの隔離worktreeに検証用として適用して検証し、最終反映と区別します。受入前に本来の作業checkoutへ適用しません。
 6. 受入済みの変更を本来のcheckoutへapplyする必要があれば、最新の期待HEAD/status、適用先、許可範囲を確認して別操作として実行します。commit/push/PR/merge/deployは各許可範囲と合意終端に従います。最後に元依頼のcollected/accepted・未解決点・証拠・再開先を更新し、今回開いた完了タブを閉じます。
 
 ```powershell
-codex cloud exec --env <ENV_ID> --branch <BRANCH> --attempts 1 <APPROVED_QUERY>
+codex cloud exec --env <ENV_ID> --branch <BRANCH> --attempts 1 -
 codex cloud status <TASK_ID>
 codex cloud diff <TASK_ID> --attempt 1
 codex cloud list --env <ENV_ID> --limit 5 --json
 codex cloud apply <TASK_ID> --attempt 1
 ```
 
-execのQUERYは位置引数、status/diff/applyに観測済み`--json`はありません。listは`--env`、`--limit`（1–20、既定20）、`--cursor`、`--json`をhelpで確認しました。上記は操作順を説明する構文例で、一括実行するスクリプトではありません。今回これらの実コマンドによるタスク送信・list・認証・applyは行っていません。状態管理は所有者が元記録に残す契約であり、永続ledgerや原子的な重複送信防止runtimeを実装したものではありません。
+execのQUERYは位置引数、status/diff/applyに観測済み`--json`はありません。listは`--env`、`--limit`（1–20、既定20）、`--cursor`、`--json`をhelpで確認しました。上記は操作順を説明する構文例で、一括実行するスクリプトではありません。今回これらの実コマンドによるタスク送信・list・認証・applyは行っていません。状態管理は所有者が元記録に残す契約であり、この手動例自体に永続ledgerはありません。新規実行はcloud_run.pyのclaim管理を使い、raw execを重ねません。
 
 ## result / acceptanceの形式
 

@@ -20,7 +20,7 @@
 | subagent | 独立した完了単位と既存の階層・並列/直列条件を満たす標準子 |
 | existing_local_session | 同一範囲の既存担当を再利用。最新revision・到達点と実際の再開/送信機能を確認 |
 | new_local_session | 別目的・独立成果物等の利益がある場合の提案。本人の明示的な新タスク依頼が実行条件。model/thinkingは新規トップレベルセッションの既定を維持 |
-| codex_cloud | 独立したrepoタスクと環境・期待revision・検証能力の確認。通常Chatと別承認でrootが評価。現版は計画のみ |
+| codex_cloud | 独立したrepoタスクと環境・期待revision・検証能力の確認。通常Chatと別承認でrootが評価。計画helperと許可ホスト限定の明示runner。実クラウドは未検証 |
 | chat_pro | 既存のopt-in、役割・depth、Browser能力・承認・UIモデル確認を満たす通常Chat Pro |
 
 session_plan.pyは提案と不足情報を返すだけで、作成・再開・送信の許可を発行しない。承認済みの同一範囲は再利用する。新規タスク作成とcreate_threadのworktree選択はそれぞれ本人の明示指定を確認し、他タスクへの送信も本人の指示に従う。別CLI・クラウド・Workで上位制約を迂回しない。クラウドのinspect/dispatch-plan/receive/acceptを分け、送信済み・結果不明は元taskを照合し、差分だけで検証完了としない。

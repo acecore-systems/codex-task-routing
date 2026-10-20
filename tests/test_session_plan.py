@@ -391,7 +391,8 @@ class CloudPlanningTests(unittest.TestCase):
         with runtime_directory() as tmp:
             policy = routing.load_policy(codex_home=tmp)
             rendered = policy.rendered_documents()
-            for name in ('effective.md', 'model-routing-policy.md', 'model-routing-catalog.md', 'model-routing-handoff.md'):
+            self.assertIn('cloud_run.py', rendered['effective.md'])
+            for name in ('model-routing-policy.md', 'model-routing-catalog.md', 'model-routing-handoff.md'):
                 self.assertIn('session_plan.py', rendered[name])
             self.assertIn('現版', rendered['model-routing-handoff.md'])
             self.assertEqual(policy.config['models']['sol']['default_effort'], 'xhigh')
