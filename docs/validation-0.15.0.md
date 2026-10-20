@@ -30,6 +30,11 @@ Windows / Python 3.13.15で、最終差分に対して以下を実行した。
 詳細文書のfixtureは一時Codexホームを使って再生成し、provenanceのhashを更新した。
 テスト用ディレクトリはfixtureで清掃し、稼働中のCodexホームは変更していない。
 
+GitHub CIでも実装commit `a6b42b8aef87ab67f9f8d047f19384238152e585`に対し、
+Windows/Python 3.11・3.13、Ubuntu/Python 3.11、macOS/Python 3.11の4構成が成功した。
+[Checks #70](https://github.com/acecore-systems/codex-task-routing/actions/runs/39410826998)。
+これは各OSでのテスト・配布・版更新検証であり、実クラウドへの投入やアプリ連携の実証ではない。
+
 ## 公式資料と実際の入口
 
 - [Codex Cloud](https://learn.chatgpt.com/docs/cloud): クラウドのタスクと環境の概説。
@@ -65,5 +70,5 @@ Windowsで `codex-cli 0.163.0-alpha.10.2` のヘルプを確認した。
 4. 同じtask IDの結果を回収し、入力の同一性、実際のrevision、差分、実行環境とテスト結果、未検証範囲を確認する。
 5. 内容を受け入れてから、許可された適用先へ反映する。タスク終了・差分取得・ローカル適用・PR作成・マージ・本番反映をそれぞれ区別する。
 
-クラウド環境、Browser経由の実投入、Linux/macOSホスト、再開をまたぐ実タスクの回収は未検証。
+クラウド環境、Browser経由の実投入、Linux/macOSの実アプリ連携、再開をまたぐ実タスクの回収は未検証。
 ローカルテストやGitHub CIの成功は、これらの実証に置き換えない。
