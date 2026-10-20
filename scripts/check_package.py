@@ -30,12 +30,12 @@ def check():
                 assert hook['command'] == "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','routing.py'),run_name='__main__')\" hook"
                 assert hook['timeout'] <= 10
     config = json.loads((PLUGIN / 'defaults/config.json').read_text(encoding='utf-8'))
-    assert config['policy_revision'] == '2026-10-14-bounded-descendants'
+    assert config['policy_revision'] == '2026-10-20-sol-xhigh-astra-medium'
     assert 'local_auth_status' in config['principles']['policy_local_auth']
     assert config['models']['luna']['default_effort'] == 'max'
     assert config['models']['terra']['id'] == 'gpt-6.1-sol'  # legacy override key, never routed
-    assert config['models']['sol']['default_effort'] == 'max'
-    assert config['models']['astra']['default_effort'] == 'high'
+    assert config['models']['sol']['default_effort'] == 'xhigh'
+    assert config['models']['astra']['default_effort'] == 'medium'
     assert config['models']['luna']['id'] == 'gpt-6-luna'
     assert config['models']['sol']['id'] == 'gpt-6.1-sol'
     assert config['models']['astra']['id'] == 'gpt-6-astra'

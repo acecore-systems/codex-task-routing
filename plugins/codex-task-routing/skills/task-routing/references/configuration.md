@@ -14,7 +14,7 @@ effortの設定値は `medium`、`high`、`xhigh`、`max` で、下限≤標準�
 
 未定義キー、重複したJSONキー、型違い、空文字、無効範囲、解決できないテンプレートはエラーとして扱います。設定内容の誤りを既定値への暗黙の切戻しで隠しません。
 
-0.10.1からSol子の既定は`max`です。旧設定で`{"sol":{"max_effort":"high"}}`のようにmax未満の上限（highまたはxhigh）だけを指定している場合、下限≤標準≤上限を満たさなくなり、`invalid_effort_range`で方針の適用を止めます。highの運用を継続する場合は`{"sol":{"default_effort":"high","max_effort":"high"}}`のように標準値も明示してください。maxへ移行する場合は上限もmaxに合わせます。自動で上限を引き上げたり個別設定を書き換えたりはしません。
+0.14.1からSol子の既定は`xhigh`、Astra子の既定と下限は`medium`です（0.10.1〜0.14.0のSol既定は`max`、0.14.0までのAstra既定・下限は`high`）。Solの上限だけを`xhigh`にする既存overrideは有効です。上限だけを`high`にすると下限≤標準≤上限を満たさず、`invalid_effort_range`で方針の適用を止めます。high運用は`{"sol":{"default_effort":"high","max_effort":"high"}}`のように標準値も明示してください。Astraの下限だけを`high`以上にしている場合も、対応する標準値を明示してください。明示済みの有効な標準値は保持し、個別設定を自動で書き換えません。
 
 ## 分担原則
 

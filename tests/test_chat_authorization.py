@@ -177,7 +177,7 @@ class ChatAuthorizationTests(unittest.TestCase):
         before = parent.read_bytes()
         policy = routing.load_policy(codex_home=self.home)
         self.assertEqual(policy.config['models']['sol']['id'], 'gpt-6.1-sol')
-        self.assertEqual(policy.config['models']['sol']['default_effort'], 'max')
+        self.assertEqual(policy.config['models']['sol']['default_effort'], 'xhigh')
         self.evaluate()
         self.assertEqual(parent.read_bytes(), before)
 

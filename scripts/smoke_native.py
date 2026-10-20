@@ -76,7 +76,7 @@ def main():
     assert status['configured_child_models']['sol'] == {
         'id': 'gpt-6.1-sol', 'default_effort': 'high'}
     installed_defaults = json.loads((script.parent.parent / 'defaults/config.json').read_text(encoding='utf-8'))
-    assert installed_defaults['models']['sol']['default_effort'] == 'max'
+    assert installed_defaults['models']['sol']['default_effort'] == 'xhigh'
     assert status["host"]["trust_state"] == "unknown"
     results.append("native install and installed runtime status passed")
     route_script = script.parent / "chatgpt_route.py"
