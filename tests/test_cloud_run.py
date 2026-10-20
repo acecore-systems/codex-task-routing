@@ -50,7 +50,8 @@ class FixtureTransport:
 class CloudRunnerTests(unittest.TestCase):
     def setUp(self):
         self.temp = self.enterContext(tempfile.TemporaryDirectory(prefix='routing-cloud-fixture-'))
-        self.base = Path(self.temp)
+        # macOS /var aliases /private/var; canonicalize fixtures, not runtime guards.
+        self.base = Path(self.temp).resolve()
         self.cwd = self.base / 'workspace'
         self.cwd.mkdir()
         self.state = self.base / 'caller-private-state'

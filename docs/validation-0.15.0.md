@@ -62,6 +62,11 @@ CLI adapterは公式sourceの形式を実装するが、profileの指定だけ�
 差分bytesの保存と内容受入を分け、適用・commit・push・マージ・本番反映をrunnerから自動実行しない。
 詳細は[明示CLI transport](../plugins/codex-task-routing/skills/task-routing/references/cloud-transport.md)を参照。
 
+追加実装の初回CI（commit `fb352c0`、[Checks #72](https://github.com/acecore-systems/codex-task-routing/actions/runs/39458937363)）は
+Windows/Python 3.11・3.13、Ubuntu/Python 3.11で成功したが、macOS/Python 3.11で失敗した。
+新しいテストfixtureが一時ディレクトリのシンボリックリンクを含むパスを渡し、実行前の安全検査で拒否された。
+fixture側で実パスを指定する修正を行い、runtimeのリンク拒否条件は維持する。
+
 ## 公式資料と実際の入口
 
 - [Codex Cloud](https://learn.chatgpt.com/docs/cloud): クラウドのタスクと環境の概説。
