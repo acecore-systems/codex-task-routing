@@ -88,6 +88,12 @@ Sol子を配布版の既定値変更にかかわらず `max` に固定する場�
 
 受付登録、本人操作待ち、実ログイン/API検証を区別し、秘密値・Cookie・認証画面はクラウドへ返しません。フックは秘密ファイルを読まず、MCPやモデルを起動しません。アプリ起動承認や本人確認を含む既存の承認条件を維持します。`chat_plan.py`でも`requires_private_auth: true`を指定すると、Chatの選定より先に`local_auth`を返します。分類だけで実行を承認する機能ではありません。[ローカル認証の手順](plugins/codex-task-routing/skills/task-routing/references/local-auth.md)
 
+### セッションとクラウドの候補を選ぶ
+
+担当/model/effortと、実行環境の選択を分けます。現在会話、標準子、既存/新規ローカルセッション、Codexクラウド、通常Chat Proを比較し、別目的・独立成果物・別repo/PR・継続管理の利点が引継ぎ負担を上回る時だけ分割を提案します。適合する既存担当を優先し、未確認は再利用確認へ返します。長文脈・利用枠回避・同モデル移管だけでは分割しません。
+
+`session_plan.py`は提案と、クラウドのinspect / dispatch-plan / receive / acceptを機械照合するローカルhelperです。ネットワーク・モデル・CLIを起動せず、タスク作成や送信を行いません。提案・実行準備・本人承認を区別し、既存の同一範囲の承認を再利用します。クラウドは通常Chat opt-inと別で、この版は計画専用、実行runtime未実装・実クラウド未検証です。送信済み/結果不明は再送せず元taskを回収します。新規トップレベルセッションは本人の明示依頼と現ホスト条件を確認し、model/thinkingの既定を維持します。[使い方と入力契約](plugins/codex-task-routing/skills/task-routing/references/session-routing.md)、[0.15.0の検証範囲](docs/validation-0.15.0.md)。
+
 ### 通常Chatの一時Chat（Pro）へ渡す
 
 `Pro`はモデル選択欄の値です。旧`6 Pro`/`GPT-6 Pro`の設定・観測も互換として受理し、既存設定を自動書換えしません。契約バッジやAPIモデルIDは代用できず、実行backendは確認できなければ不明です。0.12.0では既存の有効な転送確認に`transport_evidence`を重ねて要求せず、Browserのinspect/send/receiveを個別に扱います。`--phase inspect`で確認操作、既定のdispatchで一度の送信、`--phase receive`で再送なしの既存回答回収を分けます。未確認・明示false・実際の拒否を許可済みに変換しません。表示と実行の違い、公式・ホスト・repoの制約、不足条件の担当と解消手順は[許可判定の詳細](plugins/codex-task-routing/skills/task-routing/references/chat-authorization.md)にまとめています。

@@ -1,5 +1,11 @@
 # 変更履歴
 
+## 0.15.0 — セッション選択とクラウド計画
+
+- 方針の意味変更: model/effortとは独立した実行環境選択を追加。別目的・独立成果物・別repo/PR・継続管理の利益がある時だけ別セッションを提案し、適合する既存担当を優先します。未確認の担当を不存在にせず、長文脈・枠回避・同モデル移管だけの分割を避けます。標準子と通常Chatの既存制約、親/model/effortと利用者overrideを維持します。
+- 配布機能: 外部呼出しのない`session_plan.py`と入力契約を追加。クラウドはinspect/dispatch-plan/receive/acceptを分ける計画専用です。scope、元task、実repo/base revision、変更・必須検証・意味確認を照合し、送信済み/結果不明の再送を認めません。実行許可を発行せず、runtime未実装・live cloud未検証を明示します。
+- 新規トップレベルタスク・worktree・他タスクへの送信の現ホスト条件を保持し、承認済みの同一範囲は再利用します。Chat opt-inやCLI helpからクラウド権限を推定しません。[検証記録](validation-0.15.0.md)。
+
 ## 0.14.0 — 下位役割の標準孫と直下SolによるPro所有
 
 - 標準孫をAstra子→Sol/Luna、Sol子→Lunaへ限定。Luna子・孫から先、同モデル/上位役割は不可。割当て役割とrootからの深さを照合し、不明ならrootへ返す。親の実設定・モデル/effort・overrideは保持。

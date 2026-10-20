@@ -1,0 +1,377 @@
+#!/usr/bin/env python3
+"""Deterministic session proposals and cloud handoff checks; never execute work."""
+from __future__ import annotations
+
+import argparse
+from datetime import datetime, timedelta, timezone
+import hashlib
+import json
+from pathlib import Path
+import re
+import sys
+
+from routing_core.common import RoutingError, _canonical_json, _load_json
+
+ROUTES = {"continue_current", "subagent", "existing_local_session", "new_local_session",
+          "codex_cloud", "chat_pro"}
+SEPARATION_REASONS = {"separate_goal", "independent_deliverable", "separate_repo_or_pr",
+                      "ongoing_management"}
+REASONS = SEPARATION_REASONS | {"long_context", "quota_avoidance", "same_model_transfer"}
+CHECK_STATES = {"unknown", "verified", "permission_checked", "blocked", "unavailable",
+                "confirmation_required"}
+CONFIRMED = {"verified", "permission_checked"}
+OBSERVED_CHECKS = {"environment", "repository_revision", "test_environment"}
+CHECKS = {"host_permission", "inspect_capability", "inspect_authorization",
+          "dispatch_capability", "target_authorization", "materials_authorization",
+          "environment", "repository_revision", "test_environment",
+          "receive_capability", "receive_authorization"}
+OPERATIONS = {"read", "edit", "test", "commit", "push", "create_draft_pr"}
+SUBMISSION_STATES = {"not_sent", "sent", "unknown_outcome", "collected", "accepted"}
+ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
+HASH = re.compile(r"[0-9a-f]{64}\Z")
+REVISION = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
+
+
+class SessionPlanError(ValueError):
+    """Fixed diagnostics: never echo caller material, paths or OS errors."""
+
+
+def _object(value, required, optional=()):
+    if not isinstance(value, dict) or not set(required) <= set(value) or set(value) - set(required) - set(optional):
+        raise SessionPlanError("invalid object fields")
+
+
+def _schema(value):
+    if type(value) is not int or value != 1:
+        raise SessionPlanError("unsupported schema version")
+
+
+def _text(value, maximum=512):
+    if (not isinstance(value, str) or not value.strip() or len(value) > maximum
+            or any(ord(char) < 32 for char in value)):
+        raise SessionPlanError("invalid metadata string")
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise SessionPlanError("invalid metadata encoding") from exc
+    return value
+
+
+def _identifier(value):
+    if not isinstance(value, str) or not ID.fullmatch(value):
+        raise SessionPlanError("invalid identifier")
+    return value
+
+
+def _enum(value, choices):
+    if not isinstance(value, str) or value not in choices:
+        raise SessionPlanError("unsupported state")
+    return value
+
+
+def _truth(value):
+    if value is not None and type(value) is not bool:
+        raise SessionPlanError("expected boolean or null")
+    return value
+
+
+def _list(value, *, choices=None, maximum=32, allow_empty=False):
+    if not isinstance(value, list) or len(value) > maximum or (not value and not allow_empty):
+        raise SessionPlanError("invalid metadata list")
+    for item in value:
+        _enum(item, choices) if choices is not None else _text(item)
+    if len(set(value)) != len(value):
+        raise SessionPlanError("duplicate metadata item")
+    return value
+
+
+def _digest(value):
+    if not isinstance(value, str) or not HASH.fullmatch(value):
+        raise SessionPlanError("invalid SHA-256")
+    return value
+
+
+def _revision(value):
+    if not isinstance(value, str) or not REVISION.fullmatch(value):
+        raise SessionPlanError("expected a full source revision")
+    return value
+
+
+def _timestamp(value):
+    try:
+        parsed = datetime.fromisoformat(_text(value).replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            raise ValueError()
+        return parsed.astimezone(timezone.utc)
+    except (ValueError, OverflowError) as exc:
+        raise SessionPlanError("expected a timestamp with timezone") from exc
+
+
+def select_session(facts):
+    """Propose an execution context independently of model/effort selection."""
+    _object(facts, {"schema_version", "candidate", "current_owner_suitable", "existing_owner",
+                    "independent_work_unit", "handoff_benefit_exceeds_cost", "reasons"})
+    _schema(facts["schema_version"])
+    candidate = _enum(facts["candidate"], ROUTES)
+    for name in ("current_owner_suitable", "independent_work_unit", "handoff_benefit_exceeds_cost"):
+        _truth(facts[name])
+    reasons = _list(facts["reasons"], choices=REASONS, allow_empty=True)
+    existing = facts["existing_owner"]
+    if existing is not None:
+        _object(existing, {"owner_id", "route", "suitable"})
+        _identifier(existing["owner_id"])
+        _enum(existing["route"], ROUTES)
+        _truth(existing["suitable"])
+    result = {"schema_version": 1, "candidate": candidate, "route": "continue_current",
+              "proposal_only": True, "execution_authorized": False, "gaps": []}
+    if facts["current_owner_suitable"] is True or candidate == "continue_current":
+        return {**result, "next_action": "continue_current", "reason": "keep_current_owner"}
+    if existing is not None and existing["suitable"] is True:
+        return {**result, "route": existing["route"], "owner_id": existing["owner_id"],
+                "next_action": "reuse_existing_owner", "reason": "suitable_owner_exists"}
+    if (candidate == "existing_local_session" and existing is not None
+            and existing["route"] == candidate and existing["suitable"] is False):
+        return {**result, "next_action": "choose_another_context", "reason": "existing_owner_not_suitable",
+                "gaps": ["existing_local_session_not_suitable"]}
+    if not SEPARATION_REASONS.intersection(reasons):
+        return {**result, "next_action": "continue_current", "reason": "no_independent_purpose"}
+    if facts["independent_work_unit"] is False or facts["handoff_benefit_exceeds_cost"] is False:
+        return {**result, "next_action": "continue_current", "reason": "handoff_not_worthwhile"}
+    for name in ("current_owner_suitable", "independent_work_unit", "handoff_benefit_exceeds_cost"):
+        if facts[name] is None:
+            result["gaps"].append(name + "_unknown")
+    # null means no owner has been identified, not proof that no owner exists.
+    if existing is None or existing["suitable"] is None:
+        result["gaps"].append("existing_owner_reuse_unconfirmed")
+    if candidate == "existing_local_session" and (existing is None or existing["route"] != candidate):
+        result["gaps"].append("existing_local_session_unconfirmed")
+    return {**result, "route": candidate, "reason": "independent_context_proposal",
+            "next_action": "check_owner_reuse" if "existing_owner_reuse_unconfirmed" in result["gaps"]
+                           else "assess_proposal" if result["gaps"] else "inspect_candidate",
+            "required_gate": "existing_chat_policy" if candidate == "chat_pro" else "current_host_policy"}
+
+
+def validate_handoff(value):
+    _object(value, {"schema_version", "request_id", "input_sha256", "owner_id", "return_to",
+                    "repository", "branch", "expected_revision", "environment_id", "endpoint",
+                    "acceptance_criteria", "required_checks", "allowed_operations", "state"})
+    _schema(value["schema_version"])
+    for name in ("request_id", "owner_id", "return_to", "environment_id"):
+        _identifier(value[name])
+    _digest(value["input_sha256"])
+    _revision(value["expected_revision"])
+    for name in ("repository", "branch", "endpoint"):
+        _text(value[name])
+    _list(value["acceptance_criteria"])
+    _list(value["required_checks"], allow_empty=True)
+    _list(value["allowed_operations"], choices=OPERATIONS)
+    state = value["state"]
+    _object(state, {"submission", "task_id"})
+    _enum(state["submission"], SUBMISSION_STATES)
+    if state["task_id"] is not None:
+        _identifier(state["task_id"])
+    if state["submission"] == "not_sent" and state["task_id"] is not None:
+        raise SessionPlanError("not-sent state cannot reference a submitted task")
+    if state["submission"] in {"sent", "collected", "accepted"} and state["task_id"] is None:
+        raise SessionPlanError("submitted state requires its original task identifier")
+    return value
+
+
+def handoff_sha256(value):
+    """Bind the immutable scope; state advances without changing this digest."""
+    validate_handoff(value)
+    return hashlib.sha256(_canonical_json({k: v for k, v in value.items() if k != "state"})).hexdigest()
+
+
+def _validate_live(value):
+    _object(value, {"schema_version", "handoff_sha256", "surface", "transport", "actor",
+                    "observed_at", "checks", "task_id"})
+    _schema(value["schema_version"])
+    if value["task_id"] is not None:
+        _identifier(value["task_id"])
+    _digest(value["handoff_sha256"])
+    _enum(value["surface"], {"codex_cloud", "chatgpt_work", "normal_chat", "unknown"})
+    _enum(value["transport"], {"codex_cloud_cli", "codex_cloud_ui", "unknown"})
+    actor = value["actor"]
+    _object(actor, {"role", "depth", "executor_id"})
+    _enum(actor["role"], {"root", "sol", "astra", "luna", "unknown"})
+    if type(actor["depth"]) is not int or actor["depth"] < 0:
+        raise SessionPlanError("invalid actor depth")
+    _identifier(actor["executor_id"])
+    _timestamp(value["observed_at"])
+    _object(value["checks"], set(), CHECKS)
+    for item in value["checks"].values():
+        _object(item, {"state"}, {"reference"})
+        _enum(item["state"], CHECK_STATES)
+        if item["state"] in CONFIRMED and "reference" not in item:
+            raise SessionPlanError("confirmed checks require an existing scoped reference")
+        if "reference" in item:
+            _text(item["reference"])
+    return value
+
+
+def _base(handoff, phase):
+    return {"schema_version": 1, "phase": phase, "planning_only": True,
+            "runtime_implemented": False, "execution_authorized": False,
+            "preflight_complete": False, "request_id": handoff["request_id"],
+            "input_sha256": handoff["input_sha256"], "handoff_sha256": handoff_sha256(handoff),
+            "task_id": handoff["state"]["task_id"], "gaps": []}
+
+
+def _accept(handoff, result, acceptance):
+    if handoff["state"]["submission"] not in {"collected", "accepted"}:
+        raise SessionPlanError("acceptance requires a collected original result")
+    _object(result, {"schema_version", "request_id", "input_sha256", "handoff_sha256", "task_id",
+                     "status", "repository", "base_revision", "change_kind", "output_revision",
+                     "diff_evidence", "checks_completed", "verification_status",
+                     "verification_evidence", "artifact_references"})
+    _schema(result["schema_version"])
+    for name in ("request_id", "task_id"):
+        _identifier(result[name])
+    for name in ("input_sha256", "handoff_sha256"):
+        _digest(result[name])
+    _text(result["repository"])
+    _revision(result["base_revision"])
+    _enum(result["change_kind"], {"read_only", "no_change", "changed"})
+    if result["output_revision"] is not None:
+        _revision(result["output_revision"])
+    _enum(result["status"], {"completed", "failed", "partial", "unverified"})
+    _enum(result["verification_status"], {"passed", "failed", "partial", "unverified", "not_required"})
+    for name in ("diff_evidence", "checks_completed", "verification_evidence", "artifact_references"):
+        _list(result[name], allow_empty=True)
+    _object(acceptance, {"owner_id", "decision", "criteria_checked", "reference"})
+    _identifier(acceptance["owner_id"])
+    _enum(acceptance["decision"], {"accepted", "needs_changes", "unverified"})
+    _truth(acceptance["criteria_checked"])
+    _text(acceptance["reference"])
+    matched = (result["request_id"] == handoff["request_id"]
+               and result["input_sha256"] == handoff["input_sha256"]
+               and result["handoff_sha256"] == handoff_sha256(handoff)
+               and result["task_id"] == handoff["state"]["task_id"]
+               and result["repository"] == handoff["repository"]
+               and result["base_revision"] == handoff["expected_revision"]
+               and acceptance["owner_id"] == handoff["owner_id"])
+    output = _base(handoff, "accept")
+    if not matched:
+        return {**output, "next_action": "return_identity_mismatch_to_root", "outcome": "unverified",
+                "gaps": ["result_or_owner_identity_mismatch"]}
+    output["owner_review"] = {"decision": acceptance["decision"],
+                              "criteria_checked": acceptance["criteria_checked"]}
+    if result["status"] in {"failed", "partial", "unverified"}:
+        return {**output, "next_action": "return_to_same_owner" if acceptance["decision"] == "needs_changes"
+                else "report_remaining_work", "outcome": result["status"]}
+    if acceptance["decision"] == "needs_changes":
+        return {**output, "next_action": "return_to_same_owner", "outcome": "needs_changes"}
+    if acceptance["decision"] != "accepted" or acceptance["criteria_checked"] is not True:
+        return {**output, "next_action": "owner_semantic_acceptance_needed", "outcome": "unverified"}
+    if result["change_kind"] == "changed":
+        change_verified = ("edit" in handoff["allowed_operations"]
+                           and (bool(result["diff_evidence"]) or (result["output_revision"] is not None
+                                and result["output_revision"] != result["base_revision"])))
+    else:
+        change_verified = (not result["diff_evidence"] and result["output_revision"] in
+                           {None, result["base_revision"]})
+    if not change_verified:
+        return {**output, "next_action": "verify_returned_changes", "outcome": "unverified",
+                "gaps": ["change_evidence_missing_or_inconsistent"]}
+    required = set(handoff["required_checks"])
+    verified = ((required and result["verification_status"] == "passed"
+                 and required <= set(result["checks_completed"]) and bool(result["verification_evidence"]))
+                or (not required and result["verification_status"] in {"passed", "not_required"}))
+    if not verified:
+        return {**output, "next_action": "verify_required_checks", "outcome": "unverified",
+                "gaps": ["required_verification_not_confirmed"]}
+    return {**output, "preflight_complete": True, "next_action": "record_accepted_result",
+            "outcome": "completed"}
+
+
+def cloud_plan(handoff, *, phase="inspect", live=None, result=None, acceptance=None, now=None):
+    """Validate supplied observations, never attest host authority or call a runtime."""
+    validate_handoff(handoff)
+    _enum(phase, {"inspect", "dispatch-plan", "receive", "accept"})
+    if phase == "accept":
+        if live is not None:
+            raise SessionPlanError("accept uses the original result and owner review, not dispatch checks")
+        return _accept(handoff, result, acceptance)
+    if result is not None or acceptance is not None:
+        raise SessionPlanError("results are only used during acceptance")
+    output = _base(handoff, phase)
+    state = handoff["state"]["submission"]
+    # This check precedes new-dispatch observations and quota/permission checks.
+    # Unknown outcome includes a timed-out submission: never manufacture not_sent.
+    if phase == "dispatch-plan" and state != "not_sent":
+        actions = {"sent": "receive_original_task", "unknown_outcome": "reconcile_original_submission",
+                   "collected": "accept_original_result", "accepted": "reuse_accepted_result"}
+        return {**output, "next_action": actions[state], "gaps": ["new_submission_forbidden"]}
+    if phase == "receive" and (state == "not_sent" or handoff["state"]["task_id"] is None):
+        return {**output, "next_action": "reconcile_original_submission" if state == "unknown_outcome"
+                else "nothing_submitted", "gaps": ["original_task_identifier_unavailable"]}
+    if live is None:
+        return {**output, "next_action": "inspect_host_and_target", "gaps": ["live_observations_missing"]}
+    _validate_live(live)
+    if live["task_id"] != handoff["state"]["task_id"]:
+        output["gaps"].append("original_task_identity_mismatch")
+    if live["handoff_sha256"] != output["handoff_sha256"]:
+        output["gaps"].append("handoff_scope_mismatch")
+    if live["surface"] != "codex_cloud" or live["transport"] == "unknown":
+        output["gaps"].append("cloud_surface_or_transport_unverified")
+    actor = live["actor"]
+    # Native child policy is unchanged. A separate cloud execution contract must
+    # be established by root; actor metadata cannot override host instructions.
+    if actor["role"] != "root" or actor["depth"] != 0 or actor["executor_id"] != handoff["owner_id"]:
+        output["gaps"].append("return_cloud_execution_scope_to_root")
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        raise SessionPlanError("current time requires timezone")
+    if not timedelta(0) <= current - _timestamp(live["observed_at"]) <= timedelta(minutes=5):
+        output["gaps"].append("live_observations_stale_or_future")
+    required = {"host_permission"}
+    if phase == "inspect":
+        required |= {"inspect_capability", "inspect_authorization"}
+    elif phase == "dispatch-plan":
+        required |= {"dispatch_capability", "target_authorization", "materials_authorization",
+                     "environment", "repository_revision", "test_environment"}
+    else:
+        required |= {"receive_capability", "receive_authorization"}
+    for name in sorted(required):
+        state_observed = live["checks"].get(name, {"state": "unknown"})["state"]
+        allowed_states = {"verified"} if name in OBSERVED_CHECKS else CONFIRMED
+        if state_observed not in allowed_states:
+            output["gaps"].append(name + ":" + state_observed)
+    if output["gaps"]:
+        return {**output, "next_action": "resolve_phase_gaps"}
+    action = {"inspect": "inspect_original_task" if state != "not_sent" else "inspect_environment",
+              "dispatch-plan": "review_actual_host_dispatch_contract",
+              "receive": "collect_original_task_without_resend"}[phase]
+    return {**output, "preflight_complete": True, "next_action": action}
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest="command", required=True)
+    session = commands.add_parser("session", help="propose a context; never create a session")
+    session.add_argument("--facts", required=True, type=Path)
+    cloud = commands.add_parser("cloud", help="check a cloud handoff; never contact Codex cloud")
+    cloud.add_argument("--handoff", required=True, type=Path)
+    cloud.add_argument("--phase", choices=("inspect", "dispatch-plan", "receive", "accept"), default="inspect")
+    cloud.add_argument("--live", type=Path)
+    cloud.add_argument("--result", type=Path)
+    cloud.add_argument("--acceptance", type=Path)
+    args = parser.parse_args(argv)
+    try:
+        def read(path):
+            return _load_json(path, "session planning input", limit=64 * 1024) if path else None
+        if args.command == "session":
+            output = select_session(read(args.facts))
+        else:
+            output = cloud_plan(read(args.handoff), phase=args.phase, live=read(args.live),
+                                result=read(args.result), acceptance=read(args.acceptance))
+    except (SessionPlanError, RoutingError, OSError, ValueError, TypeError, RecursionError):
+        print(json.dumps({"error": "invalid_session_plan_input"}), file=sys.stderr)
+        return 2
+    print(json.dumps(output, ensure_ascii=False, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
