@@ -163,3 +163,11 @@ Cloudで検証した8120ca9から導入版8d77f34の差は文書だけであり�
 初回結果も保持した。元checkoutはclean、安全ガード、既存.git、ソース、外部通信方針は未変更。
 再現時には `tempfile.gettempdir()` の実パスと祖先の.gitを確認し、適切なGit管理外の保存先を指定する。
 環境によって一時保存先の寿命がcommand間で異なるため、作成とテストは同じ実行単位にまとめる。
+
+### マージ前レビューの修正
+
+実originにもhandoff用の短縮 `owner/repo` を許していたため、相対ローカルremoteが
+GitHubの同一repoとして照合され得る問題を修正した。実originではGitHub HTTPS/SSH形式のみ受理し、
+handoffの短縮表記は維持する。相対path、短縮path（.git付き含む）、file URL拒否の回帰を追加した。
+修正後のWindows全252件とpackage/release/diff検査は成功。
+前述の実Cloud成功は8120ca9のソースに対する結果であり、このCLI remote照合修正の実Cloud送信は未検証。

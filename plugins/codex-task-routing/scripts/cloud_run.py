@@ -130,7 +130,7 @@ class NativeCLITransport:
                            cwd=cwd, output_limit=MAX_DIFF_BYTES)
 
 
-def repository_identity(value):
+def repository_identity(value, *, allow_short=True):
     if value.startswith('git@github.com:'):
         value = value[len('git@github.com:'):]
     elif '://' in value:
@@ -139,6 +139,8 @@ def repository_identity(value):
                 or parsed.password or parsed.port is not None or parsed.query or parsed.fragment):
             raise CloudRunError('repository_identity_unverified')
         value = parsed.path.lstrip('/')
+    elif not allow_short:
+        raise CloudRunError('repository_identity_unverified')
     if value.endswith('.git'):
         value = value[:-4]
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*', value):
@@ -182,7 +184,7 @@ def verify_repository(handoff, cwd, *, git=None, runner=run_process):
     if checked(['status', '--porcelain=v1', '--untracked-files=normal']):
         raise CloudRunError('workspace_not_clean')
     remote = checked(['remote', 'get-url', '--all', 'origin'])
-    if '\n' in remote or repository_identity(remote) != repository_identity(handoff['repository']):
+    if '\n' in remote or repository_identity(remote, allow_short=False) != repository_identity(handoff['repository']):
         raise CloudRunError('repository_identity_mismatch')
     ref = 'refs/heads/' + branch
     if checked(['ls-remote', '--exit-code', '--refs', 'origin', ref]) != handoff['expected_revision'] + '\t' + ref:

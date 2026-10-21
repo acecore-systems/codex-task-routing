@@ -379,6 +379,10 @@ class CloudRunnerTests(unittest.TestCase):
         for key, value in [(('rev-parse', 'HEAD'), '2' * 40),
             (('status', '--porcelain=v1', '--untracked-files=normal'), ' M changed'),
             (('remote', 'get-url', '--all', 'origin'), 'https://token@github.com/example/project.git'),
+            (('remote', 'get-url', '--all', 'origin'), 'example/project'),
+            (('remote', 'get-url', '--all', 'origin'), 'example/project.git'),
+            (('remote', 'get-url', '--all', 'origin'), './example/project'),
+            (('remote', 'get-url', '--all', 'origin'), 'file:///example/project'),
             (('ls-remote', '--exit-code', '--refs', 'origin', 'refs/heads/codex/example'), '2' * 40 + '\trefs/heads/codex/example')]:
             with self.subTest(key=key):
                 original = replies[key]; replies[key] = value
