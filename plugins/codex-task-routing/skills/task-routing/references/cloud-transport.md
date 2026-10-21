@@ -1,8 +1,14 @@
 # 明示クラウドCLI transport
 
-`cloud_run.py`は、現在のホストがCodex Cloudの独立実行を許し、元依頼の対象・材料・操作が承認済みの場合だけ明示的に呼ぶ入口です。フック、通常Chat、標準子の起動規則から自動的に呼びません。この版のnative adapterは実装済みですが、実クラウドへの送信・認証・結果回収は未検証です。導入やJSONの宣言によってホストの許可を発行しません。現在のホストが禁止・不明なら、実装済みでも送信せずrootへ返します。
+`cloud_run.py`は、現在のホストがCodex Cloudの独立実行を許し、元依頼の対象・材料・操作が承認済みの場合だけ明示的に呼ぶ入口です。フック、通常Chat、標準子の起動規則から自動的に呼びません。この版のCLI adapterは実装済みですが、このadapterによる実クラウドへの送信・認証・結果回収は未検証です。導入やJSONの宣言によってホストの許可を発行しません。現在のホストが禁止・不明なら、実装済みでも送信せずrootへ返します。
 
 `session_plan.py`の既存出力は維持します。`planning_only:true`、`runtime_implemented:false`は計画helper自身がCLIを実行しない意味であり、この別transportが未実装という意味ではありません。`preflight_complete`は供給された観測の照合だけです。クラウドの実checkout、本人承認、CLI binaryとsourceの同一性、テスト成功は別に確認します。
+
+## ネイティブUIは別経路
+
+この文書は`codex_cloud_cli`専用です。現在のネイティブCloud画面を使う`codex_cloud_ui`の[計画・送信前claim・元task回収](session-routing.md#ネイティブcloud-uiとcliを分ける)とは区別します。UIのタブ/task UUIDをCLIへ渡さず、CLIの404/exit 1/空stdoutを理由にUIへ再送・新タスク化しません。同じbackendと未確認なら、元UIの同一taskと保存記録へ戻ります。通常Chat/Work/APIへfallbackしません。UI所有者も送信前の永続claim・依頼ID/hash・元タブ/task保存を行い、CLI runnerがそのUI連携を自動化すると仮定しません。
+
+元依頼の有効な同じ対象・材料・操作の承認は再利用します。この経路分離は新しい独自承認を要求するものではなく、元依頼の範囲と実ホストの要求を維持するものです。
 
 ## 明示呼出し
 

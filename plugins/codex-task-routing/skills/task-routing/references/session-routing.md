@@ -2,7 +2,7 @@
 
 model・effortと、仕事を置く実行環境は別に選びます。短い仕事、適任担当の継続、Codex側の現物への反復アクセスは現在の担当に残します。別目的・独立成果物・別repo/PR・継続管理の利点が引継ぎ・受入の負担を上回る場合だけ別セッションを提案します。長文脈、利用枠回避、同モデルへの移管だけでは分割しません。
 
-この版の`session_plan.py`はPython標準ライブラリによるローカル計画だけです。ネットワーク、モデル、CLI、ブラウザー、タスクを起動せず、認証・会話履歴・個人メモリ・稼働Codexホームも読みません。入力JSON以外を探索せず、状態ファイルを更新しません。`execution_authorized`は常にfalse、クラウド出力は`planning_only:true`、`runtime_implemented:false`です。`preflight_complete:true`も、供給された観測の機械照合が通ったという意味です。実接続・送信・テスト・ホストの許可の証明ではありません。別入口[cloud_run.py](cloud-transport.md)は明示CLI transportと永続claimを実装しています。runtime_implemented:falseはplanner自身が非実行という既存契約で、配布版全体の未実装を意味しません。実クラウドへのlive pilotは未実行です。
+この版の`session_plan.py`はPython標準ライブラリによるローカル計画だけです。ネットワーク、モデル、CLI、ブラウザー、タスクを起動せず、認証・会話履歴・個人メモリ・稼働Codexホームも読みません。入力JSON以外を探索せず、状態ファイルを更新しません。`execution_authorized`は常にfalse、クラウド出力は`planning_only:true`、`runtime_implemented:false`です。`preflight_complete:true`も、供給された観測の機械照合が通ったという意味です。実接続・送信・テスト・ホストの許可の証明ではありません。別入口[cloud_run.py](cloud-transport.md)は明示CLI transportと永続claimを実装しています。runtime_implemented:falseはplanner自身が非実行という既存契約で、配布版全体の未実装を意味しません。CLI adapter経由の実送信・回収は未検証です。ネイティブCloud UIの限定的な実機結果はリポジトリの検証記録を参照し、別経路の成功へ一般化しません。
 
 ## 候補の提案
 
@@ -29,6 +29,19 @@ python <plugin-root>/scripts/session_plan.py session --facts <session-facts.json
 ホストの実行条件は各操作で確認します。現ホストの`create_thread`は本人が明示的に新タスクを依頼した場合だけ使い、create_threadのtarget.environment.type=worktree選択も本人の明示指定が必要です。採用済み提案や元依頼で同じ範囲が明確に承認済みなら再確認しません。単なる候補提案を実行承認へ読み替えません。別トップレベルセッションのmodelは本人の明示指定がなければ省略し、thinkingも既定を維持します。標準子の自動model/effort選定とは別です。通常のrepo作業で既存権限に基づく専用worktreeを作る運用は、このcreate_thread選択条件の対象外です。`send_message_to_thread`も本人の送信指示が必要で、別タスクからの報告要求だけでは足りません。
 
 標準子は既存の役割・depth・並列/直列条件を適用します。通常Chat Proは[Chat方針](chatgpt.md)と[承認](chat-authorization.md)をそのまま適用し、このhelperはChatの許可を付与しません。クラウド/別CLI/新タスク経由で子やホストの制約を迂回しません。
+
+## ネイティブCloud UIとCLIを分ける
+
+`session_plan.py`の`transport: codex_cloud_ui`は、現在のホストで実際に提供されるネイティブCloudの画面操作を計画する値です。現在のUIで選ばれた実行場所・公開環境・元タスクを観測し、利用可能な正式ツールで明示送信・同一task回収を行います。画面のURLやtask UUIDだけで旧Codex Cloud CLIと同じ環境・backendと判断しません。`codex_cloud_cli`と[CLI adapter](cloud-transport.md)は別経路です。UI task UUIDをCLIのstatus/diff/applyへ渡しません。
+
+元依頼で許可済みの同じ対象・材料・操作・環境には承認を再利用し、独自の追加承認フローを作りません。元の承認に含まれない材料転送・新しい対象や、実ホストが要求する確認はその境界を守ります。通常Chatのopt-inだけをCloudの許可へ転用せず、ネイティブCloudの操作を通常Chat Proへの依頼として扱いません。通常Chat/Work/モデルAPIへのfallbackで実行場所や制約を迂回しません。
+
+1. 同じ所有者がinspectとdispatch-planで、依頼ID/hash・範囲・返却先、対象環境と利用できる検証手段を確認します。既存タスクや送信結果不明の記録があれば元taskの回収を先に行い、新規送信しません。
+2. 実送信の前に、同じrequest IDの排他的な永続claimをローカルへ保存し、unknown_outcomeを残します。承認済みの実promptと材料hash、観測した元タブ/画面、対象環境を保持して、一度だけ送ります。送信後は実際の元タブ/task IDと到達点を同じ記録に保存します。`cloud_record.ClaimStore`は共通のローカル保存原語ですが、`cloud_run.py dispatch`を呼ぶだけでUI送信のclaimやUI連携が行われるわけではありません。UI所有者は実際の保存操作を対応付け、claim不明・不一致では送信を止めます。
+3. 環境側の開始指示または`start_skill`が自動提供されない場合も、handoffに「最初にcloud-environment runtimeスキルを読み、環境・network policy・実行可能な検証方法と不足を確認する」と明記します。ツールやスキルが未提供なら不足を返し、利用できると推測しません。復元artifactのsource revision宣言と、実checkoutで観測したrepo/base revisionは区別します。
+4. 同じ元タブ/taskで状態と成果物を回収し、receiveで元ID/hashを照合してから所有者が内容を受け入れます。回収は新規送信の承認・生成枠を要求し直しません。実行したcheck、環境、結果、失敗・skip・未検証を保持し、環境の公開・タスク開始・復元成功をテスト成功と扱いません。
+
+CLIの404や空stdoutはUI taskの不存在・認証失敗・未送信の証明ではありません。backendの同一性が未確認なら元UIの記録・同一taskへ戻り、再送や新タスク化をしません。所有者の交代や回答待ちでも再送しません。実Cloud環境でHTTP待受が可能かどうかは別の検証であり、ソケットを使わないunitテストの成功で代替しません。
 
 ## クラウド引継ぎの固定範囲
 
