@@ -137,3 +137,29 @@ loopbackだけを指定するfactoryの境界を独立して検証する1件も�
 Windowsで全252件成功・skipなし、package検査成功。
 Python auditでsocket生成を禁止した全体実行も252件成功し、生成attemptは0件だった。
 これらは単体テストであり、制限されたCloudでHTTP待受できるという意味ではない。
+
+### 修正版0.15.0の実Cloud検証と導入更新
+
+同じ公開済みCloudタスクへcommit `8120ca9ac94327f02233842bfd21fceaf4d671a9` の
+追跡対象ソースだけをZIPで渡し、SHA256
+`1a706891d59da41e6a85cda805f099ffb8d3385232a7bed6806d6e9cb479c6b7` の一致を確認した。
+Linux / Python 3.12.14でmanifest 0.15.0を確認し、元checkoutは変更していない。
+元の2件のsocketエラーは両方成功した。package検査、一時Codexホームでのstatus/renderも終了コード0。
+
+初回の全体実行は252件中233成功、2失敗、15テストでエラー（subtestを含むerrorイベント22件）、
+Windows専用skip 2件だった。環境の `/tmp/.git` により、CLI fixtureの保存先がGit管理下となり、
+`private_storage_required` で拒否された。安全ガードと既存.gitは変更せず、
+Git管理外の一時保存先を使う再検証を別途記録する。
+
+導入済みプラグインを公式CLIで `8d77f3444f9ef366894d3921f745f30c728675cc` に固定更新し、
+配布34ファイルの内容一致（改行正規化後）、enabled、status ok、有効cacheを確認した。
+Cloudで検証した8120ca9から導入版8d77f34の差は文書だけであり、実行コードとテストは同じ。
+同導入commitのCIはWindows2構成・Ubuntu・macOSの4構成成功。
+ユーザーのモデル・effort overrideを保持した。PRは未マージ。
+
+同じソースを再照合し、祖先に.git/symlinkがない書込み可能な `/dev/shm` 配下へ
+専用一時保存先を作成した。単一の子プロセス実行内で作成・`TMPDIR`指定・検証を行った結果、
+全252件中250成功、失敗0、エラー0、Windows専用skip 2件、終了コード0（8.834秒）となった。
+初回結果も保持した。元checkoutはclean、安全ガード、既存.git、ソース、外部通信方針は未変更。
+再現時には `tempfile.gettempdir()` の実パスと祖先の.gitを確認し、適切なGit管理外の保存先を指定する。
+環境によって一時保存先の寿命がcommand間で異なるため、作成とテストは同じ実行単位にまとめる。
