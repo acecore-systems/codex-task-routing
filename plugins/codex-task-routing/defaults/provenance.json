@@ -1,5 +1,5 @@
 {
-  "policy_revision": "2026-10-21-explicit-cloud-transport",
+  "policy_revision": "2026-10-21-current-cloud-ui",
   "source_sha256": {
     "AGENTS.md": "bd2584d350c204f1ffbc8c005c084fc34360acddf8812557504350820e34be42",
     "model-routing-policy.md": "9335ccec4516bc71b68d01f9304d6e71d3b5efcd77a210476571cd7d060c476c",
@@ -24,12 +24,13 @@
     "0.14.0 intentional policy change: bounded assigned-role grandchildren and root-direct Sol ownership of browser Pro; shared caller-supplied actor checks across inspect/dispatch/receive; legacy root calls, model settings, efforts, overrides and authentication boundaries preserved; historical source hashes retained",
     "0.14.1 intentional effort update: Sol child default xhigh; Astra child default and minimum medium; Luna, model IDs, ceilings, parent settings and explicit valid overrides preserved; historical source hashes retained",
     "0.15.0 intentional policy change: execution-context proposals independent of model/effort, suitable owner reuse and host-scoped session/cloud planning; local-only helper with inspect/dispatch-plan/receive/accept, original-task identity and unknown-outcome safeguards; no cloud runtime, dispatch, installed-home update or change to Chat opt-in, model/effort defaults and explicit overrides; historical source hashes retained",
-    "0.15.0 unreleased extension: explicit host-permitted cloud CLI transport with permanent exclusive claims, OS locks, atomic receipts, stdin prompt and private byte-exact diff artifacts; planner compatibility and model/effort/Chat settings retained; no hook dispatch, auth-file reads or live cloud validation"
+    "0.15.0 unreleased extension: explicit host-permitted cloud CLI transport with permanent exclusive claims, OS locks, atomic receipts, stdin prompt and private byte-exact diff artifacts; planner compatibility and model/effort/Chat settings retained; no hook dispatch, auth-file reads or live cloud validation",
+    "0.15.1 intentional policy change: current codex_cloud_ui and explicit handoff are the standard Cloud route; startup cwd/revision/README/AGENTS/runtime policy/required checks are in the request body without depending on start_skill injection; HTTP listener is not a UI prerequisite; legacy CLI runtime and records retained as deprecated compatibility, not an automatic candidate or normal pending validation; model/effort/Chat conditions and explicit overrides preserved; historical source hashes retained"
   ],
   "source_policy_revision": "2026-09-14",
   "rendered_sha256": {
-    "model-routing-policy.md": "719396d2a1f3c0a198b6235c1d2376d338aa76e5ca42ab33b9b9693c350a25f4",
+    "model-routing-policy.md": "a6562de5c75d5119570aff1837fbfb62c0b584f9c088b628892a416dc59289c2",
     "model-routing-catalog.md": "4b2c7e9ce44052997b1f096fa07f31e21bd58d92d6666d49734503e2ba356b20",
-    "model-routing-handoff.md": "46c0859a656b70162976b2698e035d4e38676e9c2470691818e7cbd1ae5f202b"
+    "model-routing-handoff.md": "d64b328ae6838453b27c02750e8ebec09553fad62770e8dd0dbfec4585cb0dff"
   }
 }
