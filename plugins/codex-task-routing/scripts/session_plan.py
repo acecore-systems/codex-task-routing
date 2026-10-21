@@ -17,6 +17,8 @@ ROUTES = {"continue_current", "subagent", "existing_local_session", "new_local_s
 SEPARATION_REASONS = {"separate_goal", "independent_deliverable", "separate_repo_or_pr",
                       "ongoing_management"}
 REASONS = SEPARATION_REASONS | {"long_context", "quota_avoidance", "same_model_transfer"}
+DECISION_REASONS = REASONS | {"long_running"}
+HOST_FACTS = {"subagent", "new_session", "codex_cloud", "chat_pro", "materials_transfer"}
 CHECK_STATES = {"unknown", "verified", "permission_checked", "blocked", "unavailable",
                 "confirmation_required"}
 CONFIRMED = {"verified", "permission_checked"}
@@ -149,6 +151,159 @@ def select_session(facts):
             "next_action": "check_owner_reuse" if "existing_owner_reuse_unconfirmed" in result["gaps"]
                            else "assess_proposal" if result["gaps"] else "inspect_candidate",
             "required_gate": "existing_chat_policy" if candidate == "chat_pro" else "current_host_policy"}
+
+
+def recommend_session(facts):
+    """Compare contexts for a work unit, without choosing a candidate in advance.
+
+    ``owner.status=continuing`` means ownership of this same completion unit,
+    not merely that the current parent could do the work. Missing optional
+    capability/host facts stay unknown; none of these declarations grant access.
+    The original session/cloud schema-1 commands remain separate and unchanged.
+    """
+    _object(facts, {"schema_version", "work", "owner", "execution", "host"})
+    _schema(facts["schema_version"])
+    work, owner, execution, host = (facts[key] for key in ("work", "owner", "execution", "host"))
+    _object(work, {"purpose", "kind", "independent", "tightly_coupled", "handoff_benefit", "reasons"})
+    _text(work["purpose"])
+    _enum(work["kind"], {"repository", "analysis", "support"})
+    for key in ("independent", "tightly_coupled", "handoff_benefit"):
+        _truth(work[key])
+    _list(work["reasons"], choices=DECISION_REASONS, allow_empty=True)
+    _object(owner, {"status"}, {"owner_id", "route", "suitable"})
+    _enum(owner["status"], {"new", "continuing", "unknown"})
+    if owner["status"] == "continuing":
+        _object(owner, {"status", "owner_id", "route", "suitable"})
+        _identifier(owner["owner_id"])
+        _enum(owner["route"], ROUTES)
+        _truth(owner["suitable"])
+    elif set(owner) != {"status"}:
+        raise SessionPlanError("only continuing owners have identity and suitability")
+    _object(execution, set(), {"local_required", "cloud", "chat_can_complete"})
+    for key in ("local_required", "chat_can_complete"):
+        _truth(execution.get(key))
+    cloud = execution.get("cloud", {})
+    _object(cloud, set(), {"available", "materials_ready", "tests_ready"})
+    for value in cloud.values():
+        _truth(value)
+    _object(host, set(), HOST_FACTS)
+    for value in host.values():
+        _truth(value)
+
+    assessments = []
+
+    def assess(route, why, checks=(), exclusions=()):
+        gaps, rejected = [], []
+        for key, value in exclusions:
+            if value is True:
+                rejected.append(key)
+        for key, value in checks:
+            if value is None:
+                gaps.append(key + ":unknown")
+            elif value is False:
+                rejected.append(key + ":false")
+        state = ("blocked" if any(key.startswith("host.") for key in rejected)
+                 else "unavailable" if "cloud.available:false" in rejected
+                 else "not_suitable" if rejected else "conditional" if gaps else "eligible")
+        item = {"route": route, "suitability": state, "why": [why] + rejected, "gaps": gaps}
+        assessments.append(item)
+        return item
+
+    local_only = execution.get("local_required")
+    separate = bool(SEPARATION_REASONS.intersection(work["reasons"]))
+    split_exclusions = [("tight_coupling", work["tightly_coupled"]),
+                        ("handoff_cost_exceeds_benefit", work["handoff_benefit"] is False),
+                        ("not_independent_unit", work["independent"] is False),
+                        ("no_separation_reason", not separate)]
+    cloud_option = assess("codex_cloud", "independent_repository_completion",
+        [("cloud." + key, cloud.get(key)) for key in ("available", "materials_ready", "tests_ready")]
+        + [("host.codex_cloud", host.get("codex_cloud")),
+           ("host.materials_transfer", host.get("materials_transfer"))],
+        split_exclusions + [("local_execution_required", local_only),
+                            ("not_repository_work", work["kind"] != "repository")])
+    chat_option = assess("chat_pro", "complete_with_existing_chat_policy",
+        [("execution.chat_can_complete", execution.get("chat_can_complete")),
+         ("host.chat_pro", host.get("chat_pro")),
+         ("host.materials_transfer", host.get("materials_transfer"))],
+        split_exclusions + [("local_execution_required", local_only)])
+    local_option = assess("new_local_session", "independent_local_ownership",
+                         [("host.new_session", host.get("new_session"))], split_exclusions)
+    child_option = assess("subagent", "bounded_support_for_same_goal",
+                         [("host.subagent", host.get("subagent"))],
+                         [("not_same_goal_support", work["kind"] != "support" or work["independent"] is True),
+                          ("tight_coupling", work["tightly_coupled"]),
+                          ("handoff_cost_exceeds_benefit", work["handoff_benefit"] is False)])
+    current_option = assess("continue_current", "current_context_available")
+    output = {"schema_version": 1, "decision_kind": "recommendation", "proposal_only": True,
+              "execution_authorized": False, "gaps": []}
+
+    def finish(option, why, action, gaps=(), owner_id=None):
+        combined = list(dict.fromkeys([*gaps, *option["gaps"]]))
+        route = option["route"]
+        required = ["purpose_and_scope", "completion_criteria", "allowed_operations", "return_conditions"]
+        if route in {"codex_cloud", "new_local_session", "existing_local_session", "subagent"}:
+            required += ["owner_and_endpoint", "latest_progress_and_expected_revision"]
+        if route == "codex_cloud":
+            required += ["repository_branch_environment", "startup_cwd_and_guidance",
+                         "materials_hash_and_transfer_scope", "required_tests_and_evidence",
+                         "request_id_and_original_tab_task", "durable_claim_and_submission_state"]
+        if route == "chat_pro":
+            required += ["existing_chat_policy_actor_capabilities_and_authorization",
+                         "request_id_input_hash_and_original_tab"]
+        result = {**output, "route": route, "why": why, "gaps": combined,
+                  "alternatives": [item for item in assessments if item["route"] != route],
+                  "proposal": {"purpose": work["purpose"], "route": route,
+                               "conditional": bool(combined)},
+                  "handoff_required": required, "next_action": action}
+        if owner_id is not None:
+            result["owner_id"] = owner_id
+        return result
+
+    # Preserve an active, suitable owner through fixes, tests, acceptance and
+    # collection. Status requests or a timeout never make a new work unit.
+    if owner["status"] == "continuing" and owner["suitable"] is True:
+        # New-dispatch capability facts are not gates on resuming the original.
+        return finish({"route": owner["route"], "gaps": []}, ["keep_suitable_owner_of_same_work_unit"],
+                      "continue_current" if owner["route"] == "continue_current" else "reuse_existing_owner",
+                      owner_id=owner["owner_id"])
+    if work["tightly_coupled"] is True or work["handoff_benefit"] is False:
+        return finish(current_option, ["tight_coupling" if work["tightly_coupled"] is True
+                                      else "handoff_cost_exceeds_benefit"], "continue_current")
+
+    common_gaps = ["work." + key + ":unknown" for key in
+                   ("independent", "tightly_coupled", "handoff_benefit") if work[key] is None]
+    if owner["status"] == "unknown" or (owner["status"] == "continuing" and owner["suitable"] is None):
+        common_gaps.append("owner_reuse:unknown")
+    # Unknown local dependence must be checked before leaving this environment.
+    if local_only is None:
+        common_gaps.append("execution.local_required:unknown")
+    if work["independent"] is False or not separate:
+        if work["kind"] == "support" and work["independent"] is False and child_option["suitability"] in {"eligible", "conditional"}:
+            action = ("check_owner_reuse" if "owner_reuse:unknown" in common_gaps
+                      else "assess_work_unit" if common_gaps else "resolve_candidate_gaps"
+                      if child_option["gaps"] else "review_subagent_contract")
+            return finish(child_option, ["same_goal_bounded_support"], action, common_gaps)
+        return finish(current_option, ["no_independent_purpose"], "assess_work_unit" if common_gaps else "continue_current", common_gaps)
+
+    usable = {"eligible", "conditional"}
+    # Pro keeps its existing first-candidate policy when it can actually finish
+    # this unit. A repository task is not excluded from Cloud just because the
+    # parent can also implement it or because Pro's capability is still unknown.
+    if execution.get("chat_can_complete") is True and chat_option["suitability"] in usable:
+        choice, why, action = chat_option, "chat_can_finish_complete_unit", "evaluate_existing_chat_policy"
+    elif cloud_option["suitability"] in usable:
+        choice, why, action = cloud_option, "cloud_for_independent_repository_unit", "prepare_cloud_handoff"
+    elif work["kind"] == "analysis" and chat_option["suitability"] in usable:
+        choice, why, action = chat_option, "assess_chat_for_complete_analysis", "evaluate_existing_chat_policy"
+    elif local_option["suitability"] in usable:
+        choice, why, action = local_option, "independent_unit_needs_local_context", "review_new_session_contract"
+    else:
+        return finish(current_option, ["no_available_separate_context"], "report_context_limitations", common_gaps)
+    if common_gaps:
+        action = "check_owner_reuse" if "owner_reuse:unknown" in common_gaps else "assess_work_unit"
+    elif choice["gaps"]:
+        action = "resolve_candidate_gaps"
+    return finish(choice, [why], action, common_gaps)
 
 
 def validate_handoff(value):
@@ -351,6 +506,8 @@ def main(argv=None):
     commands = parser.add_subparsers(dest="command", required=True)
     session = commands.add_parser("session", help="propose a context; never create a session")
     session.add_argument("--facts", required=True, type=Path)
+    recommend = commands.add_parser("recommend", help="compare contexts for a work unit; never execute")
+    recommend.add_argument("--facts", required=True, type=Path)
     cloud = commands.add_parser("cloud", help="check a cloud handoff; never contact Codex cloud")
     cloud.add_argument("--handoff", required=True, type=Path)
     cloud.add_argument("--phase", choices=("inspect", "dispatch-plan", "receive", "accept"), default="inspect")
@@ -363,6 +520,8 @@ def main(argv=None):
             return _load_json(path, "session planning input", limit=64 * 1024) if path else None
         if args.command == "session":
             output = select_session(read(args.facts))
+        elif args.command == "recommend":
+            output = recommend_session(read(args.facts))
         else:
             output = cloud_plan(read(args.handoff), phase=args.phase, live=read(args.live),
                                 result=read(args.result), acceptance=read(args.acceptance))

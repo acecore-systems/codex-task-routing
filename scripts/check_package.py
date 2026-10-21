@@ -32,7 +32,7 @@ def check():
                 assert hook['command'] == "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','routing.py'),run_name='__main__')\" hook"
                 assert hook['timeout'] <= 10
     config = json.loads((PLUGIN / 'defaults/config.json').read_text(encoding='utf-8'))
-    assert config['policy_revision'] == '2026-10-21-cloud-ui-only'
+    assert config['policy_revision'] == '2026-10-21-session-decisions'
     assert 'local_auth_status' in config['principles']['policy_local_auth']
     assert config['models']['luna']['default_effort'] == 'max'
     assert config['models']['terra']['id'] == 'gpt-6.1-sol'  # legacy override key, never routed
