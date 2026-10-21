@@ -1,10 +1,85 @@
 # セッションとCodexクラウドの計画
 
-model・effortと、仕事を置く実行環境は別に選びます。短い仕事、適任担当の継続、Codex側の現物への反復アクセスは現在の担当に残します。別目的・独立成果物・別repo/PR・継続管理の利点が引継ぎ・受入の負担を上回る場合だけ別セッションを提案します。長文脈、利用枠回避、同モデルへの移管だけでは分割しません。
+model・effortと、仕事を置く実行環境は別に選びます。同じ完了単位を進行中の適任担当は、通常修正・検証・合意済み指摘対応・受入まで継続します。親にも新規の仕事を実行する能力があるだけなら、その仕事の継続担当がいるとは扱いません。短い仕事・密結合・引継ぎ便益が小さい仕事は現在担当、同一目的の限定補助は標準子、別目的・独立成果物・別repo/PR・独立継続管理は別セッションを比較します。長時間、長文脈、利用枠回避、同モデルへの移管だけでは分割しません。
 
 この版の`session_plan.py`はPython標準ライブラリによるローカル計画だけです。ネットワーク、モデル、CLI、ブラウザー、タスクを起動せず、認証・会話履歴・個人メモリ・稼働Codexホームも読みません。入力JSON以外を探索せず、状態ファイルを更新しません。`execution_authorized`は常にfalse、クラウド出力は`planning_only:true`、`runtime_implemented:false`です。`preflight_complete:true`も、供給された観測の機械照合が通ったという意味です。実接続・送信・テスト・ホストの許可の証明ではありません。実行経路は現行Cloud UIの`codex_cloud_ui`と明示handoffだけです。`runtime_implemented:false`はplanner自身が非実行という既存契約で、UIの利用不能を意味しません。旧Cloud CLIの実行コード・入力受付・専用資料は配布しません。実UIと実テストの確認範囲は、リポジトリの版別検証記録を参照します。
 
-## 候補の提案
+## 目的単位から推薦する
+
+新規の独立repo実装・テスト・長時間の完了単位はCloudの有力候補です。必要材料・実環境・必須テスト・ローカル依存・引継ぎ便益を比べます。承認済み材料と実際のChatツールでその工程が完結すれば、既存のPro優先を維持します。Cloudを常にProより上位にはせず、Chat適合が未確認という理由だけで適合するCloudも候補から消しません。独立成果物でも現在担当との細かな往復が不可欠なら分割しません。
+
+通常は「目的・分ける理由・候補・代案・不足・次の操作」を短く説明すれば十分です。毎回のhelper実行は不要です。判断を再現可能にしたい場合は、candidateを先に指定せず新しいサブコマンドへ入力します。
+
+```powershell
+python <plugin-root>/scripts/session_plan.py recommend --facts <work-unit.json>
+```
+
+独立した別repoの回帰修正を、実装とテストまでCloudで進める入力例です。これは架空の条件であり、実環境の観測や送信承認を証明しません。
+
+```json
+{
+  "schema_version": 1,
+  "work": {
+    "purpose": "別repoの回帰修正を実装・検証する",
+    "kind": "repository",
+    "independent": true,
+    "tightly_coupled": false,
+    "handoff_benefit": true,
+    "reasons": ["separate_repo_or_pr", "independent_deliverable"]
+  },
+  "owner": {"status": "new"},
+  "execution": {
+    "local_required": false,
+    "chat_can_complete": false,
+    "cloud": {"available": true, "materials_ready": true, "tests_ready": true}
+  },
+  "host": {
+    "codex_cloud": true,
+    "materials_transfer": true,
+    "new_session": null
+  }
+}
+```
+
+| 項目 | 意味 |
+| --- | --- |
+| work.purpose / kind | 目的と工程。kindはrepository（repo実装・検証等）、analysis（分析等）、support（同一目的の限定補助） |
+| independent | 独立した成果・受入を持つ単位か。true/false/null |
+| tightly_coupled | 現在担当と細かな往復・共有状態の更新が必要か。trueなら別成果物があっても継続 |
+| handoff_benefit | 引継ぎ・待機・検収・手戻り込みで分担の便益があるか。true/false/null |
+| reasons | separate_goal / independent_deliverable / separate_repo_or_pr / ongoing_managementが別セッションの根拠。long_running / long_context / quota_avoidance / same_model_transferだけでは根拠にならない |
+| owner.status | newは同じ完了単位の既存担当を確認した未着手単位。unknownは担当の有無を未確認。continuingは同じ完了単位の担当を確認済みで、owner_id / route / suitableを必須にする |
+| owner.suitable | continuingの場合の適合性。trueなら同じ担当を再利用、nullなら再利用確認。親が一般に作業可能という意味にはしない |
+| execution.local_required | ローカル機器・秘密を扱う工程・移せないファイル・接続等が必要か。trueならCloud/Chatから除外しローカルを比較 |
+| execution.cloud.available | 現在のCloud UIと対象環境が利用できるか。未接続・offline・利用不能をfalse、未確認をnullにする |
+| execution.cloud.materials_ready / tests_ready | 承認範囲の必要材料・対象revisionがCloudへ渡せる形で揃い、必須テストを実施できるか。テスト不要と確認した工程はtests_ready:true、未確認ならnull |
+| execution.chat_can_complete | 必要材料・実ツール・検証環境で完了単位をChatが終えられるか。trueなら既存Chat方針で先に検討 |
+| host | subagent / new_session / codex_cloud / chat_pro / materials_transferの現在のホスト制約と同一範囲の既存承認。各true/false/null。未入力はnull。trueの宣言だけで権限を発行しない |
+
+`work`の全項目と`owner.status`は必須です。`execution`と`host`自体は必須で、その内部項目は省略可能・省略時はunknownです。workの真偽もnullを受理します。`owner.status:continuing`の例は`{"status":"continuing","owner_id":"existing-owner","route":"codex_cloud","suitable":true}`です。new/unknownには他のowner項目を付けません。新規所有者をまだ確認していない時はnewを使いません。
+
+host.subagentは標準階層・役割・depth・並列なら委譲者自身の独立作業・直列なら追加価値とホスト許可を確認した範囲です。host.new_sessionは本人の新規トップレベルタスクの明示依頼と現ホスト条件、host.chat_proは既存opt-in・actor条件等を含みます。host.materials_transferのtrueは今回の対象・材料・操作に有効な元承認を再利用できます。unknownを勝手にtrueへせず、上位の実承認要求を維持します。
+
+出力の`route`は推薦、`why`は判断理由、`alternatives`は他候補の適合状態・理由・不足、`gaps`は採用候補と目的単位の未確認事項です。alternativesのsuitabilityはeligible / conditional / unavailable / not_suitable / blockedで、eligibleも送信承認ではありません。`proposal`は目的と候補・条件付きか、`handoff_required`は目的・範囲・合格条件・許可操作・終端・必要証拠・元依頼同一性等の準備項目を返します。`execution_authorized`は常にfalseで、model/effortを出力せず、状態も変更しません。
+
+`next_action`は継続ならcontinue_current / reuse_existing_owner、所有者未確認ならcheck_owner_reuse、分割条件未確認ならassess_work_unit、候補能力・承認未確認ならresolve_candidate_gapsです。確認済みCloud候補はprepare_cloud_handoff、Chatはevaluate_existing_chat_policy、ローカル別セッションはreview_new_session_contract、標準子はreview_subagent_contractへ進みます。実行可能な別環境がなければreport_context_limitationsです。Cloud推薦は後述の既存inspect / dispatch-planへ渡し、実際の許可・環境・revision・検証を確認します。
+
+| 場面 | 判断と短い提案 |
+| --- | --- |
+| 親でもできる別repoの実装・テスト | 「独立した回帰修正をCloudで実装・検証する案です。ローカルも候補です。対象環境と材料範囲を確認して引き継ぎます」 |
+| Cloud環境が未確認 | Cloudを条件付き推薦に残し「環境・必須テストが未確認。確認後に引継ぎ、利用不能ならローカルを比較」と不足と次の操作を示す |
+| Cloud offline / 材料不足 / テスト不可 | Cloudを代案のunavailableまたはnot_suitableとして理由付きで残し、適合するローカル等を提案。ローカル試験をCloud実績にしない |
+| 同一目的の限定的な資料照合 | 「本体と独立した照合作業を標準子へ任せます」。標準の階層・並列/直列条件を確認 |
+| 短い修正 / 密結合 / 高い引継ぎ負担 | 現在担当で継続。独立ファイルや別の成果物があるだけで分けない |
+| 独立した継続管理、ローカル専用接続が必要 | 別ローカルセッションを提案し、実作成には本人の明示依頼と現ホスト条件を確認 |
+| 材料が揃いChatで完結する分析 | 既存のPro方針へ。Cloudを使うだけのために移さない |
+| 既存Cloud担当の通常修正・status要求・受入待ち | 元担当・元taskを継続。新しい別タスクや再送にせず、同一依頼の回収と内容受入へ |
+| 長時間だけ / 長文脈だけ | 独立目的や分担便益がなければ現在担当で継続 |
+| hostや材料転送がunknown / false | unknownは不足を残す。falseは候補をblockedにし、推薦を実行許可へ変えない |
+
+## 既存の候補指定契約
+
+次の`session`は0.15系との互換契約です。入力candidateの照合を行い、trueのcurrent_owner_suitableなら継続します。新規の独立単位を最初から比較する時は上のrecommendを使います。既存schema・返却値は変更しません。
 
 ```powershell
 python <plugin-root>/scripts/session_plan.py session --facts <session-facts.json>

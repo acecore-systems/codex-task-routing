@@ -1,5 +1,12 @@
 # 変更履歴
 
+## 0.16.0 — 目的単位の推薦とCloud比較
+
+- candidate不要の`session_plan.py recommend`を追加。同じ完了単位の継続担当と親の実行能力を区別し、新規の独立repo実装・テスト・長時間完了単位でCloudを有力候補にします。
+- 密結合は継続、同一目的の限定補助は標準子、独立継続管理は別セッション、ローカル依存はローカルを比較します。完結できる通常Chat工程の既存Pro優先を維持します。
+- 理由・代案・三値の不足・提案と引継ぎ項目・次の操作を返し、推薦と実作成/送信の承認を分離。既存session/cloud schema、UI claimと再送防止、モデル/effort/overrideは維持します。
+- defaults・スキル・catalog・READMEに短い提案例、入力契約、境界ケースを追加し、生成fixture/provenance・配布検査を同期。[検証記録](validation-0.16.0.md)。
+
 ## 0.15.2 — 旧Cloud CLIを除去し現行UI専用へ
 
 - 方針の意味変更: Cloud実行を`codex_cloud_ui`だけに限定。旧Cloud CLIの実行コード・専用テスト・専用資料を削除し、plannerの旧transport入力を拒否します。過去の変更履歴・検証記録は保持します。

@@ -90,11 +90,13 @@ Sol子を配布版の既定値変更にかかわらず `max` に固定する場�
 
 ### セッションとクラウドの候補を選ぶ
 
-担当/model/effortと、実行環境の選択を分けます。現在会話、標準子、既存/新規ローカルセッション、Codexクラウド、通常Chat Proを比較し、別目的・独立成果物・別repo/PR・継続管理の利点が引継ぎ負担を上回る時だけ分割を提案します。適合する既存担当を優先し、未確認は再利用確認へ返します。長文脈・利用枠回避・同モデル移管だけでは分割しません。
+担当/model/effortと、実行環境の選択を分けます。同じ完了単位を実行中の適任担当は修正・検証・受入まで継続します。「親もできる」という理由だけで新規の独立repo実装・テストを親へ固定せず、Cloudを有力候補として比較します。短い密結合の仕事は継続、同一目的の限定補助は標準子、別目的・独立成果物・別repo/PR・独立継続管理は別セッション、ローカル専用の環境が必要ならローカルを提案します。長時間・長文脈・利用枠回避・同モデル移管だけでは分割しません。
+
+0.16.0の`session_plan.py recommend --facts <facts.json>`は候補の事前指定なしで目的単位から比較し、理由・代案・不足・引継ぎ項目・次の操作を返します。通常会話で短く提案してもよく、毎回helperを実行する必要はありません。Cloudの環境・材料・必要テスト・host条件が未確認なら条件付き提案に留め、利用不能ならその理由とローカル等の代案を残します。承認済みChatの材料と実ツールで完結する分析・repo工程は既存Pro優先を維持し、Cloudを常に優先しません。たとえば「別repoの回帰修正は実装とテストまでCloudへ分ける案です。ローカルセッションも候補です。対象環境と材料転送範囲が未確認なので、まず既存承認と環境を確認します」と説明します。[入力例と境界ケース](plugins/codex-task-routing/skills/task-routing/references/session-routing.md#目的単位から推薦する)。
 
 `session_plan.py`は提案と、クラウドのinspect / dispatch-plan / receive / acceptを機械照合するローカルhelperです。ネットワーク・モデル・CLIを起動せず、タスク作成や送信を行いません。Cloudは現行UIの`codex_cloud_ui`と明示handoffを標準とし、元依頼の有効な同一範囲の承認を再利用します。送信前の永続claimと依頼ID/hash・所有者・環境・元タブ/taskを保持し、送信済み/結果不明は再送せず元taskを回収します。クラウドは通常Chat opt-inと別です。新規トップレベルセッションは本人の明示依頼と現ホスト条件を確認し、model/thinkingの既定を維持します。
 
-Cloud依頼本文に、絶対cwd・repo/branch/期待revisionの照合、README・AGENTSの読取り、cloud-environment runtimeスキルとnetwork policyの確認、必須検証、許可操作・停止条件を明記します。`start_skill`の自動注入を前提にせず、HTTP listenerはUIの利用要件にしません。現行UIでの実タスク起動・回収と、前版ソースの実Cloudテスト成功は記録済みです。確認した版・環境を越えて成功を一般化しません。[標準手順と入力契約](plugins/codex-task-routing/skills/task-routing/references/session-routing.md)、[0.15.2の検証範囲](docs/validation-0.15.2.md)。
+Cloud依頼本文に、絶対cwd・repo/branch/期待revisionの照合、README・AGENTSの読取り、cloud-environment runtimeスキルとnetwork policyの確認、必須検証、許可操作・停止条件を明記します。`start_skill`の自動注入を前提にせず、HTTP listenerはUIの利用要件にしません。以前の版での実タスク起動・回収・テスト成功は過去記録とし、確認した版・環境を越えて成功を一般化しません。[標準手順と入力契約](plugins/codex-task-routing/skills/task-routing/references/session-routing.md)、[0.16.0の検証範囲](docs/validation-0.16.0.md)。
 
 0.15.2からCloudは現行UI専用です。旧Cloud CLIの実行コード・入力受付・専用資料は配布しません。UI用の最小ローカルclaimは残し、依頼ID・材料hash・scope・元タブ/task、排他と巻戻し拒否を保持します。既存の保存記録は削除・変換せず、旧形式・未知・破損したclaimがあれば照合まで新規送信を止めます。
 
