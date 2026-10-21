@@ -2,7 +2,7 @@
 
 model・effortと、仕事を置く実行環境は別に選びます。短い仕事、適任担当の継続、Codex側の現物への反復アクセスは現在の担当に残します。別目的・独立成果物・別repo/PR・継続管理の利点が引継ぎ・受入の負担を上回る場合だけ別セッションを提案します。長文脈、利用枠回避、同モデルへの移管だけでは分割しません。
 
-この版の`session_plan.py`はPython標準ライブラリによるローカル計画だけです。ネットワーク、モデル、CLI、ブラウザー、タスクを起動せず、認証・会話履歴・個人メモリ・稼働Codexホームも読みません。入力JSON以外を探索せず、状態ファイルを更新しません。`execution_authorized`は常にfalse、クラウド出力は`planning_only:true`、`runtime_implemented:false`です。`preflight_complete:true`も、供給された観測の機械照合が通ったという意味です。実接続・送信・テスト・ホストの許可の証明ではありません。標準経路は現行Cloud UIの`codex_cloud_ui`と明示handoffです。`runtime_implemented:false`はplanner自身が非実行という既存契約で、UIの利用不能を意味しません。旧`codex_cloud_cli`/`cloud_run.py`は[非推奨の互換資料](cloud-transport.md)として既存記録とテストを保持し、自動候補・通常運用の残対応にしません。旧CLIの互換性・実送信検証は現行UIの完了条件ではありません。実UIと実テストの確認範囲は、リポジトリの版別検証記録を参照します。
+この版の`session_plan.py`はPython標準ライブラリによるローカル計画だけです。ネットワーク、モデル、CLI、ブラウザー、タスクを起動せず、認証・会話履歴・個人メモリ・稼働Codexホームも読みません。入力JSON以外を探索せず、状態ファイルを更新しません。`execution_authorized`は常にfalse、クラウド出力は`planning_only:true`、`runtime_implemented:false`です。`preflight_complete:true`も、供給された観測の機械照合が通ったという意味です。実接続・送信・テスト・ホストの許可の証明ではありません。実行経路は現行Cloud UIの`codex_cloud_ui`と明示handoffだけです。`runtime_implemented:false`はplanner自身が非実行という既存契約で、UIの利用不能を意味しません。旧Cloud CLIの実行コード・入力受付・専用資料は配布しません。実UIと実テストの確認範囲は、リポジトリの版別検証記録を参照します。
 
 ## 候補の提案
 
@@ -32,16 +32,16 @@ python <plugin-root>/scripts/session_plan.py session --facts <session-facts.json
 
 ## 現行Cloud UIの標準手順
 
-`session_plan.py`の`transport: codex_cloud_ui`を標準にし、現在のホストで実際に提供されるネイティブCloudの画面操作を計画します。現在のUIで選ばれた実行場所・公開環境・元タスクを観測し、利用可能な正式ツールで明示送信・同一task回収を行います。画面のURLやtask UUIDだけで旧Codex Cloud CLIと同じ環境・backendと判断しません。旧`codex_cloud_cli`と[CLI adapter](cloud-transport.md)は非推奨の別経路です。UI task UUIDをCLIのstatus/diff/applyへ渡しません。
+`session_plan.py`の`transport: codex_cloud_ui`で、現在のホストで実際に提供されるネイティブCloudの画面操作を計画します。現在のUIで選ばれた実行場所・公開環境・元タスクを観測し、利用可能な正式ツールで明示送信・同一task回収を行います。画面のURLやtask UUIDからbackendを推測しません。
 
 元依頼で許可済みの同じ対象・材料・操作・環境には承認を再利用し、独自の追加承認フローを作りません。元の承認に含まれない材料転送・新しい対象や、実ホストが要求する確認はその境界を守ります。通常Chatのopt-inだけをCloudの許可へ転用せず、ネイティブCloudの操作を通常Chat Proへの依頼として扱いません。通常Chat/Work/モデルAPIへのfallbackで実行場所や制約を迂回しません。
 
 1. 同じ所有者がinspectとdispatch-planで、依頼ID/hash・範囲・返却先、対象環境と利用できる検証手段を確認します。既存タスクや送信結果不明の記録があれば元taskの回収を先に行い、新規送信しません。
-2. 実送信の前に、同じrequest IDの排他的な永続claimをローカルへ保存し、unknown_outcomeを残します。承認済みの実promptと材料hash、観測した元タブ/画面、対象環境を保持して、一度だけ送ります。送信後は実際の元タブ/task IDと到達点を同じ記録に保存します。`cloud_record.ClaimStore`は共通のローカル保存原語ですが、`cloud_run.py dispatch`を呼ぶだけでUI送信のclaimやUI連携が行われるわけではありません。UI所有者は実際の保存操作を対応付け、claim不明・不一致では送信を止めます。
+2. 実送信の前に、同じrequest IDの排他的な永続claimを`cloud_record.ClaimStore`でローカルへ保存し、unknown_outcomeを残します。承認済みの実promptと材料hash、観測した元タブ/画面、対象環境を保持して、一度だけ送ります。送信後は実際の元タブ/task IDと到達点を同じ記録に保存します。このhelperはUIを操作せず、本人承認や実送信を証明しません。UI所有者は下記のlock契約を守って保存と正式なUI操作を対応付け、claim不明・不一致では送信を止めます。
 3. `start_skill`の自動注入に依存せず、下記の開始手順を依頼本文に明記します。まず指定した絶対cwdでrepo/branch/期待revisionを照合し、README・AGENTSとcloud-environment runtimeスキルを読み、network policy・実行可能な検証方法を確認してから、許可操作だけを行います。必須検証と停止条件も本文へ渡します。ツールやスキルが未提供なら不足を返し、利用できると推測しません。認証確認が必要でも秘密値を返さず、復元artifactのsource revision宣言と実checkoutで観測したrepo/base revisionを区別します。
 4. 同じ元タブ/taskで状態と成果物を回収し、receiveで元ID/hashを照合してから所有者が内容を受け入れます。回収は新規送信の承認・生成枠を要求し直しません。実行したcheck、環境、結果、失敗・skip・未検証を保持し、環境の公開・タスク開始・復元成功をテスト成功と扱いません。
 
-CLIの404や空stdoutはUI taskの不存在・認証失敗・未送信の証明ではありません。backendの同一性が未確認なら元UIの記録・同一taskへ戻り、再送や新タスク化をしません。所有者の交代や回答待ちでも再送しません。HTTP listenerはCloud UIの利用要件ではなく、自動注入や旧CLIとともに通常運用の残対応にはしません。listenerが必要な個別工程でだけ実能力を確認し、ソケットを使わないunitテストの成功で代替しません。
+回収エラーはUI taskの不存在・認証失敗・未送信の証明ではありません。元UIの記録・同一taskへ戻り、再送や新タスク化をしません。所有者の交代や回答待ちでも再送しません。HTTP listenerはCloud UIの利用要件ではなく、自動注入とともに通常運用の残対応にはしません。listenerが必要な個別工程でだけ実能力を確認し、ソケットを使わないunitテストの成功で代替しません。
 
 依頼本文には、具体値を埋めて次の開始手順を含めます。hash用JSONだけに閉じず、Cloud担当が読む本文にも渡します。
 
@@ -112,7 +112,7 @@ python <plugin-root>/scripts/session_plan.py cloud --handoff <handoff.json> --ph
 | handoff_sha256 | 元handoffの不変範囲のhash |
 | task_id | stateの元task IDと同じ値。未送信ならnull |
 | surface | codex_cloud。chatgpt_work/normal_chat/unknownは未準備 |
-| transport | 標準はcodex_cloud_ui。codex_cloud_cliは既存入力の非推奨互換値、unknownは未準備 |
+| transport | codex_cloud_uiだけを実行経路として受理。unknownは未準備、他の値は入力エラー |
 | actor | role=root、depth=0、executor_id=owner_id。宣言は実権限の証明ではない |
 | observed_at | timezone付きISO時刻 |
 | checks | 操作別の観測オブジェクト |
@@ -135,11 +135,44 @@ ChatGPT Workのタスク作成、cloud非対応のhandoff、simulated prototype�
 実ホストが許す正式なUI操作を使い、rootの同じ経路所有者が元記録から再開します。helperのpreflight完了だけでは送信せず、フックから自動起動しません。Work、モデルAPI、旧CLIへ切り替えません。
 
 1. 元記録の所有者、request ID/hash、許可範囲、環境、元タブ/task IDと送信状態を確認します。sentまたはunknown_outcomeなら回収を先に行い、新規送信しません。taskを特定できなければ未解決のまま返します。
-2. 同じ元タスクのUIで到達点・成果物・実checkoutを確認します。環境の公開、新規workspace、既存taskのsaved state、復元artifactのsource宣言を区別し、対象repo/base revision・必須検証の環境と結果を実証拠から回収します。UI task IDを旧CLIへ渡しません。
+2. 同じ元タスクのUIで到達点・成果物・実checkoutを確認します。環境の公開、新規workspace、既存taskのsaved state、復元artifactのsource宣言を区別し、対象repo/base revision・必須検証の環境と結果を実証拠から回収します。
 3. receiveで同じ元ID/hashを照合し、所有者が実差分、合格条件、必須check、失敗・skip・未検証を意味確認してacceptへ進めます。差分表示だけでテスト実行済みにしません。必要な検証用適用は承認済みの隔離worktreeで行い、最終反映と区別します。
 4. 本来のcheckoutへ反映する必要があれば、最新の期待HEAD/status、適用先、許可範囲を確認して別操作で行います。commit/push/PR/merge/deployは各承認と合意終端に従います。元記録にcollected/accepted、証拠、未解決点、再開先を残し、今回開いた完了タブを閉じます。
 
-旧CLIの構文と固定protocolは[互換資料](cloud-transport.md)へ隔離しています。その互換性・実送信検証、自動start_skill注入、CloudでのHTTP待受は、この標準手順の通常の残対応ではありません。
+自動start_skill注入、CloudでのHTTP待受は、この標準手順の通常の残対応ではありません。
+
+## UI用のローカルclaim
+
+`cloud_record.py`はファイル保存だけを行う共通原語です。ブラウザー・CLI・モデル・ネットワークを起動せず、送信・回収・内容受入は同じ所有者が正式なUI操作とplannerで行います。本文・秘密値・生ログは保存しません。
+
+schema 2の記録は`schema_version`、`binding`、`submission`、`task_id`、`event`だけを持ちます。bindingは`request_id`、`input_sha256`、`handoff_sha256`、絶対`cwd`、`repository`、`branch`、`expected_revision`、`environment_id`、`owner_id`、元UIの`tab_id`です。所有者が確認した本文の正確なUTF-8 bytesのhashを`input_sha256`に使い、本文例の開始手順も含めます。storeを作るrequest IDとbinding内のIDは必ず一致させます。hashとIDは同一性の照合用で、権限の証明ではありません。
+
+caller管理の非公開・Git管理外・リンク/reparse pointを含まない保存先を使い、Windows ACLと共有/同期先はホストで確認します。保存先やrequest IDを変えて結果不明を迂回しません。既存の保存記録は自動削除・変換しません。旧schema・未知形式・破損claim/snapshot・claimのないsnapshotは読み取りを拒否し、未送信へ戻さずrootへ返します。
+
+すべてのread/claim/saveを同じ`with store.lock():`の中で行います。固定inodeのOS lockが同時更新を排除し、永久O_EXCL claimがlock解放・crash・timeout後も再送を止めます。
+
+```python
+from cloud_record import ClaimStore
+
+store = ClaimStore(private_state_dir, request_id)
+with store.lock():
+    record = store.read()  # エラーなら停止。未知・旧・破損をNoneにしない。
+    if record is None:
+        record = store.claim(binding)  # 正式UI送信の前にunknown_outcomeを永続化。
+        # この呼出しでclaimを新規作成した所有者だけが一度のUI送信へ進む。
+    # 既存recordがあれば元タブ/taskを照合・回収し、新規送信しない。
+```
+
+正式UIで一度だけ送信し、実際の元task IDを確認した後は、同じlock内で最新記録を読み直し、`submission="sent"`、`task_id=observed_task_id`、`event="submission_recorded"`へsaveします。元タスクを回収後は`collected`/`collection_recorded`、所有者が実差分・検証を意味確認した後は`accepted`/`owner_review_recorded`へ同じ方法で進めます。保存前に必ず最新の記録とscopeを照合します。
+
+```python
+with store.lock():
+    latest = store.read()  # 同じclaim/bindingと正式UIの実観測を所有者が照合。
+    store.save({**latest, "submission": "sent", "task_id": observed_task_id,
+                "event": "submission_recorded"})
+```
+
+saveはbinding変更、既知task IDの変更、状態の巻戻しを拒否します。snapshot保存失敗でもclaimは残り、新規送信しません。helperにclaim解除・履歴消去・自動移行・再送コマンドはありません。実際の送信やテスト成功、内容受入をメタデータだけから推定しません。
 
 ## result / acceptanceの形式
 

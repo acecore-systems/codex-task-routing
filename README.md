@@ -94,9 +94,9 @@ Sol子を配布版の既定値変更にかかわらず `max` に固定する場�
 
 `session_plan.py`は提案と、クラウドのinspect / dispatch-plan / receive / acceptを機械照合するローカルhelperです。ネットワーク・モデル・CLIを起動せず、タスク作成や送信を行いません。Cloudは現行UIの`codex_cloud_ui`と明示handoffを標準とし、元依頼の有効な同一範囲の承認を再利用します。送信前の永続claimと依頼ID/hash・所有者・環境・元タブ/taskを保持し、送信済み/結果不明は再送せず元taskを回収します。クラウドは通常Chat opt-inと別です。新規トップレベルセッションは本人の明示依頼と現ホスト条件を確認し、model/thinkingの既定を維持します。
 
-Cloud依頼本文に、絶対cwd・repo/branch/期待revisionの照合、README・AGENTSの読取り、cloud-environment runtimeスキルとnetwork policyの確認、必須検証、許可操作・停止条件を明記します。`start_skill`の自動注入を前提にせず、HTTP listenerはUIの利用要件にしません。現行UIでの実タスク起動・回収と、前版ソースの実Cloudテスト成功は記録済みです。確認した版・環境を越えて成功を一般化しません。[標準手順と入力契約](plugins/codex-task-routing/skills/task-routing/references/session-routing.md)、[0.15.1の検証範囲](docs/validation-0.15.1.md)。
+Cloud依頼本文に、絶対cwd・repo/branch/期待revisionの照合、README・AGENTSの読取り、cloud-environment runtimeスキルとnetwork policyの確認、必須検証、許可操作・停止条件を明記します。`start_skill`の自動注入を前提にせず、HTTP listenerはUIの利用要件にしません。現行UIでの実タスク起動・回収と、前版ソースの実Cloudテスト成功は記録済みです。確認した版・環境を越えて成功を一般化しません。[標準手順と入力契約](plugins/codex-task-routing/skills/task-routing/references/session-routing.md)、[0.15.2の検証範囲](docs/validation-0.15.2.md)。
 
-旧`codex_cloud_cli`/`cloud_run.py`は既存記録を壊さないための非推奨互換実装として残します。自動候補や通常運用の残対応にはせず、旧CLIの互換性・実送信検証は現行UIの完了条件に含めません。[旧CLI互換資料](plugins/codex-task-routing/skills/task-routing/references/cloud-transport.md)。
+0.15.2からCloudは現行UI専用です。旧Cloud CLIの実行コード・入力受付・専用資料は配布しません。UI用の最小ローカルclaimは残し、依頼ID・材料hash・scope・元タブ/task、排他と巻戻し拒否を保持します。既存の保存記録は削除・変換せず、旧形式・未知・破損したclaimがあれば照合まで新規送信を止めます。
 
 ### 通常Chatの一時Chat（Pro）へ渡す
 

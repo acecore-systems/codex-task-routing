@@ -121,7 +121,7 @@ class CloudPlanningTests(unittest.TestCase):
             required_checks=['python -m unittest discover -s tests -v'],
             allowed_operations=['read', 'edit', 'test'], state=dict(submission='not_sent', task_id=None))
         self.live = dict(schema_version=1, handoff_sha256=sp.handoff_sha256(self.handoff),
-            task_id=None, surface='codex_cloud', transport='codex_cloud_cli',
+            task_id=None, surface='codex_cloud', transport='codex_cloud_ui',
             actor=dict(role='root', depth=0, executor_id='root-owner'), observed_at=self.now.isoformat(),
             checks={name: dict(state='verified' if name in sp.OBSERVED_CHECKS else 'permission_checked',
                                reference='Existing synthetic scoped evidence')
@@ -195,6 +195,17 @@ class CloudPlanningTests(unittest.TestCase):
         self.live['checks']['target_authorization'] = dict(state='permission_checked')
         with self.assertRaises(sp.SessionPlanError):
             self.plan()
+
+    def test_removed_cli_transport_is_rejected_for_inspection_dispatch_and_collection(self):
+        self.live['transport'] = 'codex_cloud_cli'
+        for phase in ('inspect', 'dispatch-plan', 'receive'):
+            if phase == 'receive':
+                self.handoff['state'] = dict(submission='sent', task_id='original-task')
+                self.live['task_id'] = 'original-task'
+            before = copy.deepcopy(self.live)
+            with self.subTest(phase=phase), self.assertRaises(sp.SessionPlanError):
+                self.plan(phase)
+            self.assertEqual(self.live, before)
 
     def test_scope_materials_environment_and_expected_revision_are_bound(self):
         for key, value in [('input_sha256', 'b' * 64), ('expected_revision', '3' * 40),
@@ -398,7 +409,7 @@ class CloudPlanningTests(unittest.TestCase):
             self.assertIn('現版', rendered['model-routing-handoff.md'])
             for name in ('model-routing-policy.md', 'model-routing-handoff.md'):
                 self.assertIn('codex_cloud_ui', rendered[name])
-                self.assertIn('非推奨互換実装', rendered[name])
+                self.assertIn('旧形式・未知・破損', rendered[name])
                 self.assertIn('README・AGENTS', rendered[name])
                 self.assertIn('HTTP listener', rendered[name])
             self.assertEqual(policy.config['models']['sol']['default_effort'], 'xhigh')

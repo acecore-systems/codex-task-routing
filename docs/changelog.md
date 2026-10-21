@@ -1,5 +1,12 @@
 # 変更履歴
 
+## 0.15.2 — 旧Cloud CLIを除去し現行UI専用へ
+
+- 方針の意味変更: Cloud実行を`codex_cloud_ui`だけに限定。旧Cloud CLIの実行コード・専用テスト・専用資料を削除し、plannerの旧transport入力を拒否します。過去の変更履歴・検証記録は保持します。
+- UI用に共通claimの最小保存helperを残し、schema 2で依頼ID・材料/hash・scope・元タブ/taskを固定。永久claim・OS lock・binding一致・task不変・巻戻し拒否を維持します。CLI固有のwire hash、attempt/diff保存、status・commandイベントは除去します。
+- 旧形式・未知・破損した保存記録は自動削除・変換せず、新規送信を止めてrootへ返します。request IDとstoreの不一致も拒否し、UI手順にlock内のread/claim/saveを明記しました。
+- 配布方針・スキル・README・fixture/provenance・package検査を同期し、manifestを0.15.2へ更新。親設定、モデル/effort、通常Chat条件、明示override、実ホストの承認境界は維持します。[検証記録](validation-0.15.2.md)。
+
 ## 0.15.1 — 現行Cloud UIと本文での開始手順
 
 - 方針の意味変更: Cloudの標準を現行UIの`codex_cloud_ui`と明示handoffに統一。元の有効な承認、送信前claim、依頼ID/hash、同じ所有者・元タブ/task、一度の送信と同一task回収を維持します。

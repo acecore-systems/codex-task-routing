@@ -28,7 +28,7 @@ stateにはnot_sent/sent/unknown_outcome/collected/acceptedと元のtask_idを�
 
 現版session_plan.pyはネットワーク・モデル・CLI起動を行わない計画専用helperであり、runtime_implemented:falseはplanner自身の非実行を示す。標準は現行Cloud UIのcodex_cloud_uiと明示handoff。送信前の永続claimと元タブ/taskを保持し、同じ所有者が一度の送信・同一task回収・内容受入を行う。依頼本文に絶対cwd、repo/branch/期待revision、README・AGENTSの読取り、cloud-environment runtimeスキルとnetwork policyの確認、必須検証、許可操作・停止条件を明記する。start_skill自動注入には依存せず、HTTP listenerはUIの利用要件にしない。未提供のスキル・ツールは不足として返し、source revision宣言と実checkoutの観測を区別する。
 
-旧codex_cloud_cli/cloud_run.pyは既存記録保全のための非推奨互換実装で、自動候補・通常運用の残対応にはしない。旧CLIの互換性・実送信検証を現行UIの完了条件にせず、UI task IDを旧CLIへ渡さない。入力の宣言やhashはホストの権限証明ではなく、rootの受入・現ホストの実承認を代替しない。標準手順はreferences/session-routing.md、旧互換資料はreferences/cloud-transport.md。
+実行経路はcodex_cloud_uiだけとし、旧Cloud CLIの実行コード・入力受付・専用資料は配布しない。共通claimは依頼ID・材料hash・scope・元タブ/taskを固定する最小のローカル保存helperとして残す。旧形式・未知・破損した保存記録は削除・変換・未送信扱いにせず、照合不能なら送信を止めてrootへ返す。入力の宣言やhashはホストの権限証明ではなく、rootの受入・現ホストの実承認を代替しない。標準手順とclaim契約はreferences/session-routing.md。
 
 ## 通常Chat Pro
 
