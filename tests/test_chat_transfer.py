@@ -14,6 +14,7 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import urlencode
+from unittest.mock import Mock, patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,6 +37,10 @@ chat_transfer = load_module("chat_transfer_under_test", TRANSFER_SCRIPT)
 
 class ChatTransferTestCase(unittest.TestCase):
     def setUp(self) -> None:
+        # Protocol/deadline unit tests must also run in socket-disabled clouds.
+        # Real loopback/Browser availability is a separate integration check.
+        self.enterContext(patch.object(socket, "socket", side_effect=PermissionError("socket disabled")))
+        self.enterContext(patch.object(socket, "socketpair", side_effect=PermissionError("socket disabled")))
         fixture_root = Path(__file__).resolve().parent / ".tmp-runtime-tests"
         fixture_root.mkdir(exist_ok=True)
         self.base = fixture_root / f"chat-transfer-{uuid.uuid4().hex}"
@@ -221,39 +226,115 @@ class ChatTransferTestCase(unittest.TestCase):
         self.assertIn("Response status is completed", status)
         self.assertIn("Parent semantic acceptance is still required", status)
 
+    def test_factory_binds_only_loopback_without_opening_a_socket(self) -> None:
+        previous_token = self.state.token
+        with patch.object(chat_transfer.HTTPServer, "__init__", return_value=None) as initialize:
+            server = chat_transfer.create_server(self.state)
+        initialize.assert_called_once_with(("127.0.0.1", 0), chat_transfer.TransferHandler)
+        self.assertIs(server.state, self.state)
+        self.assertFalse(server.completed)
+        self.assertIsNone(server.deadline)
+        self.assertNotEqual(self.state.token, previous_token)
+
     def test_timeout_stops_without_echoing_prompt_or_response(self) -> None:
-        with redirect_stdout(io.StringIO()) as stdout:
+        server = SimpleNamespace(origin="http://127.0.0.1:32123", completed=False,
+                                 handle_request=Mock(), server_close=Mock())
+        with (patch.object(chat_transfer, "create_server", return_value=server) as create,
+              patch.object(chat_transfer.time, "monotonic", side_effect=[0.0, 0.25, 1.01]),
+              redirect_stdout(io.StringIO()) as stdout):
             self.assertEqual(chat_transfer.serve_transfer(self.state, timeout_seconds=1), 3)
+        create.assert_called_once_with(self.state)
+        server.handle_request.assert_called_once_with()
+        server.server_close.assert_called_once_with()
+        self.assertEqual(server.deadline, 1.0)
+        self.assertEqual(server.timeout, 0.75)
+        self.assertEqual(server.client_timeout_seconds, 0.75)
         metadata = stdout.getvalue()
         self.assertIn('"event": "listening"', metadata)
         self.assertIn('"event": "timeout"', metadata)
         self.assertNotIn(self.bundle["prompt"], metadata)
         self.assertNotIn("bounded finding", metadata)
+        self.assertFalse(self.reply_path.exists())
 
     def test_absolute_deadline_interrupts_continuous_partial_request(self) -> None:
-        server = chat_transfer.create_server(self.state)
-        application, client = socket.socketpair()
-        application.settimeout(5)
+        class PendingInput(io.RawIOBase):
+            """A blocking stream; shutdown ends reads while traffic is active."""
+            def __init__(self):
+                super().__init__()
+                self.condition = threading.Condition()
+                self.pending = bytearray()
+                self.ended = False
+
+            def readable(self):
+                return True
+
+            def feed(self, data):
+                with self.condition:
+                    if self.ended:
+                        raise OSError("connection ended")
+                    self.pending.extend(data)
+                    self.condition.notify_all()
+
+            def end(self):
+                with self.condition:
+                    self.ended = True
+                    self.condition.notify_all()
+
+            def readinto(self, target):
+                with self.condition:
+                    while not self.pending and not self.ended:
+                        self.condition.wait()
+                    count = min(len(target), len(self.pending))
+                    target[:count] = self.pending[:count]
+                    del self.pending[:count]
+                    return count
+
+        # Exercise the real finish_request, Timer and HTTP parser without the
+        # TCP listener/socketpair. Only connection shutdown/EOF is a fixture.
+        server = object.__new__(chat_transfer.TransferServer)
+        server.state = self.state
+        server.server_port = 32123
+        server.completed = False
+        server.RequestHandlerClass = chat_transfer.TransferHandler
+        source = PendingInput()
+        shutdown_calls, worker_errors = [], []
+
+        def shutdown(how):
+            shutdown_calls.append(how)
+            source.end()
+
+        connection = SimpleNamespace(makefile=lambda *_: io.BufferedReader(source),
+                                     sendall=lambda _data: None, shutdown=shutdown)
         server.deadline = time.monotonic() + 0.15
-        worker = threading.Thread(target=server.finish_request,
-                                  args=(application, ('127.0.0.1', 0)), daemon=True)
+
+        def finish_request():
+            try:
+                server.finish_request(connection, ("127.0.0.1", 0))
+            except Exception as error:
+                worker_errors.append(error)
+
+        worker = threading.Thread(target=finish_request, daemon=True)
         worker.start()
+        chunks_sent = 0
         try:
-            client.sendall(b'GET /transfer/')
+            source.feed(b"GET /transfer/")
             until = time.monotonic() + 1
             while worker.is_alive() and time.monotonic() < until:
                 try:
-                    client.sendall(b'x')
+                    source.feed(b"x")
+                    chunks_sent += 1
                 except OSError:
                     break
                 time.sleep(0.01)
             worker.join(timeout=0.3)
-            self.assertFalse(worker.is_alive(), 'traffic must not extend the absolute deadline')
+            self.assertFalse(worker.is_alive(), "traffic must not extend the absolute deadline")
+            self.assertGreater(chunks_sent, 1, "fixture must supply continuous partial traffic")
+            self.assertEqual(shutdown_calls, [socket.SHUT_RDWR])
+            self.assertEqual(worker_errors, [])
             self.assertFalse(self.reply_path.exists())
         finally:
-            client.close()
-            application.close()
-            server.server_close()
+            source.end()
+            worker.join(timeout=1)
 
 
 if __name__ == "__main__":
