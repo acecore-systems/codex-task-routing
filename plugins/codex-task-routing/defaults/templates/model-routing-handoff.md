@@ -26,7 +26,9 @@ PR作成まで、または指定レビュー時点の対象指摘・必要な再
 
 stateにはnot_sent/sent/unknown_outcome/collected/acceptedと元のtask_idを残す。送信timeoutはunknown_outcome、回収担当の変更は既存依頼の引継ぎであり再送理由ではない。ID不明の結果不明は照合まで止め、元状態をnot_sentに戻さない。inspect、dispatch-plan、receive、acceptを分ける。receiveは送信承認/枠を要求し直さず元taskの読取り範囲を確認する。acceptは元ID/hash/所有者、変更revision/成果物、必須検証・実行環境/証拠、意味確認を返し、完了・失敗・部分・未検証を分ける。CLI diffはテスト実行証拠ではない。
 
-現版session_plan.pyはネットワーク・モデル・CLI起動を行わない計画専用helperであり、runtime_implemented:falseはplanner自身の非実行を示す。別cloud_run.pyは許可ホストで明示実行するCLI transportと永久claimを備えるが、実クラウドの送信・回収は未検証。入力の宣言やhashはホストの権限証明ではなく、rootの受入・現ホストの実承認を代替しない。詳細はreferences/session-routing.mdとreferences/cloud-transport.md。
+現版session_plan.pyはネットワーク・モデル・CLI起動を行わない計画専用helperであり、runtime_implemented:falseはplanner自身の非実行を示す。標準は現行Cloud UIのcodex_cloud_uiと明示handoff。送信前の永続claimと元タブ/taskを保持し、同じ所有者が一度の送信・同一task回収・内容受入を行う。依頼本文に絶対cwd、repo/branch/期待revision、README・AGENTSの読取り、cloud-environment runtimeスキルとnetwork policyの確認、必須検証、許可操作・停止条件を明記する。start_skill自動注入には依存せず、HTTP listenerはUIの利用要件にしない。未提供のスキル・ツールは不足として返し、source revision宣言と実checkoutの観測を区別する。
+
+旧codex_cloud_cli/cloud_run.pyは既存記録保全のための非推奨互換実装で、自動候補・通常運用の残対応にはしない。旧CLIの互換性・実送信検証を現行UIの完了条件にせず、UI task IDを旧CLIへ渡さない。入力の宣言やhashはホストの権限証明ではなく、rootの受入・現ホストの実承認を代替しない。標準手順はreferences/session-routing.md、旧互換資料はreferences/cloud-transport.md。
 
 ## 通常Chat Pro
 

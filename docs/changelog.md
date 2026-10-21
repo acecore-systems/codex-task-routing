@@ -1,5 +1,12 @@
 # 変更履歴
 
+## 0.15.1 — 現行Cloud UIと本文での開始手順
+
+- 方針の意味変更: Cloudの標準を現行UIの`codex_cloud_ui`と明示handoffに統一。元の有効な承認、送信前claim、依頼ID/hash、同じ所有者・元タブ/task、一度の送信と同一task回収を維持します。
+- 開始時の絶対cwd・repo/branch/期待revision、README・AGENTS、cloud-environment runtimeスキルとnetwork policy、必須検証・許可操作・停止条件を依頼本文へ明記。`start_skill`自動注入に依存せず、HTTP listenerをUIの利用要件にしません。
+- 旧`codex_cloud_cli`/`cloud_run.py`は既存記録保全の非推奨互換実装としてコードとテストを保持。自動候補・通常運用の残対応から外し、旧CLI互換性・実送信検証を現行UIの完了条件にしません。実行コード・plannerの入出力契約は変更しません。
+- 配布要約・詳細・引継ぎ・スキル・READMEとfixture/provenanceを同期。親設定、モデル/effort、通常Chat条件、明示overrideは維持します。今回のローカル検証と前版の実Cloud成功を分けます。[検証記録](validation-0.15.1.md)。
+
 ## 0.15.0 — セッション選択とクラウド計画
 
 - 方針の意味変更: model/effortとは独立した実行環境選択を追加。別目的・独立成果物・別repo/PR・継続管理の利益がある時だけ別セッションを提案し、適合する既存担当を優先します。未確認の担当を不存在にせず、長文脈・枠回避・同モデル移管だけの分割を避けます。標準子と通常Chatの既存制約、親/model/effortと利用者overrideを維持します。

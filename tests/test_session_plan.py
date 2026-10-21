@@ -391,10 +391,16 @@ class CloudPlanningTests(unittest.TestCase):
         with runtime_directory() as tmp:
             policy = routing.load_policy(codex_home=tmp)
             rendered = policy.rendered_documents()
-            self.assertIn('cloud_run.py', rendered['effective.md'])
+            self.assertIn('Cloudは現行UIで実行し、開始手順は依頼本文に明記。', rendered['effective.md'])
+            self.assertNotIn('cloud_run.py', rendered['effective.md'])
             for name in ('model-routing-policy.md', 'model-routing-catalog.md', 'model-routing-handoff.md'):
                 self.assertIn('session_plan.py', rendered[name])
             self.assertIn('現版', rendered['model-routing-handoff.md'])
+            for name in ('model-routing-policy.md', 'model-routing-handoff.md'):
+                self.assertIn('codex_cloud_ui', rendered[name])
+                self.assertIn('非推奨互換実装', rendered[name])
+                self.assertIn('README・AGENTS', rendered[name])
+                self.assertIn('HTTP listener', rendered[name])
             self.assertEqual(policy.config['models']['sol']['default_effort'], 'xhigh')
             self.assertEqual(policy.config['models']['astra']['default_effort'], 'medium')
             self.assertEqual(policy.config['models']['luna']['default_effort'], 'max')
