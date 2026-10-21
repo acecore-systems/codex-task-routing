@@ -33,3 +33,9 @@ Windows / Python 3.13.15で実施。初回の制限付き実行は、既存の�
 この担当工程では0.16.0の実Cloud送信・回収・Linuxテストは未実施。過去の版の実Cloud実績は[版別記録](validation.md)と分ける。親担当による今回差分のCloudレビュー・実Linuxテストは別工程で、その結果を確認した版・環境・対象差分に紐づけて追記する。
 
 試験用保存先と一時Codexホームはfixtureが後処理した。新しいBrowserタブ・Cloudタスク・worktreeをこの担当工程では作成していない。無関係のworktree・既存保存記録を変更せず、受入・commit/push・PRは親担当へ引き継ぐ。
+
+## 親担当の受入確認
+
+対象commit `57a2276a6f1f661b3506fa2f8940b4d2249ab0a5`について、独立した12ケースの受入確認、release判定、差分レビューが成功した。PR #27のCIはWindows Python 3.11/3.13、Ubuntu Python 3.11、macOS Python 3.11の全4構成で成功した。
+
+実Cloud確認は未完了。2026-10-21、既存のCloud検証タスクをEdgeで開き直したが、操作接続とページ取得がタイムアウトした。今回差分の依頼は未送信であり、アップロード・送信claim・新規Cloudタスクは作成していない。UI接続復旧後、同じ検証タスクへ対象差分を渡してレビューとLinuxテストを回収する。GitHubのLinux成功を実Cloud成功とは扱わない。接続先・差分bundleはGit管理外の引継ぎ記録に保存した。
