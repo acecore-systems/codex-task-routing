@@ -10,7 +10,7 @@
 
 計画ヘルパーとは別に、許可されたホストから明示的に使うCLI runtimeを追加する。フックからネットワーク、モデル、別CLIセッションを起動しない。
 通常Chatのopt-inをクラウドの実行承認へ転用しない。既存の有効な承認は対象と操作の範囲内で再利用し、実際のホスト制約を維持する。
-稼働中の利用環境へのインストール、ユーザーの設定変更、クラウドタスクの投入、マージは実施していない。
+初回実装後、利用者の明示指示に基づき導入と実クラウド検証を実施した。以下では初回検証と追確認を区別する。マージは未実施。
 
 ## 計画機能の初回検証（2026-10-20）
 
@@ -94,36 +94,46 @@ Windowsで `codex-cli 0.163.0-alpha.10.2` のヘルプを確認した。
 - `finalize_environment`はsimulated/prototype用で、実クラウド環境の作成証拠にはできない。
 - 新規トップレベルタスクの作成・他タスクへの送信には、それぞれ現在のツールが要求する本人の指示が必要。サブエージェントの選定規則で代替しない。
 
-## 実クラウドで残る確認
+## 実クラウドの追確認（2026-10-21）
 
-### 2026-10-21の実機確認
+利用者の明示指示で、現在のCloud UIから対象リポジトリに限定した環境を作成・公開した。
+公開範囲は自分のみ、秘密値は追加せず、外部通信は無効のまま実タスクを開始・回収した。
+保存設定、公開成功、タスクの起動、検証結果をそれぞれ確認した。
 
-- インストール済みCLIは引き続き`0.163.0-alpha.10.2`。helpの読取りのみで、新規モデルセッションは開始していない。
-- 公式CLIのtag `rust-v0.163.0-alpha.10`が指すcommit
-  [`cd643519fb56011557d09b41053a3a4c0e013e1f`](https://github.com/openai/codex/blob/cd643519fb56011557d09b41053a3a4c0e013e1f/codex-rs/cloud-tasks/src/lib.rs)
-  で、execは単一task URL、statusは状態を含む人間向け3行、diffは選択したattemptの本文を出力することを確認した。
-  execのquery `-`は標準入力のUTF-8本文を使う。statusはREADY以外で終了コード1を返すため、
-  非0終了だけで通信失敗と判定しない。READYもテスト合格の証拠にはしない。
-- 公開sourceとインストール済みalpha派生版のbinary同一性や、実応答の形式は未検証。
-- Browserで`https://chatgpt.com/codex`を開くと、当初Cloudflare確認画面になった。
-  本人がクリックを承認した後、ブラウザ操作が中断したため、クリック成立は確認できなかった。
-  復元時には確認画面を経ず公式紹介ページへ進み、そこで表示された「Cloudへ移動」
-  （`https://chatgpt.com/codex/cloud`）からChatGPTのクラウド選択画面へ遷移した。
-- 同画面の環境選択に「公開済みの環境はありません」と表示された。
-  これは表示されたアカウント・画面の範囲の観測であり、旧CLI用環境の不存在や新旧互換性の証明ではない。
-  環境作成・公開・タスク送信は行っていない。
-- 現ホストの有効方針は標準子の利用を指定しており、Cloud CLIで別モデルを起動できる許可は確認できない。
-  通常Chatのopt-inや入力JSONを代替許可にしない。クラウド実行を許すホストと実環境でのpilotが残る。
-- 認証の必要性を確認するためローカル認証の状態・登録済みhandoffを調べたが、ChatGPT用presetはなかった。
-  認証情報や会話履歴は取得していない。今回作成したBrowserタブは閉じ、残存なしを確認した。
+| 確認対象 | 実観測 |
+| --- | --- |
+| 公開済み環境の復元 | 成功、Linux / Python 3.12.14、`/workspace/codex-task-routing` |
+| 復元ソース | branch `work`、HEAD `e550e90151bc6dc8680a4ed1d56da495019d0ee1`、manifest 0.14.1 |
+| 全体テスト | 199件、195成功、2エラー、2 Windows専用skip、終了コード1 |
+| package検査、一時Codexホームのstatus/render | 各終了コード0 |
+| 作業ツリー | 実行前後clean |
+| 保存済みstart_skill | 環境設定には保存したが、実タスクの開始時指示では未提供 |
+| 現行UIのタスクIDをinstalled CLIのstatusへ指定 | HTTP 404、結果取得失敗。新規送信や再送は行っていない |
 
-### 再開時の手順
+2エラーは `test_chat_transfer.ChatTransferTestCase` の
+`test_absolute_deadline_interrupts_continuous_partial_request` と
+`test_timeout_stops_without_echoing_prompt_or_response`。
+いずれもAF_INET socket作成で `PermissionError: [Errno 1] Operation not permitted` となった。
+localhostへのbind以前の拒否であり、外部HTTP宛先ポリシーとは別の制御である。
+AF_UNIX socket/socketpairは作成可能だった。ネットワーク設定は緩和していない。
 
-1. 実行ホストが許すCodex Cloud専用の入口、対象環境ID、repoへの接続と実行権限を確認する。CLIの存在や申告値だけでは実行可能としない。
-2. 対象branchと期待revisionを固定し、クラウドが取得する材料・実行するテスト・返却先・完了条件を引き継ぐ。ローカル未commit変更やローカル専用MCPの自動引継ぎを前提にしない。
-3. 元依頼で承認された範囲内の小さな1件を、利用可能な正式な経路で一度だけ投入する。送信結果が不明な場合は照合へ戻し、再投入しない。
-4. 同じtask IDの結果を回収し、入力の同一性、実際のrevision、差分、実行環境とテスト結果、未検証範囲を確認する。
-5. 内容を受け入れてから、許可された適用先へ反映する。タスク終了・差分取得・ローカル適用・PR作成・マージ・本番反映をそれぞれ区別する。
+現行UIタスクの起動・同一タスクの回収は実証済みだが、旧CLI adapterとの互換性は実証されていない。
+CLI statusの404は認証不在や全環境の非互換性を証明しない。UIで作成した依頼をCLIへ再投入しない。
+環境の起動手順の自動注入は未確認扱いとし、必要なcwd、対象revision、AGENTSの読取り、
+必須検証、禁止操作を依頼本文にも渡す。自動注入の製品側の不具合が修正済みとは扱わない。
 
-クラウド環境、Browser経由の実投入、Linux/macOSの実アプリ連携、再開をまたぐ実タスクの回収は未検証。
+0.15.0の実Cloud検証は、復元されたmainの検証とは別に記録する。
+CLIの実送信・diff回収、Cloudでの実HTTP待受、Linux/macOSの実アプリ連携は未検証。
 ローカルテストやGitHub CIの成功は、これらの実証に置き換えない。
+
+### socket制約へのテスト修正
+
+commit `8120ca9ac94327f02233842bfd21fceaf4d671a9`で、上記2件の単体テストを
+socketを生成しないfixtureへ変更した。実HTTP parser、絶対期限Timer、shutdown、
+期限終了時のcleanupと非公開本文の非出力を検証し、skipは追加していない。
+loopbackだけを指定するfactoryの境界を独立して検証する1件も追加した。
+製品の待受実装やネットワーク方針は変更していない。
+
+Windowsで全252件成功・skipなし、package検査成功。
+Python auditでsocket生成を禁止した全体実行も252件成功し、生成attemptは0件だった。
+これらは単体テストであり、制限されたCloudでHTTP待受できるという意味ではない。
