@@ -191,7 +191,7 @@ def _validate_live(value):
         _identifier(value["task_id"])
     _digest(value["handoff_sha256"])
     _enum(value["surface"], {"codex_cloud", "chatgpt_work", "normal_chat", "unknown"})
-    _enum(value["transport"], {"codex_cloud_cli", "codex_cloud_ui", "unknown"})
+    _enum(value["transport"], {"codex_cloud_ui", "unknown"})
     actor = value["actor"]
     _object(actor, {"role", "depth", "executor_id"})
     _enum(actor["role"], {"root", "sol", "astra", "luna", "unknown"})

@@ -41,13 +41,13 @@
 
 提案と実行準備と本人承認は別である。承認済み提案・元依頼の有効な同一範囲の承認を再利用し、毎回の追加確認は不要。create_threadは本人が明示的に新タスクを依頼した場合だけ使い、create_threadのtarget.environment.type=worktree選択も明示指定が必要。新しいトップレベルセッションのmodelは本人の明示指定がなければ省略し、thinkingも既定を維持する。標準子の自動model/effort選定とは別である。他タスクへの送信は本人の送信指示が必要。各ホストの実際のツール・上位制約を確認し、別CLIやクラウド経路で標準子制約を迂回しない。
 
-Codexクラウドは通常Chat Proと別の候補で、Chat opt-inは転用しない。rootが独立タスクの範囲・現在のホスト許可・対象承認を確認する。標準経路は現行Cloud UIのcodex_cloud_uiと明示handoffであり、現在の正式ツールで送信と元task回収を行う。元依頼の有効な同一範囲の承認を再利用する。フックも計画helperもモデル、CLIセッション、クラウドタスクを起動しない。session_plan.pyはinspect / dispatch-plan / receive / acceptの手動計画・照合だけを行い、実行許可を発行しない。送信前の排他的な永続claim、依頼ID/hash、所有者、環境、元タブ/taskを保持し、unknown_outcomeを残してから一度だけ送る。既存記録・結果不明を新規依頼として再投入しない。旧codex_cloud_cliとcloud_run.pyは既存記録を壊さないための非推奨互換実装として残し、自動候補・通常運用の残対応にしない。UI task IDを旧CLIへ渡さず、旧CLIの互換性・実送信検証を標準経路の完了条件にしない。ChatGPT Work・simulated environment・ローカルworktreeを専用Codexクラウドと同一としない。
+Codexクラウドは通常Chat Proと別の候補で、Chat opt-inは転用しない。rootが独立タスクの範囲・現在のホスト許可・対象承認を確認する。標準経路は現行Cloud UIのcodex_cloud_uiと明示handoffであり、現在の正式ツールで送信と元task回収を行う。元依頼の有効な同一範囲の承認を再利用する。フックも計画helperもモデル、CLIセッション、クラウドタスクを起動しない。session_plan.pyはinspect / dispatch-plan / receive / acceptの手動計画・照合だけを行い、実行許可を発行しない。送信前の排他的な永続claim、依頼ID/hash、所有者、環境、元タブ/taskを保持し、unknown_outcomeを残してから一度だけ送る。既存記録・結果不明を新規依頼として再投入しない。実行経路はcodex_cloud_uiだけとし、旧Cloud CLIの実行コード・入力受付・専用資料は配布しない。共通のローカルclaimはUI用途の最小保存helperとして残し、依頼ID・材料hash・scope・元タブ/taskの固定、排他、巻戻し拒否を維持する。旧形式・未知・破損した保存記録は削除・変換・未送信扱いにせず、照合不能なら送信を止めてrootへ返す。ChatGPT Work・simulated environment・ローカルworktreeを専用Codexクラウドと同一としない。
 
 Cloudへの依頼本文に、開始時の絶対cwd、repo/branch/期待revisionの照合、README・AGENTSの読取り、cloud-environment runtimeスキルとnetwork policyの確認、必須検証、許可操作と停止条件を明記する。start_skillの自動注入を前提・残対応にせず、未提供のツール・スキルは不足として返す。runtimeの認証確認が必要でも秘密値を返さない。復元artifactのsource revision宣言と実checkoutの観測を分ける。HTTP listenerはCloud UIの利用要件ではなく、必要な個別工程でのみ確認する。実UIの起動・回収、実テスト、model/effort反映は確認した版・環境・範囲で区別する。
 
 依頼ID、承認済み材料hash、所有者、返却先、repo/branch/期待revision、environment、合意した終端、合格条件、必須検証、許可操作を固定する。実行前は現在のホストの実操作契約と既存の対象承認・材料承認・環境・revision・検証環境を確認する。unknownは未確認であり、許可・不存在・成功でも拒否済みでもない。sentまたは結果不明なら再送せず同じ依頼を照合する。回収は元task IDで行い、新規送信の承認・利用枠と分ける。受入は同一性、実差分、検証証拠、所有者の意味確認を必要とし、完了・失敗・部分・未検証を区別する。差分表示だけでテスト実行済みにしない。引継ぎやタイムアウトを再送理由にしない。永続状態をnot_sentへ戻して新規送信する抜け道を作らない。
 
-現行UIの具体的手順はスキルのreferences/session-routing.md。旧CLIの互換資料はreferences/cloud-transport.md。通常Chatは既存Chat方針、標準子は既存階層方針をそのまま適用する。
+現行UIとローカルclaimの具体的手順はスキルのreferences/session-routing.md。通常Chatは既存Chat方針、標準子は既存階層方針をそのまま適用する。
 
 ### 方針を読む範囲
 
