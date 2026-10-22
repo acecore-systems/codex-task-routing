@@ -488,7 +488,48 @@ def _cli_environment(codex_home: Path | None = None) -> dict[str, str]:
     return environment
 
 
+def _windows_directory() -> Path | None:
+    """Return the Windows directory, which ordinary users cannot write to."""
+
+    value = os.environ.get("SystemRoot")
+    if value:
+        return Path(value)
+    try:
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        get_directory = kernel32.GetWindowsDirectoryW
+        get_directory.argtypes = (wintypes.LPWSTR, wintypes.UINT)
+        get_directory.restype = wintypes.UINT
+        buffer = ctypes.create_unicode_buffer(260)
+        length = get_directory(buffer, len(buffer))
+    except (AttributeError, OSError):
+        return None
+    if not 0 < length < len(buffer):
+        return None
+    return Path(buffer.value)
+
+
+def _child_directory(state_dir: Path) -> Path | None:
+    """Return the working directory for a marketplace command, or None if it is unusable.
+
+    Windows refuses to start a child whose working directory is 259 characters
+    or longer, and the state directory grows with CODEX_HOME.  The child reads
+    its configuration from the environment, so on Windows it starts in the
+    Windows directory.  That directory is not writable by ordinary users, so
+    files in the Codex home are not picked up by the bare-name lookup or by
+    the helper's sys.path[0].  Other systems keep the state directory.
+    """
+
+    directory = _windows_directory() if os.name == "nt" else state_dir
+    if directory is None or not directory.is_dir():
+        return None
+    return directory
+
+
 def _run_command(command: Sequence[str], state_dir: Path, *, timeout: int | float = CLI_TIMEOUT_SECONDS, codex_home: Path | None = None) -> CommandResult:
+    child_directory = _child_directory(state_dir)
+    if child_directory is None:
+        # Fail before any job or process exists, and not as a missing executable.
+        return CommandResult(returncode=None)
     job: WindowsJob | None = None
     actual_command = list(command)
     if os.name == "nt":
@@ -499,7 +540,7 @@ def _run_command(command: Sequence[str], state_dir: Path, *, timeout: int | floa
     try:
         process = subprocess.Popen(
             actual_command,
-            cwd=state_dir,
+            cwd=child_directory,
             env=_cli_environment(codex_home),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,

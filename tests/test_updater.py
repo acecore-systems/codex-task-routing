@@ -66,8 +66,8 @@ def upgrade_result(*, errors: list | None = None) -> updater.CommandResult:
 
 class UpdaterTest(unittest.TestCase):
     def setUp(self) -> None:
-        # The child cwd is the state directory under this tree. Keep the tree
-        # outside the checkout so a deep checkout cannot push it past the limit.
+        # The state directory lives under this tree. Keep the tree outside the
+        # checkout so a deep checkout cannot make the state path too long.
         # Resolve links: the updater rejects a state path with a link ancestor
         # (macOS temp dirs sit under the /var symlink, Windows may use junctions).
         self.base = Path(tempfile.mkdtemp(prefix="updater-")).resolve()
@@ -264,13 +264,56 @@ class UpdaterTest(unittest.TestCase):
     def test_scratch_path_has_no_link_ancestors(self) -> None:
         self.assertEqual(self.base, self.base.resolve())
 
-    def test_child_cwd_stays_within_windows_limit(self) -> None:
-        # Windows rejects a child working directory of 259 or more characters
-        # (WinError 267), so the scratch tree must not depend on the checkout path.
-        self.assertLess(len(str(self.state_dir)), 259)
+    def test_child_cwd_is_fixed_directory_not_state_directory(self) -> None:
+        # The child reads its configuration from the environment, so its working
+        # directory is a fixed location. On Windows it must be short and must not
+        # be the state directory, whose length grows with CODEX_HOME.
         self.state_dir.mkdir(parents=True)
-        result = updater._run_command([sys.executable, "-c", "print('started')"], self.state_dir)
+        result = updater._run_command([sys.executable, "-c", "import os; print(os.getcwd())"], self.state_dir)
+        self.assertEqual(result.returncode, 0)
+        child = Path(result.stdout.strip())
+        expected = updater._child_directory(self.state_dir)
+        self.assertEqual(os.path.normcase(str(child)), os.path.normcase(str(expected)))
+        if os.name == "nt":
+            self.assertLess(len(str(child)), 259)
+            self.assertNotEqual(os.path.normcase(str(child)), os.path.normcase(str(self.state_dir)))
+        else:
+            self.assertEqual(child, self.state_dir)
+
+    @unittest.skipUnless(os.name == "nt", "Windows working-directory length limit")
+    def test_child_starts_when_state_directory_exceeds_windows_limit(self) -> None:
+        # CODEX_HOME can push the state directory past the 259-character limit that
+        # Windows applies to a child's working directory. Create the tree with the
+        # extended-length prefix so the fixture does not depend on LongPathsEnabled.
+        long_root = self.base / "long"
+        self.addCleanup(shutil.rmtree, "\\\\?\\" + str(long_root), True)
+        home = long_root
+        while len(str(home / updater.STATE_RELATIVE)) < 260:
+            home = home / ("segment-" + "x" * 40)
+        state = home / updater.STATE_RELATIVE
+        os.makedirs("\\\\?\\" + str(state))
+        self.assertGreaterEqual(len(str(state)), 259)
+        result = updater._run_command([sys.executable, "-c", "print('started')"], state)
         self.assertEqual((result.returncode, result.stdout.strip()), (0, "started"))
+
+    @unittest.skipUnless(os.name == "nt", "Windows directory lookup")
+    def test_windows_directory_is_found_without_system_root_variable(self) -> None:
+        expected = os.environ["SystemRoot"]
+        with patch.dict(os.environ):
+            os.environ.pop("SystemRoot", None)
+            found = updater._windows_directory()
+        self.assertIsNotNone(found)
+        self.assertEqual(os.path.normcase(str(found)), os.path.normcase(expected))
+
+    def test_unusable_child_directory_fails_before_launch(self) -> None:
+        self.state_dir.mkdir(parents=True)
+        with (
+            patch.object(updater, "_child_directory", return_value=None),
+            patch.object(updater.subprocess, "Popen", side_effect=AssertionError("launched")) as popen,
+        ):
+            result = updater._run_command([sys.executable, "-c", "print('started')"], self.state_dir)
+        popen.assert_not_called()
+        self.assertEqual((result.returncode, result.missing), (None, False))
 
     def test_uncontained_update_returns_nonzero(self) -> None:
         code, calls = self.run_with([updater.CommandResult(None, timed_out=True, containment_failed=True)])
