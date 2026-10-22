@@ -7,9 +7,9 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import unittest
-import uuid
 from unittest.mock import patch
 
 
@@ -66,10 +66,11 @@ def upgrade_result(*, errors: list | None = None) -> updater.CommandResult:
 
 class UpdaterTest(unittest.TestCase):
     def setUp(self) -> None:
-        scratch = ROOT / "tests" / ".tmp-runtime-tests"
-        scratch.mkdir(exist_ok=True)
-        self.base = scratch / f"updater-{uuid.uuid4().hex}"
-        self.base.mkdir()
+        # The child cwd is the state directory under this tree. Keep the tree
+        # outside the checkout so a deep checkout cannot push it past the limit.
+        # Resolve links: the updater rejects a state path with a link ancestor
+        # (macOS temp dirs sit under the /var symlink, Windows may use junctions).
+        self.base = Path(tempfile.mkdtemp(prefix="updater-")).resolve()
         self.home = self.base / "home"
         self.home.mkdir()
         self.environment = patch.dict(os.environ, {"CODEX_HOME": str(self.home)}, clear=False)
@@ -259,6 +260,17 @@ class UpdaterTest(unittest.TestCase):
         self.assertTrue(ready.exists(), "child fixture must start before testing containment")
         time.sleep(1)
         self.assertFalse(marker.exists())
+
+    def test_scratch_path_has_no_link_ancestors(self) -> None:
+        self.assertEqual(self.base, self.base.resolve())
+
+    def test_child_cwd_stays_within_windows_limit(self) -> None:
+        # Windows rejects a child working directory of 259 or more characters
+        # (WinError 267), so the scratch tree must not depend on the checkout path.
+        self.assertLess(len(str(self.state_dir)), 259)
+        self.state_dir.mkdir(parents=True)
+        result = updater._run_command([sys.executable, "-c", "print('started')"], self.state_dir)
+        self.assertEqual((result.returncode, result.stdout.strip()), (0, "started"))
 
     def test_uncontained_update_returns_nonzero(self) -> None:
         code, calls = self.run_with([updater.CommandResult(None, timed_out=True, containment_failed=True)])
