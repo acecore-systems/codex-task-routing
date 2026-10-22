@@ -88,7 +88,10 @@ def main():
     assert "Observation sample" in default_hook["hookSpecificOutput"]["additionalContext"]
     auth_reference = script.parent.parent / 'skills/task-routing/references/local-auth.md'
     assert auth_reference.is_file()
-    assert str(auth_reference) in default_hook['hookSpecificOutput']['additionalContext']
+    hook_text = default_hook['hookSpecificOutput']['additionalContext']
+    assert f"Plugin root: {script.parent.parent}." in hook_text
+    assert hook_text.count(str(script.parent.parent)) == 1
+    assert '<plugin-root>/skills/task-routing/references/local-auth.md' in hook_text
     private_facts = base / 'private-facts.json'
     private_facts.write_text(json.dumps(dict(substantial=False, parent_has_independent_work=False,
                                             materials_approved=False, handoff_proportionate=False,
