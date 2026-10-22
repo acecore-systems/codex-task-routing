@@ -43,7 +43,11 @@ class HookCommandTest(unittest.TestCase):
                     self.assertIn("gpt-6-luna", context["additionalContext"])
                     reference = plugin / "skills/task-routing/references/local-auth.md"
                     self.assertTrue(reference.is_file())
-                    self.assertIn(str(reference), context["additionalContext"])
+                    # The installed root is stated once; the reference is relative to it.
+                    self.assertIn(f"Plugin root: {plugin}.", context["additionalContext"])
+                    self.assertEqual(context["additionalContext"].count(str(plugin)), 1)
+                    self.assertIn("<plugin-root>/skills/task-routing/references/local-auth.md",
+                                  context["additionalContext"])
                     self.assertLessEqual(len(context["additionalContext"]), 8000)
         finally:
             shutil.rmtree(base)

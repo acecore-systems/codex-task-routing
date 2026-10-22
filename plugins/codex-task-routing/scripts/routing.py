@@ -730,7 +730,7 @@ def _chatgpt_context(home: Path, plugin_root: Path, *, for_child: bool = False) 
         "existing owner. Short work or repeated Codex-local access stays in Codex. "
         "Parallel delegation requires useful independent parent work from the delegating owner itself. "
         "Serial specialist delegation requires explicit host permission and concrete added value; no invented work. "
-        f"Read before use: {reference}. "
+        "Read before use: <plugin-root>/skills/task-routing/references/chatgpt.md. "
         "Use chat_plan.py --live; optional actor declares role/depth/executor/owner/host_allows_chat. Legacy "
         "is_root:true remains valid; is_root:false alone does not. Declared host checks reuse valid approval "
         "and never attest authority. unknown authorization blocks dispatch. Keep private authentication local. "
@@ -775,11 +775,15 @@ def hook_payload(
         )
         cache_dir = _cache_directory(home, policy)
         references = {name: _absolute(cache_dir / name) for name in RENDERED_FILE_NAMES}
-        detail_refs = "\n".join(
-            f"- {name}: {references[name]}" for name in DETAILED_TEMPLATE_NAMES
+        # Each installation-specific absolute directory is stated once in the context.
+        # Other plugin and policy files are named relative to these two directories.
+        plugin_root_text = _absolute(policy.plugin_root)
+        plugin_root_context = (
+            f"Plugin root: {plugin_root_text}. Relative plugin paths written as <plugin-root>/... are under this root."
         )
-        local_auth_reference = _absolute(
-            policy.plugin_root / "skills" / "task-routing" / "references" / "local-auth.md"
+        rendered_context = (
+            f"Rendered policy directory: {_absolute(cache_dir)} "
+            f"(effective.md; detailed files: {', '.join(DETAILED_TEMPLATE_NAMES)})."
         )
         local_auth_context = (
             "Private authentication: before cloud model selection, inspect the available local-auth-lfm MCP "
@@ -788,7 +792,7 @@ def hook_payload(
             "implemented stages and verified authentication are separate. A queued request is not completed "
             "authentication. Keep credentials, OAuth JSON, cookies and private screens local. Hooks never "
             "start workers or models. Read the handoff instructions when this stage is needed: "
-            f"{local_auth_reference}."
+            "<plugin-root>/skills/task-routing/references/local-auth.md."
         )
         if event == "SubagentStart":
             local_auth_context += (
@@ -798,7 +802,7 @@ def hook_payload(
         # Observation state is deliberately treated as optional diagnostics.
         # A corrupt or unavailable ledger must never suppress policy delivery.
         observation = observation_status(codex_home=home, policy=policy)
-        observation_cli = _absolute(policy.plugin_root / "scripts" / "routing.py")
+        observation_cli = "<plugin-root>/scripts/routing.py"
         if observation["state"] != "valid":
             observation_instruction = (
                 "Observation sample state is unknown; do not start observation work and continue the original task."
@@ -823,11 +827,10 @@ def hook_payload(
             context = "\n".join(
                 [
                     f"Codex Task Routing manifest {policy.version}; policy hash {policy.content_hash}.",
-                    f"Effective policy path: {references['effective.md']}",
+                    plugin_root_context,
+                    rendered_context,
                     "Effective policy:",
                     effective_text,
-                    "Detailed policy references:",
-                    detail_refs,
                     (
                         "Observation sample (normal work only): "
                         f"remaining={observation['remaining']}, pending={observation['pending']}, "
@@ -847,11 +850,10 @@ def hook_payload(
             context = "\n".join(
                 [
                     f"Codex Task Routing manifest {policy.version}; policy hash {policy.content_hash}.",
+                    plugin_root_context,
+                    rendered_context,
                     f"Configured child-routing reference only; it does not change the parent: {model_matrix}.",
                     "Do not create a child solely to transfer work to the same model. Keep the agreed complete work unit with the same owner through ordinary investigation, fixes, tests, authorized PR creation and agreed review findings. Follow the parent-specified endpoint, scope and acceptance criteria; distinguish unverified results. Standard grandchildren only: Astra child to Sol/Luna; Sol child to Luna; Luna children and grandchildren cannot delegate. No same/up-role or further depth; use effective default efforts. Check assigned role/depth from actual context and handoff, not SubagentStart or a model ID. Unknown scope and important exceptions return to root. Parallel work requires the delegator's own independent work; host restrictions still apply.",
-                    f"Effective policy: {references['effective.md']}",
-                    "Detailed policy references:",
-                    detail_refs,
                     "Do not start a new observation from this child. Return bounded run evidence and missing reasons to the parent task's observation record.",
                 ]
             )

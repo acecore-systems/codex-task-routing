@@ -87,6 +87,29 @@ class ChatHookTests(unittest.TestCase):
                                'local_auth_status', 'never Work or a model API'):
                     self.assertIn(phrase, context)
 
+    def test_two_hundred_character_install_root_is_stated_once_within_hook_limit(self):
+        # The installed root and the rendered cache directory are the only absolute
+        # installation paths in the context; other files are relative to the root.
+        namespace = self.home / 'plugins/cache/codex-task-routing/codex-task-routing'
+        installed = namespace / ('installed-' + 'x' * max(0, 200 - len(str(namespace)) - 11))
+        shutil.copytree(routing.PLUGIN_ROOT, installed, ignore=shutil.ignore_patterns('__pycache__'))
+        self.assertGreaterEqual(len(str(installed)), 200)
+        cache_namespace = str(self.home / 'codex-task-routing' / 'cache')
+        for transport in ('browser-temporary', 'codex-app-tools'):
+            self.settings(dict(schema_version=1, enabled=True, required_model='Pro', transport=transport))
+            for event, source in (('SessionStart', 'resume'), ('SubagentStart', 'startup')):
+                with self.subTest(transport=transport, event=event):
+                    payload = routing.hook_payload(event=event, source=source, plugin_root=installed,
+                                                   codex_home=self.home, cwd=self.home)
+                    self.assertNotIn('systemMessage', payload)
+                    context = payload['hookSpecificOutput']['additionalContext']
+                    self.assertLessEqual(len(context), routing.MAX_ADDITIONAL_CONTEXT_CHARS)
+                    self.assertEqual(context.count(str(installed)), 1)
+                    self.assertEqual(context.count(cache_namespace), 1)
+                    self.assertIn('<plugin-root>/skills/task-routing/references/local-auth.md', context)
+                    self.assertEqual('Opt-in ChatGPT' in context,
+                                     event == 'SessionStart' or transport == 'browser-temporary')
+
     def test_invalid_route_does_not_disable_standard_policy_or_echo_values(self):
         self.settings({"schema_version": 1, "enabled": True, "required_model": "secret-value", "transport": "api"})
         payload = self.payload()

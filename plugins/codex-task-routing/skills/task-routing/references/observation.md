@@ -4,7 +4,7 @@
 
 ## 開始と再開
 
-フックに表示されたプラグインの `scripts/routing.py` を使います。下記の `<routing.py>` をその絶対パスに置き換え、パスはシェルに合わせて引用してください。
+フックが示す `Plugin root` の下の `scripts/routing.py` を使います。下記の `<routing.py>` をそのルートと連結した絶対パスに置き換え、パスはシェルに合わせて引用してください。
 
 ```text
 python <routing.py> observation start --task-id <root-thread:work-unit> --kind normal --json
