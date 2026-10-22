@@ -1,5 +1,12 @@
 # 変更履歴
 
+## 0.18.0 — 既存Codex Cloudへのnative継続と回収
+
+- 方針の意味変更: 観測済みの既存Codex durableタスクへ、rootが正式app toolで継続・回収する経路を追加。新規Cloud作成、Workや旧CLIへの切替は含めません。現在の上位指示がUI-onlyなら、そのターンの実送信は行いません。
+- `cloud-native`はschema 2の非送信planner。方針・ホスト許可・kind/host/task実観測・材料と前依頼を段階別に確認し、ツール能力・送信受領・実行・受入を分離。wait未確認や失敗は元taskのread計画へ戻します。
+- `NativeClaimStore`はschema 3でメッセージごとの依頼hash・scope・元host/task・前依頼を固定。永久claimとtask mutex・単一後続枠で、結果不明・保存失敗・crashを別IDや再送で迂回しません。UIのschema 1／保存schema 2は互換維持します。
+- defaults・スキル・手順・fixtures/provenance・配布検査を同期。0.17の委譲規則、親設定・モデル/effort・override・通常Chat条件は維持します。[検証記録](validation-0.18.0.md)。
+
 ## 0.17.0 — 委譲結果の裏取りと返却形式
 
 - 方針の意味変更: 子の報告に含まれるファイル名・関数名・API・数値・コマンドなど確かめられる事実は、親が裏を取ってから採用し、重要な判断に直結するものは親が自分で確認します。ユーザーへ技術的な選択肢を示す・質問する前に、担当に他の方法を聞いて選択肢を出し切ります。長い成果物は子に指定ファイルへ書かせ、親はパスと要点だけを受け取ります。

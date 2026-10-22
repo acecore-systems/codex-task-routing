@@ -1,4 +1,4 @@
-"""Local claims for explicit Cloud UI operations; no browser, credentials or payloads."""
+"""Local Cloud UI/native claims; no tools, browsers, credentials or payloads."""
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -9,7 +9,8 @@ from pathlib import Path
 import stat
 
 from routing_core.common import _assert_safe_ancestors, _canonical_json, _load_json
-from session_plan import _digest, _enum, _identifier, _object, _revision, _text
+from session_plan import (_digest, _enum, _identifier, _object, _revision, _text,
+                          validate_native_target)
 
 
 class CloudRecordError(ValueError):
@@ -106,6 +107,9 @@ def validate_record(value):
 
 class ClaimStore:
     """Fixed-inode OS lock plus permanent exclusive intent and atomic snapshots."""
+    record_schema = 2
+    validator = staticmethod(validate_record)
+
     def __init__(self, directory, request_id):
         _identifier(request_id)
         self.request_id = request_id
@@ -144,8 +148,8 @@ class ClaimStore:
                 raise CloudRecordError('record_without_original_claim')
             return None
         # Damaged or partly written intent remains a blocking claim.
-        claim = validate_record(_load_json(self.claim_path, 'cloud claim', limit=64 * 1024))
-        record = (validate_record(_load_json(self.record_path, 'cloud record', limit=64 * 1024))
+        claim = self.validator(_load_json(self.claim_path, 'cloud claim', limit=64 * 1024))
+        record = (self.validator(_load_json(self.record_path, 'cloud record', limit=64 * 1024))
                   if os.path.lexists(self.record_path) else claim)
         if (claim['binding']['request_id'] != self.request_id
                 or claim['binding'] != record['binding']):
@@ -153,9 +157,10 @@ class ClaimStore:
         return record
 
     def claim(self, binding):
-        record = dict(schema_version=2, binding=binding, submission='unknown_outcome', task_id=None,
+        record = dict(schema_version=self.record_schema, binding=binding, submission='unknown_outcome',
+                      task_id=None if self.record_schema == 2 else binding['target']['task_id'],
                       event='submission_claimed')
-        validate_record(record)
+        self.validator(record)
         if binding['request_id'] != self.request_id:
             raise CloudRecordError('record_scope_mismatch')
         if self.read() is not None:
@@ -164,7 +169,7 @@ class ClaimStore:
         return record
 
     def save(self, record):
-        validate_record(record)
+        self.validator(record)
         original = self.read()
         if original is None or original['binding'] != record['binding']:
             raise CloudRecordError('original_claim_required')
@@ -173,3 +178,82 @@ class ClaimStore:
         if order[new] < order[old] or (original['task_id'] is not None and record['task_id'] != original['task_id']):
             raise CloudRecordError('record_cannot_rewind_or_change_task')
         _atomic(self.record_path, _encoded(record))
+
+
+def validate_native_record(value):
+    """Schema 3 never invents a tab identifier for a native task."""
+    _object(value, {'schema_version', 'binding', 'submission', 'task_id', 'event'})
+    if type(value['schema_version']) is not int or value['schema_version'] != 3:
+        raise CloudRecordError('unsupported_record_schema')
+    binding = value['binding']
+    _object(binding, {'request_id', 'input_sha256', 'handoff_sha256', 'cwd', 'repository', 'branch',
+                      'expected_revision', 'environment_id', 'owner_id', 'target', 'previous_request_id'})
+    validate_native_target(binding['target'])
+    for key in ('request_id', 'environment_id', 'owner_id'):
+        _identifier(binding[key])
+    if binding['previous_request_id'] is not None:
+        _identifier(binding['previous_request_id'])
+        if binding['previous_request_id'] == binding['request_id']:
+            raise CloudRecordError('invalid_predecessor')
+    for key in ('input_sha256', 'handoff_sha256'):
+        _digest(binding[key])
+    _revision(binding['expected_revision'])
+    _text(binding['cwd'], maximum=4096)
+    for key in ('repository', 'branch'):
+        _text(binding[key])
+    _enum(value['submission'], STATES)
+    if (value['event'] != EVENTS[value['submission']]
+            or value['task_id'] != binding['target']['task_id']):
+        raise CloudRecordError('invalid_record')
+    return value
+
+
+class NativeClaimStore(ClaimStore):
+    """One immutable claim per message, with a permanent per-task successor slot.
+
+    Use lock() for each read/claim/save transaction. Only the fresh claim owner
+    may make the one native call outside it, then save under lock. A crash
+    between the successor slot and claim creation leaves blocking evidence; it
+    never permits another request ID to hide an uncertain previous submission.
+    """
+    record_schema = 3
+    validator = staticmethod(validate_native_record)
+
+    def __init__(self, directory, request_id, target):
+        validate_native_target(target)
+        self.target = dict(target)
+        super().__init__(directory, request_id)
+        target_key = hashlib.sha256(_canonical_json(target)).hexdigest()
+        # Reuse only the filesystem mutex implementation; no UI record is made.
+        self._target_mutex = ClaimStore(self.root / 'native-targets', target_key)
+
+    @contextmanager
+    def lock(self):
+        with self._target_mutex.lock(), super().lock():
+            yield
+
+    def read(self):
+        record = super().read()
+        if record is not None and record['binding']['target'] != self.target:
+            raise CloudRecordError('record_scope_mismatch')
+        return record
+
+    def claim(self, binding):
+        # Validate before reserving a successor. Invalid caller input consumes
+        # nothing; any later storage failure remains deliberately blocking.
+        proposed = dict(schema_version=3, binding=binding, submission='unknown_outcome',
+                        task_id=self.target['task_id'], event='submission_claimed')
+        self.validator(proposed)
+        if binding['request_id'] != self.request_id or binding['target'] != self.target:
+            raise CloudRecordError('record_scope_mismatch')
+        if self.read() is not None:
+            raise CloudRecordError('submission_already_claimed')
+        previous = binding['previous_request_id']
+        if previous is not None:
+            prior = NativeClaimStore(self.root, previous, self.target).read()
+            if prior is None or prior['submission'] not in {'collected', 'accepted'}:
+                raise CloudRecordError('previous_request_unresolved')
+        slot = hashlib.sha256(_canonical_json(previous)).hexdigest()
+        _exclusive(self._target_mutex.directory / ('after-' + slot + '.json'),
+                   _encoded({'request_id': self.request_id, 'target': self.target}))
+        return super().claim(binding)

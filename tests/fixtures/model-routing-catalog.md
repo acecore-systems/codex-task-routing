@@ -20,7 +20,7 @@
 | subagent | 同一目的の限定補助を、既存の階層・並列/直列条件を満たす標準子へ |
 | existing_local_session | 同一範囲の既存担当を再利用。最新revision・到達点と実際の再開/送信機能を確認 |
 | new_local_session | 別目的・独立成果物等の利益がある場合の提案。本人の明示的な新タスク依頼が実行条件。model/thinkingは新規トップレベルセッションの既定を維持 |
-| codex_cloud | 新規の独立repo実装・テスト・長時間完了単位の有力候補。実環境・材料・期待revision・検証能力を確認しrootが実行範囲を評価。現行codex_cloud_uiを使い、実績は確認した版と環境へ限定 |
+| codex_cloud | 新規の独立repo実装・テスト・長時間完了単位の有力候補。実環境・材料・期待revision・検証能力を確認しrootが実行範囲を評価。現行codex_cloud_ui、または確認済み既存Codex durableのnative継続を使う。native新規作成は未対応、実績は版・環境・操作ごとに限定 |
 | chat_pro | 既存のopt-in、役割・depth、Browser能力・承認・UIモデル確認を満たす通常Chat Pro |
 
 session_plan.py recommendはcandidateを事前指定せず目的単位から理由・代案・不足と次の操作を返す。通常会話での短い提案でもよく、helperの毎回実行は不要。CloudとProは実際の完結能力で比較し、分析等が承認済みChatの実ツールで完結すれば既存Pro優先を維持する。Cloud未接続や材料・テスト不足は代案の理由に残す。現版のローカル試験を実Cloud成功とせず、過去実績と版別検証記録を分ける。

@@ -2,7 +2,7 @@
 
 model・effortと、仕事を置く実行環境は別に選びます。同じ完了単位を進行中の適任担当は、通常修正・検証・合意済み指摘対応・受入まで継続します。親にも新規の仕事を実行する能力があるだけなら、その仕事の継続担当がいるとは扱いません。短い仕事・密結合・引継ぎ便益が小さい仕事は現在担当、同一目的の限定補助は標準子、別目的・独立成果物・別repo/PR・独立継続管理は別セッションを比較します。長時間、長文脈、利用枠回避、同モデルへの移管だけでは分割しません。
 
-この版の`session_plan.py`はPython標準ライブラリによるローカル計画だけです。ネットワーク、モデル、CLI、ブラウザー、タスクを起動せず、認証・会話履歴・個人メモリ・稼働Codexホームも読みません。入力JSON以外を探索せず、状態ファイルを更新しません。`execution_authorized`は常にfalse、クラウド出力は`planning_only:true`、`runtime_implemented:false`です。`preflight_complete:true`も、供給された観測の機械照合が通ったという意味です。実接続・送信・テスト・ホストの許可の証明ではありません。実行経路は現行Cloud UIの`codex_cloud_ui`と明示handoffだけです。`runtime_implemented:false`はplanner自身が非実行という既存契約で、UIの利用不能を意味しません。旧Cloud CLIの実行コード・入力受付・専用資料は配布しません。実UIと実テストの確認範囲は、リポジトリの版別検証記録を参照します。
+この版の`session_plan.py`はPython標準ライブラリによるローカル計画だけです。ネットワーク、モデル、CLI、ブラウザー、タスクを起動せず、認証・会話履歴・個人メモリ・稼働Codexホームも読みません。入力JSON以外を探索せず、状態ファイルを更新しません。`execution_authorized`は常にfalse、クラウド出力は`planning_only:true`、`runtime_implemented:false`です。`preflight_complete:true`も、供給された観測の機械照合が通ったという意味です。実接続・送信・テスト・ホストの許可の証明ではありません。この節の既存`cloud`契約は現行Cloud UIの`codex_cloud_ui`と明示handoffです。0.18.0の既存Codexタスクへのnative継続・回収は別の[固定契約](native-cloud.md)で扱い、新規native作成は行いません。`runtime_implemented:false`はplanner自身が非実行という既存契約で、UIの利用不能を意味しません。旧Cloud CLIの実行コード・入力受付・専用資料は配布しません。実UIと実テストの確認範囲は、リポジトリの版別検証記録を参照します。
 
 ## 目的単位から推薦する
 
@@ -104,6 +104,10 @@ python <plugin-root>/scripts/session_plan.py session --facts <session-facts.json
 ホストの実行条件は各操作で確認します。現ホストの`create_thread`は本人が明示的に新タスクを依頼した場合だけ使い、create_threadのtarget.environment.type=worktree選択も本人の明示指定が必要です。採用済み提案や元依頼で同じ範囲が明確に承認済みなら再確認しません。単なる候補提案を実行承認へ読み替えません。別トップレベルセッションのmodelは本人の明示指定がなければ省略し、thinkingも既定を維持します。標準子の自動model/effort選定とは別です。通常のrepo作業で既存権限に基づく専用worktreeを作る運用は、このcreate_thread選択条件の対象外です。`send_message_to_thread`も本人の送信指示が必要で、別タスクからの報告要求だけでは足りません。
 
 標準子は既存の役割・depth・並列/直列条件を適用します。通常Chat Proは[Chat方針](chatgpt.md)と[承認](chat-authorization.md)をそのまま適用し、このhelperはChatの許可を付与しません。クラウド/別CLI/新タスク経由で子やホストの制約を迂回しません。
+
+## 既存Codexタスクへのnative継続
+
+`cloud-native`は観測済みの既存Codex durableタスクへ正式app toolで継続・回収するための非送信plannerです。UIのschema 1／保存schema 2を変更せず、nativeはschema 2／保存schema 3とし、host/taskを固定します。新規作成・Work/旧CLIへの切替は含みません。nativeを許す新方針と現ホスト条件をrootが確認してから使います。UI-onlyの上位指示が注入中のターンでは実送信できません。[入力契約・一度の正式ツール呼出し・未確認の区別](native-cloud.md)。
 
 ## 現行Cloud UIの標準手順
 
