@@ -1,5 +1,5 @@
 {
-  "policy_revision": "2026-10-22-handoff-verification",
+  "policy_revision": "2026-10-22-native-cloud-continuation",
   "source_sha256": {
     "AGENTS.md": "bd2584d350c204f1ffbc8c005c084fc34360acddf8812557504350820e34be42",
     "model-routing-policy.md": "9335ccec4516bc71b68d01f9304d6e71d3b5efcd77a210476571cd7d060c476c",
@@ -28,12 +28,13 @@
     "0.15.1 intentional policy change: current codex_cloud_ui and explicit handoff are the standard Cloud route; startup cwd/revision/README/AGENTS/runtime policy/required checks are in the request body without depending on start_skill injection; HTTP listener is not a UI prerequisite; legacy CLI runtime and records retained as deprecated compatibility, not an automatic candidate or normal pending validation; model/effort/Chat conditions and explicit overrides preserved; historical source hashes retained",
     "0.15.2 intentional removal: current Cloud UI only; remove legacy Cloud CLI runtime, input transport and reference; keep minimal UI-local schema 2 claims with request/hash/scope/tab/task binding, permanent exclusion and no rewind; old or unknown saved files remain untouched and block dispatch; model/effort/Chat conditions, explicit overrides and historical source hashes retained",
     "0.16.0 intentional policy change: candidate-free work-unit recommendations distinguish suitable ongoing ownership from parent capability; compare Cloud for independent repository implementation/test completion, bounded same-goal subagents, local dependency and existing Pro suitability; preserve unknown facts, alternatives and host/transfer boundaries; original schema-1 session/cloud and UI claim contracts, all model/effort defaults and explicit overrides unchanged; historical source hashes retained",
-    "0.17.0 intentional policy change: child-reported facts are verified by the parent before adoption and material judgments are checked by the parent; the user is asked about technical choices only after delegates have exhausted alternatives; long drafts and research are written to a specified file and returned as path plus summary; a general-knowledge web-search row is added to the catalog; summary, model/effort defaults, Chat conditions, and explicit overrides unchanged; historical source hashes retained"
+    "0.17.0 intentional policy change: child-reported facts are verified by the parent before adoption and material judgments are checked by the parent; the user is asked about technical choices only after delegates have exhausted alternatives; long drafts and research are written to a specified file and returned as path plus summary; a general-knowledge web-search row is added to the catalog; summary, model/effort defaults, Chat conditions, and explicit overrides unchanged; historical source hashes retained",
+    "0.18.0 intentional policy change: add root-owned native continuation and collection of an observed existing Codex durable task; separate schema-2 native plans and schema-3 per-message claims with host/task/scope/predecessor binding and permanent successor exclusion; no native creation, tool dispatcher, Work/CLI fallback or execution during older UI-only host instructions; UI schema-1 plans and schema-2 claims, 0.17 handoff rules, all model/effort defaults and overrides preserved; historical source hashes retained"
   ],
   "source_policy_revision": "2026-09-14",
   "rendered_sha256": {
-    "model-routing-policy.md": "62ca2e632142aebbe798d5d24937d549d011c6642d37154965dd657b2ca64374",
-    "model-routing-catalog.md": "23a09736fc252f77f5a8f860a8c57fec942103ccfa370e0e0c2ea5c6343b0f7e",
-    "model-routing-handoff.md": "d46ed0ca45f15f5e81972aa37dc06ed9e81f30e4df54517b0269665e619a9b1d"
+    "model-routing-policy.md": "c252692e6da68fd8ed49355c43e6a8f34cae518ebf1f07013f0aed069536875b",
+    "model-routing-catalog.md": "69f57b775f026e31e211a3892080e333004d31b7d2da360563ede32825685029",
+    "model-routing-handoff.md": "c2489c893edc14ef4bf10af07b34ed351701cf8cd06ac36867768ae1269cd434"
   }
 }

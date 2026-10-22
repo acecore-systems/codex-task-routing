@@ -146,7 +146,7 @@ class FixedRoutingTests(unittest.TestCase):
     def test_generated_owner_policy_has_no_conflicting_parent_defaults(self):
         # Contract checks of generated instructions, not model-behavior tests.
         policy = routing.load_policy(codex_home=self.home)
-        self.assertEqual(policy.config['policy_revision'], '2026-10-22-handoff-verification')
+        self.assertEqual(policy.config['policy_revision'], '2026-10-22-native-cloud-continuation')
         documents = policy.rendered_documents()
         obsolete = ('GPT-6.1 Sol/xhigh', '参考基準は親Sol/xhigh',
                     '通常作業は親で完結する', '通常工程は親で完結し',

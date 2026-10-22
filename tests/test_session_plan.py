@@ -402,7 +402,7 @@ class CloudPlanningTests(unittest.TestCase):
         with runtime_directory() as tmp:
             policy = routing.load_policy(codex_home=tmp)
             rendered = policy.rendered_documents()
-            self.assertIn('Cloudは現行UIで実行し、開始手順は依頼本文に明記。', rendered['effective.md'])
+            self.assertIn('CloudはUIと既存Codexのnative継続を分け、開始手順は依頼本文に明記。', rendered['effective.md'])
             self.assertNotIn('cloud_run.py', rendered['effective.md'])
             for name in ('model-routing-policy.md', 'model-routing-catalog.md', 'model-routing-handoff.md'):
                 self.assertIn('session_plan.py', rendered[name])

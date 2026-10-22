@@ -24,6 +24,7 @@ def check():
         assert (PLUGIN / name).is_file(), name
     for removed in ['scripts/cloud_run.py', 'skills/task-routing/references/cloud-transport.md']:
         assert not (PLUGIN / removed).exists(), removed
+    assert (PLUGIN / 'skills/task-routing/references/native-cloud.md').is_file()
     assert set(hooks) == {'SessionStart', 'SubagentStart'}
     for groups in hooks.values():
         for group in groups:
@@ -32,7 +33,7 @@ def check():
                 assert hook['command'] == "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','routing.py'),run_name='__main__')\" hook"
                 assert hook['timeout'] <= 10
     config = json.loads((PLUGIN / 'defaults/config.json').read_text(encoding='utf-8'))
-    assert config['policy_revision'] == '2026-10-22-handoff-verification'
+    assert config['policy_revision'] == '2026-10-22-native-cloud-continuation'
     assert 'local_auth_status' in config['principles']['policy_local_auth']
     assert config['models']['luna']['default_effort'] == 'max'
     assert config['models']['terra']['id'] == 'gpt-6.1-sol'  # legacy override key, never routed

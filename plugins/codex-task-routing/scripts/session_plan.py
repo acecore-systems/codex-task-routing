@@ -27,6 +27,8 @@ CHECKS = {"host_permission", "inspect_capability", "inspect_authorization",
           "dispatch_capability", "target_authorization", "materials_authorization",
           "environment", "repository_revision", "test_environment",
           "receive_capability", "receive_authorization"}
+NATIVE_CHECKS = CHECKS | {"native_policy", "target_identity", "previous_submission",
+                          "wait_capability", "wait_authorization"}
 OPERATIONS = {"read", "edit", "test", "commit", "push", "create_draft_pr"}
 SUBMISSION_STATES = {"not_sent", "sent", "unknown_outcome", "collected", "accepted"}
 ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
@@ -46,6 +48,22 @@ def _object(value, required, optional=()):
 def _schema(value):
     if type(value) is not int or value != 1:
         raise SessionPlanError("unsupported schema version")
+
+
+def _native_schema(value):
+    if type(value) is not int or value != 2:
+        raise SessionPlanError("unsupported native schema version")
+
+
+def validate_native_target(value, *, observed=False):
+    """Only an existing Codex durable task; never alias Work or a UI tab."""
+    _object(value, {"kind", "host_id", "task_id"})
+    _enum(value["kind"], {"codex", "chatgpt_work", "unknown"} if observed else {"codex"})
+    _identifier(value["host_id"])
+    _identifier(value["task_id"])
+    if not observed and value["host_id"] != "durable":
+        raise SessionPlanError("existing durable Codex target required")
+    return value
 
 
 def _text(value, maximum=512):
@@ -373,14 +391,20 @@ def _base(handoff, phase):
             "task_id": handoff["state"]["task_id"], "gaps": []}
 
 
-def _accept(handoff, result, acceptance):
+def _accept(handoff, result, acceptance, *, native=False):
     if handoff["state"]["submission"] not in {"collected", "accepted"}:
         raise SessionPlanError("acceptance requires a collected original result")
-    _object(result, {"schema_version", "request_id", "input_sha256", "handoff_sha256", "task_id",
+    fields = {"schema_version", "request_id", "input_sha256", "handoff_sha256", "task_id",
                      "status", "repository", "base_revision", "change_kind", "output_revision",
                      "diff_evidence", "checks_completed", "verification_status",
-                     "verification_evidence", "artifact_references"})
-    _schema(result["schema_version"])
+                     "verification_evidence", "artifact_references"}
+    _object(result, fields | ({"target", "response_reference", "correlation_evidence"} if native else set()))
+    (_native_schema if native else _schema)(result["schema_version"])
+    if native:
+        validate_native_target(result["target"], observed=True)
+        if result["response_reference"] is not None:
+            _text(result["response_reference"])
+        _list(result["correlation_evidence"], allow_empty=True)
     for name in ("request_id", "task_id"):
         _identifier(result[name])
     for name in ("input_sha256", "handoff_sha256"):
@@ -401,12 +425,13 @@ def _accept(handoff, result, acceptance):
     _text(acceptance["reference"])
     matched = (result["request_id"] == handoff["request_id"]
                and result["input_sha256"] == handoff["input_sha256"]
-               and result["handoff_sha256"] == handoff_sha256(handoff)
-               and result["task_id"] == handoff["state"]["task_id"]
+               and result["handoff_sha256"] == (native_handoff_sha256(handoff) if native else handoff_sha256(handoff))
+               and result["task_id"] == (handoff["target"]["task_id"] if native else handoff["state"]["task_id"])
                and result["repository"] == handoff["repository"]
                and result["base_revision"] == handoff["expected_revision"]
-               and acceptance["owner_id"] == handoff["owner_id"])
-    output = _base(handoff, "accept")
+               and acceptance["owner_id"] == handoff["owner_id"]
+               and (not native or result["target"] == handoff["target"]))
+    output = _native_base(handoff, "accept") if native else _base(handoff, "accept")
     if not matched:
         return {**output, "next_action": "return_identity_mismatch_to_root", "outcome": "unverified",
                 "gaps": ["result_or_owner_identity_mismatch"]}
@@ -419,6 +444,9 @@ def _accept(handoff, result, acceptance):
         return {**output, "next_action": "return_to_same_owner", "outcome": "needs_changes"}
     if acceptance["decision"] != "accepted" or acceptance["criteria_checked"] is not True:
         return {**output, "next_action": "owner_semantic_acceptance_needed", "outcome": "unverified"}
+    if native and (result["response_reference"] is None or not result["correlation_evidence"]):
+        return {**output, "next_action": "correlate_original_native_response", "outcome": "unverified",
+                "gaps": ["native_response_correlation_missing"]}
     if result["change_kind"] == "changed":
         change_verified = ("edit" in handoff["allowed_operations"]
                            and (bool(result["diff_evidence"]) or (result["output_revision"] is not None
@@ -438,6 +466,119 @@ def _accept(handoff, result, acceptance):
                 "gaps": ["required_verification_not_confirmed"]}
     return {**output, "preflight_complete": True, "next_action": "record_accepted_result",
             "outcome": "completed"}
+
+
+def validate_native_handoff(value):
+    _object(value, {"schema_version", "request_id", "input_sha256", "owner_id", "return_to",
+                    "repository", "branch", "expected_revision", "environment_id", "endpoint",
+                    "acceptance_criteria", "required_checks", "allowed_operations", "target",
+                    "previous_request_id", "state"})
+    _native_schema(value["schema_version"])
+    validate_native_target(value["target"])
+    for key in ("request_id", "owner_id", "return_to", "environment_id"):
+        _identifier(value[key])
+    if value["previous_request_id"] is not None:
+        _identifier(value["previous_request_id"])
+        if value["previous_request_id"] == value["request_id"]:
+            raise SessionPlanError("native request cannot follow itself")
+    _digest(value["input_sha256"])
+    _revision(value["expected_revision"])
+    for key in ("repository", "branch", "endpoint"):
+        _text(value[key])
+    _list(value["acceptance_criteria"])
+    _list(value["required_checks"], allow_empty=True)
+    _list(value["allowed_operations"], choices=OPERATIONS)
+    _object(value["state"], {"submission"})
+    _enum(value["state"]["submission"], SUBMISSION_STATES)
+    return value
+
+
+def native_handoff_sha256(value):
+    validate_native_handoff(value)
+    return hashlib.sha256(_canonical_json({k: v for k, v in value.items() if k != "state"})).hexdigest()
+
+
+def _native_base(handoff, phase):
+    return {"schema_version": 2, "phase": phase, "planning_only": True,
+            "runtime_implemented": False, "execution_authorized": False,
+            "preflight_complete": False, "request_id": handoff["request_id"],
+            "input_sha256": handoff["input_sha256"], "handoff_sha256": native_handoff_sha256(handoff),
+            "target": dict(handoff["target"]), "gaps": [], "creation_supported": False}
+
+
+def native_cloud_plan(handoff, *, phase="inspect", live=None, result=None, acceptance=None, now=None):
+    """Plan existing-task native operations only; never call an app tool."""
+    validate_native_handoff(handoff)
+    _enum(phase, {"inspect", "dispatch-plan", "receive", "wait", "accept"})
+    if phase == "accept":
+        if live is not None:
+            raise SessionPlanError("accept uses original result and owner review")
+        return _accept(handoff, result, acceptance, native=True)
+    if result is not None or acceptance is not None:
+        raise SessionPlanError("results are only used during acceptance")
+    output = _native_base(handoff, phase)
+    state = handoff["state"]["submission"]
+    if phase == "dispatch-plan" and state != "not_sent":
+        actions = {"sent": "receive_original_task", "unknown_outcome": "reconcile_original_submission",
+                   "collected": "accept_original_result", "accepted": "reuse_accepted_result"}
+        return {**output, "next_action": actions[state], "gaps": ["new_submission_forbidden"]}
+    if phase in {"receive", "wait"} and state == "not_sent":
+        return {**output, "next_action": "inspect_existing_task", "gaps": ["continuation_not_submitted"]}
+    if live is None:
+        return {**output, "next_action": "inspect_host_and_existing_target", "gaps": ["live_observations_missing"]}
+    _object(live, {"schema_version", "handoff_sha256", "transport", "actor", "observed_at", "checks", "target"})
+    _native_schema(live["schema_version"])
+    _digest(live["handoff_sha256"])
+    _enum(live["transport"], {"codex_cloud_native", "unknown"})
+    validate_native_target(live["target"], observed=True)
+    _object(live["actor"], {"role", "depth", "executor_id"})
+    actor = live["actor"]
+    _enum(actor["role"], {"root", "sol", "astra", "luna", "unknown"})
+    if type(actor["depth"]) is not int or actor["depth"] < 0:
+        raise SessionPlanError("invalid actor depth")
+    _identifier(actor["executor_id"])
+    _object(live["checks"], set(), NATIVE_CHECKS)
+    for item in live["checks"].values():
+        _object(item, {"state"}, {"reference"})
+        _enum(item["state"], CHECK_STATES)
+        if item["state"] in CONFIRMED and "reference" not in item:
+            raise SessionPlanError("confirmed checks require scoped references")
+        if "reference" in item:
+            _text(item["reference"])
+    if live["target"] != handoff["target"]:
+        output["gaps"].append("original_native_target_mismatch")
+    if live["handoff_sha256"] != output["handoff_sha256"]:
+        output["gaps"].append("handoff_scope_mismatch")
+    if live["transport"] != "codex_cloud_native":
+        output["gaps"].append("native_transport_unverified")
+    if actor["role"] != "root" or actor["depth"] != 0 or actor["executor_id"] != handoff["owner_id"]:
+        output["gaps"].append("return_cloud_execution_scope_to_root")
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        raise SessionPlanError("current time requires timezone")
+    if not timedelta(0) <= current - _timestamp(live["observed_at"]) <= timedelta(minutes=5):
+        output["gaps"].append("live_observations_stale_or_future")
+    required = {"native_policy", "host_permission", "target_identity"}
+    required |= {"inspect": {"inspect_capability", "inspect_authorization"},
+                 "dispatch-plan": {"dispatch_capability", "target_authorization", "materials_authorization",
+                                   "environment", "repository_revision", "test_environment", "previous_submission"},
+                 "receive": {"receive_capability", "receive_authorization"},
+                 "wait": {"wait_capability", "wait_authorization"}}[phase]
+    for key in sorted(required):
+        check = live["checks"].get(key, {"state": "unknown"})["state"]
+        permitted = {"verified"} if key in OBSERVED_CHECKS | {"target_identity", "previous_submission"} else CONFIRMED
+        if check not in permitted:
+            output["gaps"].append(key + ":" + check)
+    if output["gaps"]:
+        wait_only = all(gap.startswith(("wait_capability:", "wait_authorization:")) for gap in output["gaps"])
+        return {**output, "next_action": "plan_receive_original_task" if phase == "wait" and wait_only
+                else "resolve_phase_gaps"}
+    tool = {"inspect": "read_thread", "dispatch-plan": "send_message_to_thread",
+            "receive": "read_thread", "wait": "wait_threads"}[phase]
+    return {**output, "preflight_complete": True, "native_tool": tool,
+            "next_action": "claim_then_call_native_tool_once" if phase == "dispatch-plan"
+            else "collect_original_task_without_resend" if phase == "receive"
+            else "inspect_existing_task" if phase == "inspect" else "wait_on_original_task"}
 
 
 def cloud_plan(handoff, *, phase="inspect", live=None, result=None, acceptance=None, now=None):
@@ -514,6 +655,11 @@ def main(argv=None):
     cloud.add_argument("--live", type=Path)
     cloud.add_argument("--result", type=Path)
     cloud.add_argument("--acceptance", type=Path)
+    native = commands.add_parser("cloud-native", help="plan native continuation of an existing Codex Cloud task")
+    native.add_argument("--handoff", required=True, type=Path)
+    native.add_argument("--phase", choices=("inspect", "dispatch-plan", "receive", "wait", "accept"), default="inspect")
+    for key in ("live", "result", "acceptance"):
+        native.add_argument("--" + key, type=Path)
     args = parser.parse_args(argv)
     try:
         def read(path):
@@ -522,6 +668,9 @@ def main(argv=None):
             output = select_session(read(args.facts))
         elif args.command == "recommend":
             output = recommend_session(read(args.facts))
+        elif args.command == "cloud-native":
+            output = native_cloud_plan(read(args.handoff), phase=args.phase, live=read(args.live),
+                                       result=read(args.result), acceptance=read(args.acceptance))
         else:
             output = cloud_plan(read(args.handoff), phase=args.phase, live=read(args.live),
                                 result=read(args.result), acceptance=read(args.acceptance))
