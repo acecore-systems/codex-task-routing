@@ -184,6 +184,8 @@ checkoutがない場合は、上のPowerShell例と同じ`install_updater.py`の
 
 診断先は`<CODEX_HOME>/codex-task-routing/updater/state/last-sync.json`です。認証情報やCLI出力全文は保存しません。PCの休止中・ログオフ中には実行せず、次に実行できるタイミングで確認します。通常起動と更新の開始を完全には排他できないため、**毎回の起動直前に必ず最新版になる保証はありません**。
 
+Windowsでは`CODEX_HOME`を約230字以内にしてください。これより長いと、定期実行の起動や更新処理の確認の子プロセスを開始できず、自動更新が止まるか、プラグイン更新後も直前の更新処理のまま動くことがあります。
+
 Windows以外では定期実行の登録に未対応です。Codexが終了している時に`python plugins/codex-task-routing/scripts/updater.py`で同じ一回分の更新処理を実行できます。
 
 ## 更新・同じ版の再現・解除
