@@ -44,6 +44,8 @@ class ChatHookTests(unittest.TestCase):
         self.assertIn("Opt-in ChatGPT Chat route is enabled", parent)
         self.assertIn("transport: browser-temporary", parent)
         self.assertIn("Temporary Chat", parent)
+        self.assertIn("Choose suitable Cloud for new independent repository units before Pro", parent)
+        self.assertIn("For other substantial", parent)
         self.assertIn("evaluate this Chat route first", parent)
         self.assertIn("verified tools", parent)
         self.assertIn("Parallel delegation requires useful independent parent work", parent)
@@ -54,6 +56,7 @@ class ChatHookTests(unittest.TestCase):
         self.assertIn("never Work or a model API", parent)
         self.assertLessEqual(len(parent), routing.MAX_ADDITIONAL_CONTEXT_CHARS)
         child = self.payload("SubagentStart")["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("Choose suitable Cloud for new independent repository units before Pro", child)
         self.assertIn("Opt-in ChatGPT Chat route is enabled", child)
         self.assertIn("Conditional only: root-direct Sol child, depth=1", child)
         self.assertIn("SubagentStart does not prove role/depth", child)
