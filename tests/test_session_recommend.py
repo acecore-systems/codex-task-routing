@@ -16,12 +16,14 @@ import session_plan as sp
 
 def repository_unit():
     return dict(schema_version=1,
-        work=dict(purpose='別repoの回帰修正を実装・検証する', kind='repository',
+        work=dict(purpose='別repoの回帰修正を実装・検証する', kind='repository', repository='example/project',
                   independent=True, tightly_coupled=False, handoff_benefit=True,
                   reasons=['separate_repo_or_pr', 'independent_deliverable']),
         owner=dict(status='new'),
         execution=dict(local_required=False, chat_can_complete=False,
-                       cloud=dict(available=True, materials_ready=True, tests_ready=True)),
+                       cloud=dict(available=True, materials_ready=True, tests_ready=True,
+                                  environment=dict(status='existing', repository='example/project',
+                                                   environment_id='repo-environment', ready=True))),
         host=dict(subagent=True, new_session=True, codex_cloud=True,
                   chat_pro=False, materials_transfer=True))
 
@@ -111,7 +113,8 @@ class SessionRecommendationTests(unittest.TestCase):
         self.assertEqual(result['route'], 'codex_cloud')
         self.assertEqual(result['next_action'], 'resolve_candidate_gaps')
         self.assertEqual(set(result['gaps']), {'cloud.available:unknown', 'cloud.materials_ready:unknown',
-            'cloud.tests_ready:unknown', 'host.codex_cloud:unknown', 'host.materials_transfer:unknown'})
+            'cloud.tests_ready:unknown', 'host.codex_cloud:unknown', 'host.materials_transfer:unknown',
+            'cloud.environment:unknown'})
         self.assertTrue(result['proposal']['conditional'])
         self.assertFalse(result['execution_authorized'])
 
@@ -146,18 +149,160 @@ class SessionRecommendationTests(unittest.TestCase):
         self.assertIn('execution.local_required:unknown', self.recommend()['gaps'])
         self.assertEqual(self.recommend()['next_action'], 'assess_work_unit')
 
-    def test_pro_policy_is_preserved_for_complete_analysis_and_capable_repo_work(self):
-        for kind in ('analysis', 'repository'):
+    def test_cloud_precedes_capable_pro_for_repo_but_analysis_keeps_pro(self):
+        for kind, route in (('analysis', 'chat_pro'), ('repository', 'codex_cloud')):
             with self.subTest(kind=kind):
                 self.facts['work']['kind'] = kind
                 self.facts['execution']['chat_can_complete'] = True
                 self.facts['host']['chat_pro'] = True
                 result = self.recommend()
-                self.assertEqual(result['route'], 'chat_pro')
-                self.assertEqual(result['next_action'], 'evaluate_existing_chat_policy')
+                self.assertEqual(result['route'], route)
+                self.assertEqual(result['next_action'], 'evaluate_existing_chat_policy' if kind == 'analysis'
+                                 else 'prepare_cloud_handoff')
                 self.assertFalse(result['execution_authorized'])
         self.facts['host']['chat_pro'] = False
         self.assertEqual(self.recommend()['route'], 'codex_cloud')
+
+    def test_cloud_ineligible_repository_work_can_use_capable_pro(self):
+        self.facts['execution'].update(chat_can_complete=True)
+        self.facts['host']['chat_pro'] = True
+        self.facts['execution']['cloud']['available'] = False
+        self.assertEqual(self.recommend()['route'], 'chat_pro')
+
+    def test_missing_or_unknown_environment_inspects_without_assuming_absence(self):
+        for environment in (None, dict(status='unknown')):
+            with self.subTest(environment=environment):
+                if environment is None:
+                    self.facts['execution']['cloud'].pop('environment', None)
+                else:
+                    self.facts['execution']['cloud']['environment'] = environment
+                result = self.recommend()
+                self.assertEqual(result['route'], 'codex_cloud')
+                self.assertEqual(result['next_action'], 'inspect_cloud_environment')
+                self.assertEqual(result['cloud_lifecycle']['environment_status'], 'unknown')
+                self.assertNotIn('environment_action', result['cloud_lifecycle'])
+                self.assertTrue(result['proposal']['conditional'])
+
+    def test_confirmed_absence_plans_supported_ui_setup_before_new_task(self):
+        self.facts['execution']['cloud']['environment'] = dict(status='absent',
+            repository='example/project', setup_supported=True)
+        result = self.recommend()
+        self.assertEqual(result['route'], 'codex_cloud')
+        self.assertEqual(result['next_action'], 'create_prepare_publish_cloud_environment')
+        self.assertEqual(result['cloud_lifecycle']['environment_action'], 'create_prepare_publish')
+        self.assertEqual(result['cloud_lifecycle']['session_action'], 'new_task_for_independent_unit')
+        self.assertEqual(result['cloud_lifecycle']['creation_transport'], 'codex_cloud_ui')
+        self.assertFalse(result['cloud_lifecycle']['native_creation_supported'])
+        self.assertFalse(result['execution_authorized'])
+
+    def test_absent_environment_without_setup_capability_reports_gap(self):
+        for supported in (False, None):
+            with self.subTest(supported=supported):
+                self.facts['execution']['cloud']['environment'] = dict(status='absent',
+                    repository='example/project', setup_supported=supported)
+                result = self.recommend()
+                self.assertEqual(result['route'], 'codex_cloud')
+                self.assertEqual(result['next_action'], 'resolve_cloud_environment_setup_capability')
+                self.assertTrue(any('setup_supported:' in gap for gap in result['gaps']))
+
+    def test_existing_environment_reused_for_new_independent_session(self):
+        result = self.recommend()
+        self.assertEqual(result['cloud_lifecycle']['environment_action'], 'reuse_existing')
+        self.assertEqual(result['cloud_lifecycle']['environment_id'], 'repo-environment')
+        self.assertEqual(result['cloud_lifecycle']['session_action'], 'new_task_for_independent_unit')
+        self.assertNotIn('owner_id', result)
+
+    def test_existing_environment_prepares_if_not_ready_and_inspects_unknown_readiness(self):
+        environment = self.facts['execution']['cloud']['environment']
+        environment.update(ready=False, setup_supported=True)
+        result = self.recommend()
+        self.assertEqual(result['next_action'], 'prepare_existing_cloud_environment')
+        self.assertEqual(result['cloud_lifecycle']['environment_action'], 'prepare_test_republish_existing')
+        environment['ready'] = None
+        result = self.recommend()
+        self.assertEqual(result['next_action'], 'inspect_cloud_environment_readiness')
+        self.assertNotIn('environment_action', result['cloud_lifecycle'])
+
+    def test_environment_repository_identity_mismatch_or_unknown_never_creates(self):
+        for status in ('absent', 'existing'):
+            with self.subTest(status=status):
+                self.facts = repository_unit()
+                self.facts['execution']['cloud']['environment'] = (dict(status='absent',
+                    repository='other/project', setup_supported=True) if status == 'absent' else
+                    dict(status='existing', repository='other/project', environment_id='other', ready=True))
+                result = self.recommend()
+                self.assertEqual(result['next_action'], 'inspect_repository_environment_identity')
+                self.assertNotIn('environment_action', result['cloud_lifecycle'])
+                self.facts['work'].pop('repository')
+                self.assertIn('work.repository:unknown', self.recommend()['gaps'])
+
+    def test_same_repo_parallel_sessions_allowed_with_scopes_branches_and_integration_owner(self):
+        self.facts['execution']['cloud']['parallel'] = dict(scopes_independent=True,
+            branches_isolated=True, integration_owner='root-integrator', host_allows=True,
+            delegator_has_independent_work=True)
+        result = self.recommend()
+        self.assertEqual(result['route'], 'codex_cloud')
+        self.assertEqual(result['next_action'], 'prepare_cloud_handoff')
+        self.assertEqual(result['cloud_lifecycle']['parallel_sessions'], 'independent_sessions_allowed')
+        self.assertFalse(result['execution_authorized'])
+
+    def test_parallel_overlap_missing_isolation_host_or_owner_requires_coordination(self):
+        for key in ('scopes_independent', 'branches_isolated', 'integration_owner', 'host_allows',
+                    'delegator_has_independent_work'):
+            for value in (None, False) if key != 'integration_owner' else (None,):
+                with self.subTest(key=key, value=value):
+                    parallel = dict(scopes_independent=True, branches_isolated=True,
+                        integration_owner='root-integrator', host_allows=True,
+                        delegator_has_independent_work=True)
+                    parallel[key] = value
+                    self.facts['execution']['cloud']['parallel'] = parallel
+                    result = self.recommend()
+                    self.assertEqual(result['next_action'], 'coordinate_parallel_cloud_sessions')
+                    self.assertTrue(result['proposal']['conditional'])
+
+    def test_continuing_same_unit_cloud_owner_does_not_plan_new_environment_or_session(self):
+        self.facts['owner'] = dict(status='continuing', owner_id='cloud-owner', route='codex_cloud', suitable=True)
+        self.facts['execution']['cloud']['environment'] = dict(status='absent',
+            repository='example/project', setup_supported=True)
+        result = self.recommend()
+        self.assertEqual(result['next_action'], 'reuse_existing_owner')
+        self.assertNotIn('cloud_lifecycle', result)
+
+    def test_environment_setup_does_not_bypass_owner_or_host_gaps(self):
+        self.facts['execution']['cloud']['environment'] = dict(status='absent',
+            repository='example/project', setup_supported=True)
+        self.facts['owner'] = dict(status='unknown')
+        self.assertEqual(self.recommend()['next_action'], 'check_owner_reuse')
+        self.facts['owner'] = dict(status='new')
+        self.facts['host']['codex_cloud'] = None
+        self.assertEqual(self.recommend()['next_action'], 'resolve_candidate_gaps')
+        self.facts['host']['codex_cloud'] = False
+        result = self.recommend()
+        self.assertEqual(result['route'], 'new_local_session')
+        self.assertNotIn('cloud_lifecycle', result)
+
+    def test_service_unavailable_is_distinct_from_confirmed_environment_absence(self):
+        self.facts['execution']['cloud'].update(available=False, environment=dict(status='absent',
+            repository='example/project', setup_supported=True))
+        result = self.recommend()
+        self.assertEqual(result['route'], 'new_local_session')
+        self.assertIn('cloud.available:false', self.alternative('codex_cloud')['why'])
+        self.assertNotIn('cloud_lifecycle', result)
+
+    def test_environment_and_parallel_schema_reject_invalid_or_ambiguous_facts(self):
+        for value in (None, dict(status='unknown', ready=False), dict(status='absent'),
+                      dict(status='existing', repository='example/project', environment_id='env', ready='true'),
+                      dict(status='missing', repository='example/project', setup_supported=True)):
+            with self.subTest(environment=value):
+                self.facts['execution']['cloud']['environment'] = value
+                with self.assertRaises(sp.SessionPlanError):
+                    self.recommend()
+        self.facts = repository_unit()
+        for parallel in (None, {}, dict(scopes_independent=True, branches_isolated=True,
+            integration_owner=False, host_allows=True, delegator_has_independent_work=True)):
+            self.facts['execution']['cloud']['parallel'] = parallel
+            with self.subTest(parallel=parallel), self.assertRaises(sp.SessionPlanError):
+                self.recommend()
 
     def test_unknown_chat_capability_does_not_hide_a_suitable_repository_cloud_unit(self):
         self.facts['execution']['chat_can_complete'] = None

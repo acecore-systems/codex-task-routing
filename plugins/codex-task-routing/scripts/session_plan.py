@@ -182,8 +182,11 @@ def recommend_session(facts):
     _object(facts, {"schema_version", "work", "owner", "execution", "host"})
     _schema(facts["schema_version"])
     work, owner, execution, host = (facts[key] for key in ("work", "owner", "execution", "host"))
-    _object(work, {"purpose", "kind", "independent", "tightly_coupled", "handoff_benefit", "reasons"})
+    _object(work, {"purpose", "kind", "independent", "tightly_coupled", "handoff_benefit", "reasons"},
+            {"repository"})
     _text(work["purpose"])
+    if "repository" in work:
+        _text(work["repository"])
     _enum(work["kind"], {"repository", "analysis", "support"})
     for key in ("independent", "tightly_coupled", "handoff_benefit"):
         _truth(work[key])
@@ -201,9 +204,31 @@ def recommend_session(facts):
     for key in ("local_required", "chat_can_complete"):
         _truth(execution.get(key))
     cloud = execution.get("cloud", {})
-    _object(cloud, set(), {"available", "materials_ready", "tests_ready"})
-    for value in cloud.values():
-        _truth(value)
+    _object(cloud, set(), {"available", "materials_ready", "tests_ready", "environment", "parallel"})
+    for key in ("available", "materials_ready", "tests_ready"):
+        _truth(cloud.get(key))
+    environment = cloud.get("environment", {"status": "unknown"})
+    _object(environment, {"status"}, {"repository", "environment_id", "ready", "setup_supported"})
+    _enum(environment["status"], {"unknown", "absent", "existing"})
+    if environment["status"] == "unknown":
+        _object(environment, {"status"})
+    elif environment["status"] == "absent":
+        _object(environment, {"status", "repository", "setup_supported"})
+    else:
+        _object(environment, {"status", "repository", "environment_id", "ready"}, {"setup_supported"})
+        _identifier(environment["environment_id"])
+        _truth(environment["ready"])
+    if "repository" in environment:
+        _text(environment["repository"])
+    _truth(environment.get("setup_supported"))
+    parallel = cloud.get("parallel")
+    if "parallel" in cloud:
+        _object(parallel, {"scopes_independent", "branches_isolated", "integration_owner",
+                           "host_allows", "delegator_has_independent_work"})
+        for key in ("scopes_independent", "branches_isolated", "host_allows", "delegator_has_independent_work"):
+            _truth(parallel[key])
+        if parallel["integration_owner"] is not None:
+            _identifier(parallel["integration_owner"])
     _object(host, set(), HOST_FACTS)
     for value in host.values():
         _truth(value)
@@ -264,7 +289,8 @@ def recommend_session(facts):
         if route == "codex_cloud":
             required += ["repository_branch_environment", "startup_cwd_and_guidance",
                          "materials_hash_and_transfer_scope", "required_tests_and_evidence",
-                         "request_id_and_original_tab_task", "durable_claim_and_submission_state"]
+                         "request_id_and_original_tab_task", "durable_claim_and_submission_state",
+                         "repository_environment_reuse", "parallel_scopes_branches_and_integration_owner"]
         if route == "chat_pro":
             required += ["existing_chat_policy_actor_capabilities_and_authorization",
                          "request_id_input_hash_and_original_tab"]
@@ -304,24 +330,75 @@ def recommend_session(facts):
         return finish(current_option, ["no_independent_purpose"], "assess_work_unit" if common_gaps else "continue_current", common_gaps)
 
     usable = {"eligible", "conditional"}
-    # Pro keeps its existing first-candidate policy when it can actually finish
-    # this unit. A repository task is not excluded from Cloud just because the
-    # parent can also implement it or because Pro's capability is still unknown.
-    if execution.get("chat_can_complete") is True and chat_option["suitability"] in usable:
-        choice, why, action = chat_option, "chat_can_finish_complete_unit", "evaluate_existing_chat_policy"
-    elif cloud_option["suitability"] in usable:
+    # Choose execution context before the specialist. Suitable independent repo
+    # work is Cloud-first even when approved Chat tools could also finish it.
+    if cloud_option["suitability"] in usable:
         choice, why, action = cloud_option, "cloud_for_independent_repository_unit", "prepare_cloud_handoff"
+    elif execution.get("chat_can_complete") is True and chat_option["suitability"] in usable:
+        choice, why, action = chat_option, "chat_can_finish_complete_unit", "evaluate_existing_chat_policy"
     elif work["kind"] == "analysis" and chat_option["suitability"] in usable:
         choice, why, action = chat_option, "assess_chat_for_complete_analysis", "evaluate_existing_chat_policy"
     elif local_option["suitability"] in usable:
         choice, why, action = local_option, "independent_unit_needs_local_context", "review_new_session_contract"
     else:
         return finish(current_option, ["no_available_separate_context"], "report_context_limitations", common_gaps)
+    lifecycle = None
+    if choice["route"] == "codex_cloud":
+        lifecycle = _cloud_lifecycle(work, environment, parallel)
+        action = lifecycle["next_action"]
+        choice = {**choice, "gaps": [*choice["gaps"], *lifecycle["gaps"]]}
     if common_gaps:
         action = "check_owner_reuse" if "owner_reuse:unknown" in common_gaps else "assess_work_unit"
-    elif choice["gaps"]:
+    elif choice["gaps"] and lifecycle is None:
         action = "resolve_candidate_gaps"
-    return finish(choice, [why], action, common_gaps)
+    elif lifecycle is not None and cloud_option["gaps"]:
+        action = "resolve_candidate_gaps"
+    result = finish(choice, [why], action, common_gaps)
+    if lifecycle is not None:
+        result["cloud_lifecycle"] = lifecycle
+    return result
+
+
+def _cloud_lifecycle(work, environment, parallel):
+    """Plan UI environment reuse/setup and independent tasks, never execute."""
+    status = environment["status"]
+    result = {"environment_status": status, "planning_only": True,
+              "creation_transport": "codex_cloud_ui", "native_creation_supported": False,
+              "session_action": "new_task_for_independent_unit", "gaps": []}
+    if status == "unknown":
+        result.update(next_action="inspect_cloud_environment", gaps=["cloud.environment:unknown"])
+    elif work.get("repository") is None or work["repository"] != environment["repository"]:
+        result.update(next_action="inspect_repository_environment_identity",
+                      gaps=["work.repository:unknown" if work.get("repository") is None
+                            else "cloud.environment.repository:mismatch"])
+    elif status == "absent" or environment["ready"] is not True:
+        result["gaps"].append("cloud.environment:absent" if status == "absent" else "cloud.environment.ready:unverified")
+        result["environment_action"] = ("create_prepare_publish" if status == "absent"
+                                        else "prepare_test_republish_existing")
+        result["next_action"] = "create_prepare_publish_cloud_environment" if status == "absent" else "prepare_existing_cloud_environment"
+        if environment.get("setup_supported") is not True:
+            state = "false" if environment.get("setup_supported") is False else "unknown"
+            result["next_action"] = "resolve_cloud_environment_setup_capability"
+            result["gaps"].append("cloud.environment.setup_supported:" + state)
+        if status == "existing" and environment["ready"] is None:
+            # Unknown readiness needs inspection before preparing or republishing.
+            result.update(next_action="inspect_cloud_environment_readiness",
+                          gaps=["cloud.environment.ready:unknown"])
+            result.pop("environment_action")
+    else:
+        result.update(environment_action="reuse_existing", environment_id=environment["environment_id"],
+                      next_action="prepare_cloud_handoff")
+    if parallel is not None:
+        parallel_gaps = ["cloud.parallel." + key + (":unknown" if parallel[key] is None else ":false")
+                         for key in ("scopes_independent", "branches_isolated", "host_allows", "delegator_has_independent_work")
+                         if parallel[key] is not True]
+        if parallel["integration_owner"] is None:
+            parallel_gaps.append("cloud.parallel.integration_owner:unknown")
+        result["parallel_sessions"] = "coordinate_before_dispatch" if parallel_gaps else "independent_sessions_allowed"
+        if parallel_gaps:
+            result["gaps"].extend(parallel_gaps)
+            result["next_action"] = "coordinate_parallel_cloud_sessions"
+    return result
 
 
 def validate_handoff(value):

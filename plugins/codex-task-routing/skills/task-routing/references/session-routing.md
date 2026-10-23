@@ -6,7 +6,7 @@ model・effortと、仕事を置く実行環境は別に選びます。同じ完
 
 ## 目的単位から推薦する
 
-新規の独立repo実装・テスト・長時間の完了単位はCloudの有力候補です。必要材料・実環境・必須テスト・ローカル依存・引継ぎ便益を比べます。承認済み材料と実際のChatツールでその工程が完結すれば、既存のPro優先を維持します。Cloudを常にProより上位にはせず、Chat適合が未確認という理由だけで適合するCloudも候補から消しません。独立成果物でも現在担当との細かな往復が不可欠なら分割しません。
+新規の独立repo実装・テスト・長時間の完了単位では、必要材料・実環境・必須テスト・ローカル依存・引継ぎ便益・ホスト条件が適合すればCloudをProより先に選びます。親やChatでも実行できるという理由だけでCloudから除外しません。同じ完了単位の適任担当は継続し、密結合や高い引継ぎ負担がある仕事は分割しません。Cloudに不適合な工程やrepo以外の分析等は、承認済み材料と実際のChatツールで完結すればProを先に検討します。
 
 通常は「目的・分ける理由・候補・代案・不足・次の操作」を短く説明すれば十分です。毎回のhelper実行は不要です。判断を再現可能にしたい場合は、candidateを先に指定せず新しいサブコマンドへ入力します。
 
@@ -22,6 +22,7 @@ python <plugin-root>/scripts/session_plan.py recommend --facts <work-unit.json>
   "work": {
     "purpose": "別repoの回帰修正を実装・検証する",
     "kind": "repository",
+    "repository": "example/project",
     "independent": true,
     "tightly_coupled": false,
     "handoff_benefit": true,
@@ -31,7 +32,13 @@ python <plugin-root>/scripts/session_plan.py recommend --facts <work-unit.json>
   "execution": {
     "local_required": false,
     "chat_can_complete": false,
-    "cloud": {"available": true, "materials_ready": true, "tests_ready": true}
+    "cloud": {
+      "available": true, "materials_ready": true, "tests_ready": true,
+      "environment": {
+        "status": "existing", "repository": "example/project",
+        "environment_id": "repo-environment", "ready": true
+      }
+    }
   },
   "host": {
     "codex_cloud": true,
@@ -50,10 +57,13 @@ python <plugin-root>/scripts/session_plan.py recommend --facts <work-unit.json>
 | reasons | separate_goal / independent_deliverable / separate_repo_or_pr / ongoing_managementが別セッションの根拠。long_running / long_context / quota_avoidance / same_model_transferだけでは根拠にならない |
 | owner.status | newは同じ完了単位の既存担当を確認した未着手単位。unknownは担当の有無を未確認。continuingは同じ完了単位の担当を確認済みで、owner_id / route / suitableを必須にする |
 | owner.suitable | continuingの場合の適合性。trueなら同じ担当を再利用、nullなら再利用確認。親が一般に作業可能という意味にはしない |
+| work.repository | 対象repoの正規ID。任意だがenvironmentの対応照合に必要。環境名から推測しない |
+| execution.cloud.environment | 任意の環境状態。省略はunknown。契約は次節 |
+| execution.cloud.parallel | 同一repoで並列taskを使う時の範囲・branch・統合担当・ホスト条件。次節を参照 |
 | execution.local_required | ローカル機器・秘密を扱う工程・移せないファイル・接続等が必要か。trueならCloud/Chatから除外しローカルを比較 |
-| execution.cloud.available | 現在のCloud UIと対象環境が利用できるか。未接続・offline・利用不能をfalse、未確認をnullにする |
+| execution.cloud.available | 現在のCloudサービス/UIが利用できるか。未接続・offline・利用不能をfalse、未確認をnullにする。対象repo環境の不存在はfalseの理由にせずenvironmentで別に扱う |
 | execution.cloud.materials_ready / tests_ready | 承認範囲の必要材料・対象revisionがCloudへ渡せる形で揃い、必須テストを実施できるか。テスト不要と確認した工程はtests_ready:true、未確認ならnull |
-| execution.chat_can_complete | 必要材料・実ツール・検証環境で完了単位をChatが終えられるか。trueなら既存Chat方針で先に検討 |
+| execution.chat_can_complete | 必要材料・実ツール・検証環境で完了単位をChatが終えられるか。trueでも適合する独立repo Cloud工程が先。それ以外は既存Chat方針で先に検討 |
 | host | subagent / new_session / codex_cloud / chat_pro / materials_transferの現在のホスト制約と同一範囲の既存承認。各true/false/null。未入力はnull。trueの宣言だけで権限を発行しない |
 
 `work`の全項目と`owner.status`は必須です。`execution`と`host`自体は必須で、その内部項目は省略可能・省略時はunknownです。workの真偽もnullを受理します。`owner.status:continuing`の例は`{"status":"continuing","owner_id":"existing-owner","route":"codex_cloud","suitable":true}`です。new/unknownには他のowner項目を付けません。新規所有者をまだ確認していない時はnewを使いません。
@@ -76,6 +86,54 @@ host.subagentは標準階層・役割・depth・並列なら委譲者自身の�
 | 既存Cloud担当の通常修正・status要求・受入待ち | 元担当・元taskを継続。新しい別タスクや再送にせず、同一依頼の回収と内容受入へ |
 | 長時間だけ / 長文脈だけ | 独立目的や分担便益がなければ現在担当で継続 |
 | hostや材料転送がunknown / false | unknownは不足を残す。falseは候補をblockedにし、推薦を実行許可へ変えない |
+
+## repo環境の再利用と新規task
+
+Cloud環境は再利用するセットアップ、taskは各完了単位の作業状態です。対象repoに対応する既存環境を確認し、適合する公開済み環境から独立目的の新taskを開始します。同じ完了単位の修正・検証・回収は元taskへ継続します。既存taskの存在や継続成功だけで新規作成機能の検証済みとはしません。[公式の環境作成・公開手順](https://learn.chatgpt.com/docs/environments/cloud-environments)も参照してください。
+
+`execution.cloud.environment`は次の3形式です。状態は今回の対象repoを確認した観測で供給し、権限エラーや一覧取得失敗をabsentにしません。
+
+```json
+{"status": "unknown"}
+```
+
+```json
+{"status": "absent", "repository": "example/project", "setup_supported": true}
+```
+
+```json
+{"status": "existing", "repository": "example/project", "environment_id": "repo-environment", "ready": true}
+```
+
+| 条件 | next_actionと必要な操作 |
+| --- | --- |
+| environment省略 / status:unknown | inspect_cloud_environment。repo対応と既存環境を調査し、不存在を推測しない |
+| work.repository未入力 / repo不一致 | inspect_repository_environment_identity。照合まで作成や再利用へ進まない |
+| 確認済みabsent、setup_supported:true | create_prepare_publish_cloud_environment。現ホストが許す対応UIで作成・準備・テスト・保存・公開し、公開を確認してから新task |
+| existing、ready:false、setup_supported:true | prepare_existing_cloud_environment。既存環境を準備・テスト・再公開し、新taskの状態を確認 |
+| existing、ready:null | inspect_cloud_environment_readiness。未確認を準備不足と推定して編集しない |
+| 作成/編集/公開の機能や許可が不明・不足 | resolve_cloud_environment_setup_capability。不足を返し、作成成功やローカル成功へ読み替えない |
+| repo一致、existing、ready:true | prepare_cloud_handoff。環境を再利用し、この独立目的には新しいセッションを計画 |
+
+existingはstatus/repository/environment_id/readyが必須で、必要ならsetup_supportedを追加します。absentはstatus/repository/setup_supportedが必須、unknownはstatusだけです。readyとsetup_supportedはtrue/false/null。ready:trueは公開済みで今回必要なrepo/revision・依存・テスト・ネットワークが利用できると確認した状態です。setup_supportedは今回必要な作成または編集・準備・公開の実UI操作と許可がそろうかであり、汎用create_threadのschemaだけではtrueにしません。available/materials_ready/tests_readyは従来どおり三値ですが、環境の不存在だけでavailable:falseにしません。準備後も実dispatchの環境・revision・テスト照合は省略しません。
+
+同一repoの複数Cloudセッションを一律に禁止しません。同じ環境を再利用する場合も各taskの独立範囲・分離branch/workspace・統合担当を示し、共有ファイルや依存差分が衝突する場合は開始前に調整します。標準子・Chatの原則同時1工程を、Cloud環境あたり1taskの上限に読み替えません。委譲者自身の有用な独立作業とホストの並列許可・上限は維持します。
+
+並列時の`execution.cloud.parallel`は次の全項目を持ちます。真偽はnullも受理し、integration_ownerは識別子またはnullです。
+
+```json
+{
+  "scopes_independent": true,
+  "branches_isolated": true,
+  "integration_owner": "root-integrator",
+  "host_allows": true,
+  "delegator_has_independent_work": true
+}
+```
+
+全条件が確認済みなら独立セッションを計画でき、false/nullがあればcoordinate_parallel_cloud_sessionsです。branchの分離だけで共有外部状態への衝突がないとしません。parallel省略は並列許可の証拠にならず、実dispatch前の範囲・branch・統合担当確認をhandoff_requiredに残します。
+
+推薦出力のcloud_lifecycleは条件付きの準備順序です。**次に進める操作はtop-level next_actionだけ**とし、owner_reuse・材料・ホストの不足が優先された場合に下位のenvironment_actionを先行実行しません。環境作成・公開・新taskは対応UI契約に従う手動実操作で、helperは実行しません。native新規作成は未対応のままです。既存durable taskのnative継続・回収は別契約を維持し、Work・旧CLI・simulated environmentへのfallbackやフックdispatchは行いません。承認済みの同一対象・材料・操作は再利用し、実ホストの承認境界を守ります。
 
 ## 既存の候補指定契約
 

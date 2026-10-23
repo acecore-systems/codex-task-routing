@@ -146,7 +146,7 @@ class FixedRoutingTests(unittest.TestCase):
     def test_generated_owner_policy_has_no_conflicting_parent_defaults(self):
         # Contract checks of generated instructions, not model-behavior tests.
         policy = routing.load_policy(codex_home=self.home)
-        self.assertEqual(policy.config['policy_revision'], '2026-10-22-native-cloud-continuation')
+        self.assertEqual(policy.config['policy_revision'], '2026-10-23-cloud-first-repository-routing')
         documents = policy.rendered_documents()
         obsolete = ('GPT-6.1 Sol/xhigh', '参考基準は親Sol/xhigh',
                     '通常作業は親で完結する', '通常工程は親で完結し',
@@ -160,6 +160,8 @@ class FixedRoutingTests(unittest.TestCase):
                     self.assertNotIn(phrase, text)
         self.assertIn('Sol/xhigh', documents['model-routing-policy.md'])
         self.assertIn('最初の主担当候補', documents['model-routing-catalog.md'])
+        self.assertIn('CloudをProより先に選ぶ', documents['model-routing-catalog.md'])
+        self.assertIn('Cloud優先の独立repo工程以外', documents['model-routing-catalog.md'])
         # Existing host gates and the local secret boundary must survive the
         # broader owner scope. This plugin remains instruction-only routing.
         hierarchy = policy.config['principles']['policy_hierarchy']

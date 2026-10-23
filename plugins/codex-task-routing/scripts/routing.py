@@ -725,8 +725,9 @@ def _chatgpt_context(home: Path, plugin_root: Path, *, for_child: bool = False) 
     return (
         f"\nOpt-in ChatGPT Chat route is enabled (required UI model: Pro (legacy: 6 Pro / GPT-6 Pro); transport: {transport}{legacy_suffix}). "
         + eligibility
-        + "For substantial research/design/review and authorized implementation/testing/PR, evaluate this Chat "
-        "route first with approved materials, verified tools, scope and test environment. Keep a suitable "
+        + "Choose suitable Cloud for new independent repository units before Pro. For other substantial "
+        "research/design/review and authorized implementation/testing/PR, evaluate this Chat route first "
+        "with approved materials, verified tools, scope and test environment. Keep a suitable "
         "existing owner. Short work or repeated Codex-local access stays in Codex. "
         "Parallel delegation requires useful independent parent work from the delegating owner itself. "
         "Serial specialist delegation requires explicit host permission and concrete added value; no invented work. "

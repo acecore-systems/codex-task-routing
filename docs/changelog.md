@@ -1,5 +1,12 @@
 # 変更履歴
 
+## 0.19.0 — 独立repo工程をCloud優先にし、環境再利用と並列taskを明確化
+
+- 方針の意味変更: 新規の独立repo実装・検証は適合するCloudをProより先に選びます。同じ完了単位の適任担当は継続し、Cloudに不適合な工程やrepo以外の分析等は有効なProを先に検討します。
+- repo環境のunknown / absent / existingを区別。未確認は調査、確認済み不存在は対応UIで作成・準備・テスト・公開、既存はrepoと公開/準備状態を確認して再利用します。環境の不存在だけでCloudサービスを利用不能にしません。
+- 独立目的は既存環境から新セッション、同じ完了単位は元taskへ継続します。同一repoの複数セッションは独立範囲・branch/workspace分離・統合担当とホスト条件を満たせば並列利用でき、衝突は開始前に調整します。
+- `recommend`の任意入力と条件付きlifecycle出力、回帰テスト、defaults/注入文/SKILL/手順/template/fixtures/provenanceを同期。モデル/effort・認証・既存UI/native claimを維持し、新規native作成、Work/旧CLI fallback、hook送信は追加しません。[検証記録](validation-0.19.0.md)。
+
 ## 0.18.1 — 配布修正: 自動更新の子プロセスを短い固定の作業ディレクトリで起動
 
 - 配布修正です。方針の意味、既定のモデル・effort、通常Chatの条件、明示overrideは変更しません。
