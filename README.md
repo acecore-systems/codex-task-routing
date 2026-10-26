@@ -100,6 +100,8 @@ Cloud依頼本文に、絶対cwd・repo/branch/期待revisionの照合、README�
 
 0.15.2ではCloudを現行UI専用としました。0.18.0は、これに既存Codex durableタスクのnative継続・回収を別契約で追加します。旧Cloud CLIの実行コード・入力受付・専用資料は配布しません。UI用の最小ローカルclaimは残し、依頼ID・材料hash・scope・元タブ/task、排他と巻戻し拒否を保持します。既存の保存記録は削除・変換せず、旧形式・未知・破損したclaimがあれば照合まで新規送信を止めます。
 
+実運用の順序は[Cloudセッション運用手順](docs/cloud-session-workflow.md)、新規UI作成・native継続・Cloudテストの実確認範囲は[0.19.0の検証記録](docs/validation-0.19.0.md)を参照してください。
+
 ### 既存Cloudへ直接継続する
 
 0.18.0の`session_plan.py cloud-native`は、確認済みの既存Codexタスクを固定し、正式な`send_message_to_thread`による継続と`read_thread`による回収を計画します。新規作成APIは追加せず、Workや旧CLIへ切り替えません。host/task・scope・依頼hashを固定したメッセージごとの永久claimを残し、前依頼や結果不明を別IDで迂回しません。wait未確認・失敗は同じ元taskのreceive計画へ戻します。
