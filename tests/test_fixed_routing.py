@@ -121,12 +121,12 @@ class FixedRoutingTests(unittest.TestCase):
     def test_fixed_defaults_and_child_hook_uses_sol_6_1(self):
         policy = routing.load_policy(codex_home=self.home)
         self.assertEqual({k:v['default_effort'] for k,v in policy.config['models'].items()},
-                         dict(luna='max', terra='xhigh', sol='xhigh', astra='medium'))
+                         dict(luna='max', terra='xhigh', sol='xhigh', astra='medium', terra61='xhigh'))
         self.assertEqual({k:v['id'] for k,v in policy.config['models'].items()},
                          dict(luna='gpt-6-luna', terra='gpt-6.1-sol',
-                              sol='gpt-6.1-sol', astra='gpt-6-astra'))
+                              sol='gpt-6.1-sol', astra='gpt-6-astra', terra61='gpt-6.1-terra'))
         effective = policy.render_template(policy.templates['effective.md'])
-        self.assertNotIn('Terra子', effective)
+        self.assertIn('| Terra子（terra61） | gpt-6.1-terra | xhigh |', effective)
         self.assertNotIn('gpt-5.6', effective)
         self.assertNotIn('gpt-6-sol', effective)
         self.assertIn('Astra親', effective)
@@ -136,7 +136,7 @@ class FixedRoutingTests(unittest.TestCase):
             self.assertNotIn('.max_effort}}', text)
         child = routing.hook_payload(event='SubagentStart', source='startup', codex_home=self.home, cwd=self.home)
         context = child['hookSpecificOutput']['additionalContext']
-        self.assertNotIn('Terra=gpt-', context)
+        self.assertIn('Terra=gpt-6.1-terra (xhigh)', context)
         self.assertIn('Luna=gpt-6-luna (max)', context)
         self.assertIn('Sol=gpt-6.1-sol (xhigh)', context)
         self.assertNotIn('gpt-5.6', context)
@@ -146,7 +146,7 @@ class FixedRoutingTests(unittest.TestCase):
     def test_generated_owner_policy_has_no_conflicting_parent_defaults(self):
         # Contract checks of generated instructions, not model-behavior tests.
         policy = routing.load_policy(codex_home=self.home)
-        self.assertEqual(policy.config['policy_revision'], '2026-10-23-cloud-first-repository-routing')
+        self.assertEqual(policy.config['policy_revision'], '2026-10-28-terra61-routing')
         documents = policy.rendered_documents()
         obsolete = ('GPT-6.1 Sol/xhigh', '参考基準は親Sol/xhigh',
                     '通常作業は親で完結する', '通常工程は親で完結し',
@@ -229,6 +229,7 @@ class FixedRoutingTests(unittest.TestCase):
             'luna': {'id': 'gpt-6-luna', 'default_effort': 'xhigh'},
             'sol': {'id': 'gpt-6.1-sol', 'default_effort': 'high'},
             'astra': {'id': 'gpt-6-astra', 'default_effort': 'max'},
+            'terra61': {'id': 'gpt-6.1-terra', 'default_effort': 'xhigh'},
         })
         self.assertEqual(status['host']['runtime_model'], 'unknown')
         self.assertEqual(status['host']['runtime_effort'], 'unknown')
@@ -263,6 +264,9 @@ class FixedRoutingTests(unittest.TestCase):
         path = self.home/'codex-task-routing/overrides.json'
         path.parent.mkdir()
         cases = [
+            ('terra61', {'default_effort': 'max'}, True, 'max'),
+            ('terra61', {'max_effort': 'high'}, False, None),
+            ('terra61', {'default_effort': 'high', 'max_effort': 'high'}, True, 'high'),
             ('sol', {'max_effort': 'xhigh'}, True, 'xhigh'),
             ('sol', {'default_effort': 'max'}, True, 'max'),
             ('astra', {'default_effort': 'high'}, True, 'high'),
@@ -280,6 +284,78 @@ class FixedRoutingTests(unittest.TestCase):
                 else:
                     self.assertEqual(status['error_code'], 'invalid_effort_range')
                 self.assertEqual(path.read_bytes(), before)
+
+    def test_terra61_override_is_active_without_promoting_the_legacy_terra_key(self):
+        path = self.home / 'codex-task-routing/overrides.json'
+        path.parent.mkdir()
+        path.write_text(json.dumps({'schema_version': 1, 'models': {
+            'terra': {'id': 'gpt-5.6-terra', 'default_effort': 'high'},
+            'terra61': {'default_effort': 'max'},
+        }}), encoding='utf-8')
+        before = path.read_bytes()
+        status = routing.status_payload(codex_home=self.home, cwd=self.home)
+        self.assertTrue(status['ok'])
+        self.assertEqual(status['configured_child_models']['terra61'],
+                         {'id': 'gpt-6.1-terra', 'default_effort': 'max'})
+        self.assertNotIn('terra', status['configured_child_models'])
+        self.assertIsNone(status['override_review'])
+        self.assertFalse((self.home / 'codex-task-routing/cache').exists())
+        for text in routing.load_policy(codex_home=self.home).rendered_documents().values():
+            self.assertIn('Terra/max', text)
+            self.assertNotIn('gpt-5.6-terra', text)
+        for event in ('SessionStart', 'SubagentStart'):
+            context = routing.hook_payload(event=event, source='startup',
+                codex_home=self.home, cwd=self.home)['hookSpecificOutput']['additionalContext']
+            self.assertIn('gpt-6.1-terra', context)
+            self.assertNotIn('gpt-5.6-terra', context)
+            self.assertIn('Terra/max' if event == 'SessionStart'
+                          else 'Terra=gpt-6.1-terra (max)', context)
+        self.assertEqual(before, path.read_bytes())
+        self.assertFalse((self.home / 'config.toml').exists())
+
+    def test_custom_summary_is_preserved_with_visible_candidate_and_review_notice(self):
+        path = self.home / 'codex-task-routing/overrides.json'
+        path.parent.mkdir()
+        custom = 'Custom legacy summary: Luna/max, Sol/max, Astra/high only.'
+        path.write_text(json.dumps({'schema_version': 1, 'principles': {
+            'summary': custom, 'policy_local_auth': 'Custom local authentication policy.'
+        }}), encoding='utf-8')
+        before = path.read_bytes()
+        status = routing.status_payload(codex_home=self.home, cwd=self.home)
+        self.assertTrue(status['ok'])
+        self.assertEqual(status['override_review']['keys'], ['principles.summary'])
+        self.assertEqual(status['override_review']['reason'],
+                         'custom_routing_principles_replace_current_defaults')
+        self.assertNotIn(custom, json.dumps(status))
+        effective = routing.load_policy(codex_home=self.home).rendered_documents()['effective.md']
+        self.assertIn(custom, effective)
+        self.assertIn('| Terra子（terra61） | gpt-6.1-terra | xhigh |', effective)
+        self.assertIn('旧terraは互換専用で選定しない', effective)
+        for event in ('SessionStart', 'SubagentStart'):
+            context = routing.hook_payload(event=event, source='startup',
+                codex_home=self.home, cwd=self.home)['hookSpecificOutput']['additionalContext']
+            self.assertIn('gpt-6.1-terra', context)
+            self.assertIn('Custom routing principles preserved: principles.summary', context)
+            self.assertIn('unresolved contradictions return to root', context)
+            if event == 'SessionStart':
+                self.assertIn(custom, context)
+            self.assertLessEqual(len(context), routing.MAX_ADDITIONAL_CONTEXT_CHARS)
+        self.assertEqual(before, path.read_bytes())
+
+    def test_terra_peer_roles_do_not_expand_chat_ownership(self):
+        policy = routing.load_policy(codex_home=self.home)
+        hierarchy = policy.config['principles']['policy_hierarchy']
+        self.assertIn('Sol/Terra間の再委譲も不可', hierarchy)
+        self.assertIn('Astra/Terra/Luna子・孫はChat不可', hierarchy)
+        self.assertIn('rootとroot直下のSol子だけ', hierarchy)
+        for document in policy.rendered_documents().values():
+            self.assertIn('Terra', document)
+        context = routing.hook_payload(event='SubagentStart', source='startup',
+            codex_home=self.home, cwd=self.home)['hookSpecificOutput']['additionalContext']
+        self.assertIn('Astra child to Sol/Terra/Luna', context)
+        self.assertIn('Sol or Terra child to Luna', context)
+        self.assertIn('No peer-to-peer', context)
+        self.assertIn('not a performance ranking', context)
 
     def test_old_sol_ceiling_requires_explicit_compatible_default(self):
         path = self.home/'codex-task-routing/overrides.json'

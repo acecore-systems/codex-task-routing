@@ -69,7 +69,7 @@ class ChatActorTests(unittest.TestCase):
 
     def test_ineligible_role_or_depth_is_rejected_across_phases(self):
         for role, depth in (('astra', 1), ('luna', 1), ('sol', 2), ('astra', 2),
-                            ('luna', 2), ('sol', 3), ('terra', 1), ('unknown', 1)):
+                            ('luna', 2), ('sol', 3), ('terra', 1), ('terra61', 1), ('terra61', 2), ('unknown', 1)):
             live = {**self.live, 'actor': {**self.live['actor'], 'role': role, 'depth': depth}}
             for phase, result in self.all_phases(live):
                 with self.subTest(role=role, depth=depth, phase=phase):

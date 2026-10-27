@@ -1,3 +1,5 @@
+Terra（terra61）={{models.terra61.id}}/{{models.terra61.default_effort}}はSolと同列の実装・修正・テスト候補。旧terraは互換専用で選定しない。既存原則overrideを保持し、候補・役割・Chat境界との整合を確認する。
+
 {{principles.policy_intro}}
 {{principles.policy_effort}}
 {{principles.policy_timing}}
