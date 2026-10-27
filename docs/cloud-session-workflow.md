@@ -28,6 +28,8 @@
 
 各依頼本文には開始の絶対cwd、repo/branch/期待HEAD、README・AGENTS、cloud-environment runtimeスキルとnetwork policyの確認、編集scope、必須検証、合格条件、許可操作、停止条件、返却先を含めます。開始時にpwd/status/branch/HEADを実測し、不一致や既存変更があれば依頼の停止条件に従います。自動start_skill注入やHTTP listenerを前提にしません。
 
+ホストの初期cwdと対象repoの作業cwdは分けて指定します。初期cwdが`/workspace`なら、依頼で指定したrepoへ明示的に移動してからGit状態を照合します。期待するrepoがない場合は探索や再cloneで補いません。保存済みstart_skillが届かない場合に備え、必要なPATH・非秘密の環境設定・検証コマンドも依頼本文へ含めます。環境公開後は新規セッションで依存・テスト・必要な起動と停止を検証し、セットアップ中の成功と区別します。
+
 ## claimと再送防止
 
 送信前にGit管理外の非公開保存先へ、依頼ID・材料hash・scope・所有者・環境・元タブ/taskを固定した永久claimを保存します。`ClaimStore`（UI）または`NativeClaimStore`（native）のread/claim/saveはlock内で行い、新規claimを作成した同じ所有者だけが一度の正式送信へ進みます。フックとplannerは送信しません。
