@@ -60,7 +60,7 @@ class ChatHookTests(unittest.TestCase):
         self.assertIn("Opt-in ChatGPT Chat route is enabled", child)
         self.assertIn("Conditional only: root-direct Sol child, depth=1", child)
         self.assertIn("SubagentStart does not prove role/depth", child)
-        self.assertIn("Astra/Luna children and all grandchildren must not use Chat", child)
+        self.assertIn("Astra/Terra/Luna children and all grandchildren must not use Chat", child)
         self.assertLessEqual(len(child), routing.MAX_ADDITIONAL_CONTEXT_CHARS)
 
     def test_installed_long_path_keeps_enabled_chat_within_hook_limit(self):

@@ -8,13 +8,15 @@ python plugins/codex-task-routing/scripts/routing.py --config examples/overrides
 
 ## モデルとeffort
 
-上書きに含めたフィールドだけを変更します。`schema_version` は1。役割キーは `luna`、`sol`、`astra`。旧`terra`キーは既存overrideの読取り互換用に受理。各役割は `id`、`min_effort`、`default_effort`、`max_effort` を持ちます。別のモデルを設定しても役割ラベルは変えません。
+上書きに含めたフィールドだけを変更します。`schema_version` は1。役割キーは `luna`、`sol`、`terra61`、`astra`。旧`terra`キーは既存overrideの読取り互換用に受理。各役割は `id`、`min_effort`、`default_effort`、`max_effort` を持ちます。別のモデルを設定しても役割ラベルは変えません。
 
 effortの設定値は `medium`、`high`、`xhigh`、`max` で、下限≤標準≤上限が必要です。自動選定には有効なdefault_effortだけを固定値として使います。min_effort/max_effortは互換性とoverrideの範囲検証用で、毎回の候補ではありません。旧`terra`定義は互換性維持のため残しますが、子の選定に使いません。旧キーを含め、この設定は親の実設定に適用しません。値が妥当でも、実際のモデルがそのeffortを受け付けるかは実行時の機能で確認します。
 
 未定義キー、重複したJSONキー、型違い、空文字、無効範囲、解決できないテンプレートはエラーとして扱います。設定内容の誤りを既定値への暗黙の切戻しで隠しません。
 
 0.14.1からSol子の既定は`xhigh`、Astra子の既定と下限は`medium`です（0.10.1〜0.14.0のSol既定は`max`、0.14.0までのAstra既定・下限は`high`）。Solの上限だけを`xhigh`にする既存overrideは有効です。上限だけを`high`にすると下限≤標準≤上限を満たさず、`invalid_effort_range`で方針の適用を止めます。high運用は`{"sol":{"default_effort":"high","max_effort":"high"}}`のように標準値も明示してください。Astraの下限だけを`high`以上にしている場合も、対応する標準値を明示してください。明示済みの有効な標準値は保持し、個別設定を自動で書き換えません。
+
+0.20.0から新しい`terra61`を`gpt-6.1-terra/xhigh`の実装・修正・テスト候補に追加します。旧`terra`は引き続き選定対象外で、旧overrideを新候補へ移しません。Terraを変更する場合は`{"schema_version":1,"models":{"terra61":{"default_effort":"max"}}}`のように新キーを明示します。Sol/Terraは同列候補で性能比較は未実証です。標準孫はAstra→Sol/Terra/Luna、Sol/Terra→Lunaまで。相互再委譲は不可で、通常Chatの所有者はrootまたはroot直下Sol子だけです。
 
 ## 分担原則
 
@@ -43,6 +45,8 @@ effortの設定値は `medium`、`high`、`xhigh`、`max` で、下限≤標準�
 
 文章中では `{{models.sol.default_effort}}` 等の参照を使えます。未知参照や循環は拒否されます。モデル・effortの変更を本文へ反映するため、関連する参照を残してください。
 
+`status.override_review`は、候補・階層等に関係する文章overrideのキーと固定の確認案内を返します。上書き本文の古さや矛盾を自動判定するものではなく、該当overrideがなければnullです。新しい既定原則は明示overrideを上書きしません。両フックも確認案内を出し、有効方針の候補表とTerra/旧terra/Chat境界はsummary overrideの外に表示します。矛盾が残ればrootへ返し、設定を自動移行したり旧文面を黙って無視したりしません。
+
 **構文検証は原則の意味の矛盾まで保証しません。** 要約を変える場合は関連する詳細節も確認します。通常はAIに変更したい原則を伝え、関連節の差分をまとめて作り、renderした結果を確認します。分類表に影響する大きな運用変更は、パッケージ側の変更として版を分ける方が管理しやすくなります。
 
 ## 状態の区別
@@ -65,7 +69,7 @@ effortの設定値は `medium`、`high`、`xhigh`、`max` で、下限≤標準�
 診断は自動修復しません。フックはこれまでどおり短い失敗通知にとどめ、詳細な確認を `status --json` に分けます。
 
 - `status` の解決成功: ファイルと設定が正しい。
-- `status.configured_child_models`: 上書き適用後のLuna・Sol・AstraのIDと固定effort。互換専用のterraは含めず、実行の証明とは区別する。本文や個別設定全体は返さない。
+- `status.configured_child_models`: 上書き適用後のLuna・Sol・Terra（terra61）・AstraのIDと固定effort。互換専用のterraは含めず、実行の証明とは区別する。本文や個別設定全体は返さない。
 - Codexのプラグイン有効状態: ホストのプラグイン管理で確認する。
 - フックの信頼: `/hooks` で利用者が確認する。
 - 方針の読み込み: 新規・再開時の実際のフック出力で確認する。

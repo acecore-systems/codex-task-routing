@@ -1,5 +1,5 @@
 {
-  "policy_revision": "2026-10-23-cloud-first-repository-routing",
+  "policy_revision": "2026-10-28-terra61-routing",
   "source_sha256": {
     "AGENTS.md": "bd2584d350c204f1ffbc8c005c084fc34360acddf8812557504350820e34be42",
     "model-routing-policy.md": "9335ccec4516bc71b68d01f9304d6e71d3b5efcd77a210476571cd7d060c476c",
@@ -30,12 +30,13 @@
     "0.16.0 intentional policy change: candidate-free work-unit recommendations distinguish suitable ongoing ownership from parent capability; compare Cloud for independent repository implementation/test completion, bounded same-goal subagents, local dependency and existing Pro suitability; preserve unknown facts, alternatives and host/transfer boundaries; original schema-1 session/cloud and UI claim contracts, all model/effort defaults and explicit overrides unchanged; historical source hashes retained",
     "0.17.0 intentional policy change: child-reported facts are verified by the parent before adoption and material judgments are checked by the parent; the user is asked about technical choices only after delegates have exhausted alternatives; long drafts and research are written to a specified file and returned as path plus summary; a general-knowledge web-search row is added to the catalog; summary, model/effort defaults, Chat conditions, and explicit overrides unchanged; historical source hashes retained",
     "0.18.0 intentional policy change: add root-owned native continuation and collection of an observed existing Codex durable task; separate schema-2 native plans and schema-3 per-message claims with host/task/scope/predecessor binding and permanent successor exclusion; no native creation, tool dispatcher, Work/CLI fallback or execution during older UI-only host instructions; UI schema-1 plans and schema-2 claims, 0.17 handoff rules, all model/effort defaults and overrides preserved; historical source hashes retained",
-    "0.19.0 intentional policy change: suitable new independent repository units choose Cloud before Pro; per-repository environment reuse, unknown inspection, confirmed-absence supported UI create/prepare/test/publish and readiness checks; independent same-repository sessions with scopes, isolated branches, integration owner, delegator work and host concurrency gates; suitable same-unit owners continue; native creation remains unsupported, existing native/UI plans and permanent claims unchanged; no hook dispatch, Work/CLI fallback, model/effort or authentication changes; historical source hashes retained"
+    "0.19.0 intentional policy change: suitable new independent repository units choose Cloud before Pro; per-repository environment reuse, unknown inspection, confirmed-absence supported UI create/prepare/test/publish and readiness checks; independent same-repository sessions with scopes, isolated branches, integration owner, delegator work and host concurrency gates; suitable same-unit owners continue; native creation remains unsupported, existing native/UI plans and permanent claims unchanged; no hook dispatch, Work/CLI fallback, model/effort or authentication changes; historical source hashes retained",
+    "0.20.0 intentional policy change: add GPT-6.1 Terra/xhigh as active terra61 implementation/fix/test peer to Sol without a performance ranking; retain legacy terra inactive and explicit overrides unchanged; Astra may use Sol/Terra/Luna grandchildren and Sol/Terra may use Luna only, with no peer delegation; Chat stays root/root-direct Sol only; non-overridden candidate/boundary text and override-review diagnostics expose potentially stale custom routing principles; no runtime installation, parent, auth, Cloud/Chat transfer or hook-dispatch changes; historical source hashes retained"
   ],
   "source_policy_revision": "2026-09-14",
   "rendered_sha256": {
-    "model-routing-policy.md": "d406d9615781f509fa7f21b06e139840e4dc5b45c02b24c62a768bae911f03d7",
-    "model-routing-catalog.md": "7db49e7b5953a3f4fc486d55d579ae5d56361376cee66168da95828e31602935",
-    "model-routing-handoff.md": "67f7115200f367e274ba05ab9b0a226ee226e17ee4bc1829bd7f9b682b77756e"
+    "model-routing-policy.md": "5b4d51b654788748ac3c7a8748a61163c3f8ef21617cb6aab39d87c275a49734",
+    "model-routing-catalog.md": "4790cdb105c6bfe326a34b9eb6bc2b26d40fa2aa57dfd3414c6f70fbcbcd2cba",
+    "model-routing-handoff.md": "5d5effea03ee23e0b606db2fd0da71bf25c441270eba432a7cd9776f5a6c8979"
   }
 }

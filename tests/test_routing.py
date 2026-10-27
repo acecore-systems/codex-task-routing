@@ -28,6 +28,7 @@ DEFAULTS = {
     "models": {
         "luna": {"id": "gpt-6-luna", "min_effort": "xhigh", "default_effort": "max", "max_effort": "max"},
         "terra": {"id": "gpt-6.1-sol", "min_effort": "high", "default_effort": "xhigh", "max_effort": "max"},
+        "terra61": {"id": "gpt-6.1-terra", "min_effort": "high", "default_effort": "xhigh", "max_effort": "max"},
         "sol": {"id": "gpt-6.1-sol", "min_effort": "medium", "default_effort": "high", "max_effort": "xhigh"},
         "astra": {"id": "gpt-6-astra", "min_effort": "high", "default_effort": "high", "max_effort": "max"},
     },

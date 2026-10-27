@@ -78,7 +78,14 @@ WINDOWS_TRANSIENT_RENAME_WINERRORS = frozenset({5, 32, 33})
 
 MODEL_FIELDS = ("id", "min_effort", "default_effort", "max_effort")
 # The terra key remains for schema-v1 override compatibility; it is never routed.
-REQUIRED_MODEL_ROLES = ("luna", "terra", "sol", "astra")
+REQUIRED_MODEL_ROLES = ("luna", "terra", "sol", "terra61", "astra")
+ACTIVE_MODEL_ROLES = ("luna", "sol", "terra61", "astra")
+MODEL_LABELS = {"luna": "Luna", "sol": "Sol", "terra61": "Terra", "astra": "Astra"}
+ROUTING_PRINCIPLE_KEYS = frozenset({
+    "summary", "policy_intro", "policy_effort", "policy_classification",
+    "policy_test_image", "policy_originals", "policy_retrieval", "policy_escalation",
+    "policy_handoff", "policy_reasoning", "policy_parent", "policy_hierarchy",
+})
 SAFE_MODEL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 SAFE_TOKEN = re.compile(
     r"{{\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*}}"
@@ -580,6 +587,20 @@ def _cache_status(codex_home: Path, policy: Policy) -> tuple[str, Path]:
         return "unsafe", destination
 
 
+def _override_review(policy: Policy) -> dict[str, Any] | None:
+    """Flag semantic review without reading or rewriting custom principle text."""
+
+    keys = [key for key in policy.applied_override_keys
+            if key.startswith("principles.") and key.split(".", 1)[1] in ROUTING_PRINCIPLE_KEYS]
+    if not keys:
+        return None
+    return {
+        "keys": keys,
+        "reason": "custom_routing_principles_replace_current_defaults",
+        "hint": "Review custom routing text against terra61 and current role/Chat boundaries; overrides are preserved, not migrated or semantically validated.",
+    }
+
+
 def status_payload(
     *,
     plugin_root: Path = PLUGIN_ROOT,
@@ -609,6 +630,7 @@ def status_payload(
                 "present": policy.override_present,
                 "applied_keys": list(policy.applied_override_keys),
             },
+            "override_review": _override_review(policy),
             # Resolved requests, not evidence of runtime model execution.
             # The legacy terra role is accepted for compatibility but never routed.
             "configured_child_models": {
@@ -616,7 +638,7 @@ def status_payload(
                     "id": policy.config["models"][role]["id"],
                     "default_effort": policy.config["models"][role]["default_effort"],
                 }
-                for role in ("luna", "sol", "astra")
+                for role in ACTIVE_MODEL_ROLES
             },
             "python": {"version": sys.version.split()[0], "executable": sys.executable},
             "bundled_hook_available": _hook_available(policy.plugin_root),
@@ -716,7 +738,7 @@ def _chatgpt_context(home: Path, plugin_root: Path, *, for_child: bool = False) 
     legacy_suffix = " (legacy)" if transport == "codex-app-tools" else ""
     eligibility = (
         "Conditional only: root-direct Sol child, depth=1, may own preparation/send/collection/acceptance "
-        "and authorized fixes. Astra/Luna children and all grandchildren must not use Chat. "
+        "and authorized fixes. Astra/Terra/Luna children and all grandchildren must not use Chat. "
         "SubagentStart does not prove role/depth; check actual context and root handoff, not model ID. "
         "Unknown scope or current host prohibition returns to root. "
         if for_child else
@@ -844,9 +866,9 @@ def hook_payload(
             )
         else:
             model_matrix = "; ".join(
-                f"{role.title()}={policy.config['models'][role]['id']} "
+                f"{MODEL_LABELS[role]}={policy.config['models'][role]['id']} "
                 f"({policy.config['models'][role]['default_effort']})"
-                for role in ("luna", "sol", "astra")
+                for role in ACTIVE_MODEL_ROLES
             )
             context = "\n".join(
                 [
@@ -854,10 +876,13 @@ def hook_payload(
                     plugin_root_context,
                     rendered_context,
                     f"Configured child-routing reference only; it does not change the parent: {model_matrix}.",
-                    "Do not create a child solely to transfer work to the same model. Keep the agreed complete work unit with the same owner through ordinary investigation, fixes, tests, authorized PR creation and agreed review findings. Follow the parent-specified endpoint, scope and acceptance criteria; distinguish unverified results. Standard grandchildren only: Astra child to Sol/Luna; Sol child to Luna; Luna children and grandchildren cannot delegate. No same/up-role or further depth; use effective default efforts. Check assigned role/depth from actual context and handoff, not SubagentStart or a model ID. Unknown scope and important exceptions return to root. Parallel work requires the delegator's own independent work; host restrictions still apply.",
+                    "Do not create a child solely to transfer work to the same model. Keep the agreed complete work unit with the same owner through ordinary investigation, fixes, tests, authorized PR creation and agreed review findings. Follow the parent-specified endpoint, scope and acceptance criteria; distinguish unverified results. Terra uses terra61; legacy terra stays inactive. Sol/Terra are peer implementation candidates, not a performance ranking. Standard grandchildren only: Astra child to Sol/Terra/Luna; Sol or Terra child to Luna; Luna children and grandchildren cannot delegate. No peer-to-peer, same/up-role or further depth; use effective default efforts. Check assigned role/depth from actual context and handoff, not SubagentStart or a model ID. Unknown scope and important exceptions return to root. Parallel work requires the delegator's own independent work; host restrictions still apply.",
                     "Do not start a new observation from this child. Return bounded run evidence and missing reasons to the parent task's observation record.",
                 ]
             )
+        review = _override_review(policy)
+        if review:
+            context += "\nCustom routing principles preserved: " + ", ".join(review["keys"]) + ". Check Terra/role/Chat consistency; unresolved contradictions return to root, not automatic migration."
         route_diagnostic = None
         route_context = ""
         if event in {"SessionStart", "SubagentStart"}:

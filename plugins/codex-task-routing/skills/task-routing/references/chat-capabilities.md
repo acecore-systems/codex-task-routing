@@ -145,7 +145,7 @@ CLIの終了コード0は分類処理の成功です。`chat_candidate` も送�
 }
 ```
 
-これはliveの追加部分だけで、既存のroute_enabled、browser-temporary、現在のChat/Pro/UI観測、操作・転送承認等は各phaseの条件どおり必要です。inspect/dispatch/receiveは同じactor適合検査を使います。roleは`root`または割当ての`sol`等、depthはroot=0・子=1・孫=2で、JSON booleanを整数として受理しません。Astra/Luna子・孫とlegacy transportの子は候補にしません。rootがactorを明示する場合はrole=root/depth=0で矛盾させません。
+これはliveの追加部分だけで、既存のroute_enabled、browser-temporary、現在のChat/Pro/UI観測、操作・転送承認等は各phaseの条件どおり必要です。inspect/dispatch/receiveは同じactor適合検査を使います。roleは`root`または割当ての`sol`等、depthはroot=0・子=1・孫=2で、JSON booleanを整数として受理しません。Astra/Terra/Luna子・孫とlegacy transportの子は候補にしません。rootがactorを明示する場合はrole=root/depth=0で矛盾させません。
 
 `host_allows_chat`は現在の上位指示とホストがこの実行担当へ当該経路を許すことを確認した観測です。本人に追加承認を必ず求める欄ではなく、既存の有効なactions/browser/transport承認を再利用します。false・未確認・矛盾をtrueへ補完しません。role/depth/IDやこのbooleanは自己申告で、ホスト権限・backend・送信者を証明しません。現在の上位指示がroot限定なら、改修後の生成方針を理由に子から実送受信してはいけません。
 
