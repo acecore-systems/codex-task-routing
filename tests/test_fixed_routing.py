@@ -146,7 +146,7 @@ class FixedRoutingTests(unittest.TestCase):
     def test_generated_owner_policy_has_no_conflicting_parent_defaults(self):
         # Contract checks of generated instructions, not model-behavior tests.
         policy = routing.load_policy(codex_home=self.home)
-        self.assertEqual(policy.config['policy_revision'], '2026-10-28-terra61-routing')
+        self.assertEqual(policy.config['policy_revision'], '2026-10-28-terra-default-delegation')
         documents = policy.rendered_documents()
         obsolete = ('GPT-6.1 Sol/xhigh', '参考基準は親Sol/xhigh',
                     '通常作業は親で完結する', '通常工程は親で完結し',
@@ -342,10 +342,39 @@ class FixedRoutingTests(unittest.TestCase):
             self.assertLessEqual(len(context), routing.MAX_ADDITIONAL_CONTEXT_CHARS)
         self.assertEqual(before, path.read_bytes())
 
-    def test_terra_peer_roles_do_not_expand_chat_ownership(self):
+    def test_terra_default_policy_is_consistent_across_rendered_and_hook_contexts(self):
+        policy = routing.load_policy(codex_home=self.home)
+        docs = policy.rendered_documents()
+        for name in ('effective.md', 'model-routing-policy.md',
+                     'model-routing-catalog.md', 'model-routing-handoff.md'):
+            with self.subTest(document=name):
+                self.assertIn('既定', docs[name])
+                self.assertNotIn('同列候補', docs[name])
+                self.assertNotIn('Sol/Terra間の再委譲', docs[name])
+        summary = policy.config['principles']['summary']
+        for text in ('Sol子→Terra/Luna', 'Terra子→Luna', 'TerraからSolへの再委譲',
+                     '合意済み設計の具体化やTerraの能力不足', '理由を記して', '通常の実装判断・修正は同じ担当'):
+            self.assertIn(text, summary)
+        self.assertIn('方式選択・合意前提の変更は親が判断', docs['effective.md'])
+        self.assertIn('通常の実装判断はTerraが行う', docs['effective.md'])
+        self.assertIn('合意済み設計の具体化', docs['effective.md'])
+        classification = policy.config['principles']['policy_classification']
+        self.assertIn('Cloud', classification)
+        self.assertIn('有効な通常Chat Pro', classification)
+        self.assertIn('Terra/{{models.terra61.default_effort}}を既定', classification)
+        for event in ('SessionStart', 'SubagentStart'):
+            hook = routing.hook_payload(event=event, source='startup',
+                codex_home=self.home, cwd=self.home)
+            self.assertIn('hookSpecificOutput', hook)
+            self.assertLessEqual(len(hook['hookSpecificOutput']['additionalContext']),
+                                 routing.MAX_ADDITIONAL_CONTEXT_CHARS)
+
+    def test_terra_default_roles_do_not_expand_chat_ownership(self):
         policy = routing.load_policy(codex_home=self.home)
         hierarchy = policy.config['principles']['policy_hierarchy']
-        self.assertIn('Sol/Terra間の再委譲も不可', hierarchy)
+        self.assertIn('TerraからSolへの直接再委譲', hierarchy)
+        self.assertIn('Sol子からTerra/{{models.terra61.default_effort}}またはLuna/', hierarchy)
+        self.assertIn('ホストの並列・直列許可と深さ条件', hierarchy)
         self.assertIn('Astra/Terra/Luna子・孫はChat不可', hierarchy)
         self.assertIn('rootとroot直下のSol子だけ', hierarchy)
         for document in policy.rendered_documents().values():
@@ -353,8 +382,12 @@ class FixedRoutingTests(unittest.TestCase):
         context = routing.hook_payload(event='SubagentStart', source='startup',
             codex_home=self.home, cwd=self.home)['hookSpecificOutput']['additionalContext']
         self.assertIn('Astra child to Sol/Terra/Luna', context)
-        self.assertIn('Sol or Terra child to Luna', context)
-        self.assertIn('No peer-to-peer', context)
+        self.assertIn('Sol child to Terra/Luna', context)
+        self.assertIn('Terra child to Luna', context)
+        self.assertIn('all grandchildren cannot delegate', context)
+        self.assertIn('Terra is the default delegate', context)
+        self.assertIn('agreed-design elaboration or a Terra capability gap', context)
+        self.assertIn('only when host and depth conditions permit', context)
         self.assertIn('not a performance ranking', context)
 
     def test_old_sol_ceiling_requires_explicit_compatible_default(self):

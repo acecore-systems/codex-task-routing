@@ -802,7 +802,7 @@ def hook_payload(
         # Other plugin and policy files are named relative to these two directories.
         plugin_root_text = _absolute(policy.plugin_root)
         plugin_root_context = (
-            f"Plugin root: {plugin_root_text}. Relative plugin paths written as <plugin-root>/... are under this root."
+            f"Plugin root: {plugin_root_text}. <plugin-root>/... is relative to this root."
         )
         rendered_context = (
             f"Rendered policy directory: {_absolute(cache_dir)} "
@@ -832,7 +832,7 @@ def hook_payload(
             )
         elif observation["remaining"] == 0:
             observation_instruction = (
-                "Observation capacity is full; do not start a new record. Update an existing task only during its normal continuation, using its saved sampling key."
+                "Observation capacity is full; update existing tasks only during normal continuation with the saved sampling key. Do not start a new record."
             )
         else:
             observation_instruction = (
@@ -859,7 +859,7 @@ def hook_payload(
                         f"remaining={observation['remaining']}, pending={observation['pending']}, "
                         f"completed={observation['completed']}, measurement-missing={observation['missing']}."
                         if observation["state"] == "valid"
-                        else "Observation sample state is unknown; policy delivery continues without reading its contents."
+                        else "Observation state unknown; policy delivery continues without reading it."
                     ),
                     observation_instruction,
                 ]
@@ -876,7 +876,7 @@ def hook_payload(
                     plugin_root_context,
                     rendered_context,
                     f"Configured child-routing reference only; it does not change the parent: {model_matrix}.",
-                    "Do not create a child solely to transfer work to the same model. Keep the agreed complete work unit with the same owner through ordinary investigation, fixes, tests, authorized PR creation and agreed review findings. Follow the parent-specified endpoint, scope and acceptance criteria; distinguish unverified results. Terra uses terra61; legacy terra stays inactive. Sol/Terra are peer implementation candidates, not a performance ranking. Standard grandchildren only: Astra child to Sol/Terra/Luna; Sol or Terra child to Luna; Luna children and grandchildren cannot delegate. No peer-to-peer, same/up-role or further depth; use effective default efforts. Check assigned role/depth from actual context and handoff, not SubagentStart or a model ID. Unknown scope and important exceptions return to root. Parallel work requires the delegator's own independent work; host restrictions still apply.",
+                    "Do not create a child solely to transfer work to the same model. Keep the agreed complete work unit with the same owner through ordinary investigation, fixes, tests, authorized PR creation and agreed review findings. Follow the parent-specified endpoint, scope and acceptance criteria; distinguish unverified results. Terra uses terra61; legacy terra stays inactive. Terra is the default delegate for ordinary implementation, fixes, debugging, exploration, multi-file work and research drafts. Use Sol for agreed-design elaboration or a Terra capability gap, recording why; Sol may delegate implementation to Terra and review/integrate only when host and depth conditions permit. Terra handles ordinary implementation choices; architecture selection, agreed-premise changes and capability gaps go to its parent, not directly to Sol. This is not a performance ranking. Standard grandchildren only: Astra child to Sol/Terra/Luna; Sol child to Terra/Luna; Terra child to Luna. Luna children and all grandchildren cannot delegate. No same/up-role or further depth; use effective default efforts. Check assigned role/depth from actual context and handoff, not SubagentStart or a model ID. Unknown scope and important exceptions return to root. Parallel work requires the delegator's own independent work; host restrictions still apply.",
                     "Do not start a new observation from this child. Return bounded run evidence and missing reasons to the parent task's observation record.",
                 ]
             )
