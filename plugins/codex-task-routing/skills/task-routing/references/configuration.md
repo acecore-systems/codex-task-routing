@@ -16,7 +16,7 @@ effortの設定値は `medium`、`high`、`xhigh`、`max` で、下限≤標準�
 
 0.14.1からSol子の既定は`xhigh`、Astra子の既定と下限は`medium`です（0.10.1〜0.14.0のSol既定は`max`、0.14.0までのAstra既定・下限は`high`）。Solの上限だけを`xhigh`にする既存overrideは有効です。上限だけを`high`にすると下限≤標準≤上限を満たさず、`invalid_effort_range`で方針の適用を止めます。high運用は`{"sol":{"default_effort":"high","max_effort":"high"}}`のように標準値も明示してください。Astraの下限だけを`high`以上にしている場合も、対応する標準値を明示してください。明示済みの有効な標準値は保持し、個別設定を自動で書き換えません。
 
-0.20.0から新しい`terra61`を`gpt-6.1-terra/xhigh`の実装・修正・テスト候補に追加します。旧`terra`は引き続き選定対象外で、旧overrideを新候補へ移しません。Terraを変更する場合は`{"schema_version":1,"models":{"terra61":{"default_effort":"max"}}}`のように新キーを明示します。Sol/Terraは同列候補で性能比較は未実証です。標準孫はAstra→Sol/Terra/Luna、Sol/Terra→Lunaまで。相互再委譲は不可で、通常Chatの所有者はrootまたはroot直下Sol子だけです。
+0.20.0から新しい`terra61`を`gpt-6.1-terra/xhigh`の実装・修正・テスト候補に追加します。旧`terra`は引き続き選定対象外で、旧overrideを新候補へ移しません。Terraを変更する場合は`{"schema_version":1,"models":{"terra61":{"default_effort":"max"}}}`のように新キーを明示します。0.21.0ではTerraを通常の実装・修正・デバッグ・探索・複数ファイル作業・調査下書きの既定委譲先とします。合意済み設計の具体化や能力不足でSolを選ぶ理由を記し、ホスト許可と深さが許せば実装をTerraへ委譲してレビュー・統合します。標準孫はAstra→Sol/Terra/Luna、Sol→Terra/Luna、Terra→Lunaまで。Terra→Solと孫から先は不可。性能比較は未実証で、通常Chatの所有者はrootまたはroot直下Sol子だけです。
 
 ## 分担原則
 

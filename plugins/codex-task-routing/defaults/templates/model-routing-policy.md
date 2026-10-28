@@ -1,4 +1,4 @@
-Terra（terra61）={{models.terra61.id}}/{{models.terra61.default_effort}}はSolと同列の実装・修正・テスト候補。旧terraは互換専用で選定しない。既存原則overrideを保持し、候補・役割・Chat境界との整合を確認する。
+Terra（terra61）={{models.terra61.id}}/{{models.terra61.default_effort}}は通常の実装・修正・デバッグ・探索・複数ファイル作業・調査下書きの既定委譲先。Solは合意済み設計の具体化・能力不足時に理由を記して選び、許可された場合は実装をTerraへ委譲しレビュー・統合する。旧terraは互換専用で選定しない。既存原則overrideを保持し、候補・役割・Chat境界との整合を確認する。
 
 {{principles.policy_intro}}
 {{principles.policy_effort}}

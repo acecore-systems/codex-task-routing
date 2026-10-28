@@ -10,15 +10,15 @@
 
 目的／担当と固定effort／対象と未解決点／既知の根拠／合格条件／許可済み操作／返却条件を渡す。並列なら委譲する担当自身の独立作業、直列なら専門委譲の追加価値とホストが許す根拠を添える。親は判断・優先順位・担当選定・受入・重要例外に集中し、通常工程も適任担当へ完了単位で任せる。短い作業や委譲が見合わない作業は現在の担当で終える。担当は承認済みの通常修正・検証・証拠整理まで継続する。長い成果物（下書き・調査結果）は指定したファイルへ書かせ、返却はパスと要点（結論・確認範囲・未解決点）だけにする。
 
-rootとの関係、割当て役割、rootからのdepth、実行担当/所有者ID、許可された委譲先と現在のホスト許可を短く添える。役割はmodel IDやoverrideだけから推測しない。Astra子→Sol/Terra/Luna孫、Sol/Terra子→Luna孫までで、Luna子・孫から先は不可。役割・深さが不明ならrootへ返す。
+rootとの関係、割当て役割、rootからのdepth、実行担当/所有者ID、許可された委譲先と現在のホスト許可を短く添える。役割はmodel IDやoverrideだけから推測しない。Astra子→Sol/Terra/Luna孫、Sol子→Terra/Luna孫、Terra子→Luna孫までで、Luna子・孫から先は不可。役割・深さが不明ならrootへ返す。
 
-SolとTerra（terra61）は同列候補で相互再委譲はしない。旧terraは互換専用。Terra子は通常Chatを所有しない。性能順位を推定せず、利用可否・対象適合を引継ぎに残す。
+Terra（terra61）は通常実装・修正等の既定委譲先。Solは合意済み設計の具体化・Terraの能力不足に理由を記して担当し、条件が許せば実装をTerraへ委譲しレビュー・統合する。Terraは方式選択・合意前提の変更を親へ返し、Solへ直接委譲しない。旧terraは互換専用。Terra子は通常Chatを所有しない。性能順位を推定しない。
 
 ## Codex専門担当
 
 認証情報の入力・保管・転送が必要になった場合は、秘密値を取得する前に親へ必要な工程と対象範囲だけ返す。子の独自判断で認証処理や別タスクへの送信を始めない。
 
-Luna/{{models.luna.default_effort}}は明確な定型工程、Sol/{{models.sol.default_effort}}・Terra/{{models.terra61.default_effort}}はCodex側の調査・実装・通常修正・テスト・明示承認済みPR作成・合意した対象の指摘対応、Astra/{{models.astra.default_effort}}は難しい前提・重大な不確実性に必要な限定的専門工程を担当する。Astra親との二重レビューを既定にしない。model IDを明示し、再開でも観測値を推測しない。repoでは絶対cwd、repo/worktree、branch/HEAD、対象の未commit差分を示す。不一致をresetや探索で補わせない。
+Luna/{{models.luna.default_effort}}は明確な定型工程、Terra/{{models.terra61.default_effort}}はCodex側の通常の調査・実装・修正・テスト・明示承認済みPR作成・合意した対象の指摘対応を既定で担い、Sol/{{models.sol.default_effort}}は合意済み設計の具体化・能力不足時の支援と成果のレビュー・統合、Astra/{{models.astra.default_effort}}は難しい前提・重大な不確実性に必要な限定的専門工程を担当する。Astra親との二重レビューを既定にしない。model IDを明示し、再開でも観測値を推測しない。repoでは絶対cwd、repo/worktree、branch/HEAD、対象の未commit差分を示す。不一致をresetや探索で補わせない。
 
 既存の引継ぎ本文に、取得できた担当識別子、合意した終端、現在の到達点と残作業、最後に確認したrevisionと対象差分、再開条件を残す。再開時は最新の期待状態と照合し、自分の正当な前回変更を初回HEADへresetしない。同じ担当の再開機能や状態確認が利用不能なら親へ返し、通常修正のたびに新しいSol/Terraを起動しない。
 
