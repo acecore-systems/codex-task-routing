@@ -2,6 +2,7 @@
 import importlib.util
 import json
 from pathlib import Path
+from legacy_observation_fixture import seed_legacy
 import shutil
 import sys
 import unittest
@@ -86,9 +87,26 @@ class ChatHookTests(unittest.TestCase):
                 self.assertEqual('Opt-in ChatGPT' in child['hookSpecificOutput']['additionalContext'],
                                  transport == 'browser-temporary')
                 for phrase in ('Opt-in ChatGPT Chat route is enabled', 'Keep a suitable existing owner',
-                               'unknown authorization blocks dispatch', 'observation start',
+                               'unknown authorization blocks dispatch', 'No active observation campaign',
                                'local_auth_status', 'never Work or a model API'):
                     self.assertIn(phrase, context)
+
+    def test_active_long_campaign_with_chat_fits_hook_limit(self):
+        installed = self.home / 'plugins/cache/codex-task-routing/codex-task-routing/0.22.0'
+        shutil.copytree(routing.PLUGIN_ROOT, installed,
+                        ignore=shutil.ignore_patterns('__pycache__'))
+        self.settings(dict(schema_version=1, enabled=True, required_model='Pro',
+                           transport='browser-temporary'))
+        policy = routing.load_policy(plugin_root=installed, codex_home=self.home)
+        routing.observation_campaign_open(codex_home=self.home, policy=policy,
+                                          campaign_id='c' * 64, purpose='test')
+        payload = routing.hook_payload(event='SessionStart', source='startup',
+                                       plugin_root=installed, codex_home=self.home, cwd=self.home)
+        self.assertNotIn('systemMessage', payload)
+        context = payload['hookSpecificOutput']['additionalContext']
+        self.assertIn('observation start --campaign-id', context)
+        self.assertIn('Opt-in ChatGPT Chat route is enabled', context)
+        self.assertLessEqual(len(context), routing.MAX_ADDITIONAL_CONTEXT_CHARS)
 
     def test_two_hundred_character_install_root_is_stated_once_within_hook_limit(self):
         # The installed root and the rendered cache directory are the only absolute
@@ -122,7 +140,7 @@ class ChatHookTests(unittest.TestCase):
 
     def test_turning_off_restores_policy_and_keeps_observation_sample(self):
         policy = routing.load_policy(codex_home=self.home)
-        routing.observation_start(codex_home=self.home, policy=policy, task_id="retained-task")
+        seed_legacy(routing, self.home, policy, "retained-task")
         settings = {"schema_version": 1, "enabled": True, "required_model": "6 Pro", "transport": "browser-temporary"}
         self.settings(settings)
         self.assertIn("Opt-in ChatGPT", self.payload()["hookSpecificOutput"]["additionalContext"])

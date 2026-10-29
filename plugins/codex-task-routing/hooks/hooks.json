@@ -23,6 +23,72 @@
             "timeout": 10,
             "additionalContextLimit": 8000,
             "statusMessage": "Loading delegated task policy"
+          },
+          {
+            "type": "command",
+            "command": "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','capture_hook.py'),run_name='__main__')\"",
+            "timeout": 10,
+            "statusMessage": "Recording enrolled usage metadata"
+          }
+        ]
+      }
+    ],
+    "PreModelRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','capture_hook.py'),run_name='__main__')\"",
+            "timeout": 10,
+            "statusMessage": "Recording enrolled usage metadata"
+          }
+        ]
+      }
+    ],
+    "PostModelRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','capture_hook.py'),run_name='__main__')\"",
+            "timeout": 10,
+            "statusMessage": "Recording enrolled usage metadata"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','capture_hook.py'),run_name='__main__')\"",
+            "timeout": 10,
+            "statusMessage": "Recording enrolled usage metadata"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','capture_hook.py'),run_name='__main__')\"",
+            "timeout": 10,
+            "statusMessage": "Recording enrolled usage metadata"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','capture_hook.py'),run_name='__main__')\" prompt",
+            "timeout": 10,
+            "statusMessage": "Recording enrolled usage metadata"
           }
         ]
       }

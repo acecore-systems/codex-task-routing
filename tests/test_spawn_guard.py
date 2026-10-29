@@ -521,7 +521,7 @@ class HooksJsonTests(unittest.TestCase):
         self.hooks = json.loads((PLUGIN / "hooks/hooks.json").read_text(encoding="utf-8"))["hooks"]
 
     def test_pretooluse_guard_is_registered_for_spawn_tools_only(self):
-        self.assertEqual(set(self.hooks), {"SessionStart", "SubagentStart", "PreToolUse"})
+        self.assertTrue({"SessionStart", "SubagentStart", "PreToolUse"} <= set(self.hooks))
         groups = self.hooks["PreToolUse"]
         self.assertEqual(len(groups), 1)
         self.assertEqual(groups[0]["matcher"], "spawn_agent|Agent")
