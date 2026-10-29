@@ -90,7 +90,7 @@ class ComparisonTests(unittest.TestCase):
 
     def test_cli_reads_only_and_handles_invalid_input(self):
         with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / 'input.json'
+            path = Path(tmp).resolve() / 'input.json'
             text = json.dumps(inputs())
             path.write_text(text, encoding='utf-8')
             proc = subprocess.run([sys.executable, str(SCRIPT), '--input', str(path)], capture_output=True, text=True, encoding='utf-8')
