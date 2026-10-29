@@ -1,0 +1,253 @@
+{
+  "baseline": {
+    "completion": {
+      "state": "completed",
+      "scope": "complete work",
+      "measurement": {
+        "state": "measured",
+        "reason": null
+      },
+      "verification": {
+        "reference": "tests",
+        "reason": null
+      },
+      "rework": "none",
+      "runs": [
+        {
+          "run_key": "parent",
+          "relationship": "parent",
+          "state": "completed",
+          "run_id": "before-parent",
+          "run_id_reason": null,
+          "requested": {
+            "model": "gpt-6.1-sol",
+            "effort": "xhigh",
+            "reason": null
+          },
+          "observed": {
+            "model": "gpt-6-astra",
+            "effort": "high",
+            "evidence_ref": "parent-settings",
+            "reason": null
+          },
+          "usage": {
+            "state": "measured",
+            "reason": null,
+            "evidence_ref": "tool-result:child-1",
+            "turn_scope": "full_turn",
+            "input_tokens": 100,
+            "cache_input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_tokens": 0,
+            "unknown_reasons": {}
+          }
+        },
+        {
+          "run_key": "child-implementation",
+          "relationship": "child",
+          "state": "completed",
+          "run_id": "before-child",
+          "run_id_reason": null,
+          "requested": {
+            "model": "gpt-6.1-sol",
+            "effort": "xhigh",
+            "reason": null
+          },
+          "observed": {
+            "model": "gpt-6.1-sol",
+            "effort": "xhigh",
+            "evidence_ref": "tool-result:child-1",
+            "reason": null
+          },
+          "usage": {
+            "state": "measured",
+            "reason": null,
+            "evidence_ref": "tool-result:child-1",
+            "turn_scope": "full_turn",
+            "input_tokens": 30,
+            "cache_input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_tokens": 0,
+            "unknown_reasons": {}
+          }
+        }
+      ]
+    },
+    "completion_ref": "before",
+    "conditions": {
+      "work": {
+        "value": "same task",
+        "evidence_ref": "evidence",
+        "reason": null
+      },
+      "acceptance": {
+        "value": "same checks",
+        "evidence_ref": "evidence",
+        "reason": null
+      },
+      "environment": {
+        "value": "same environment",
+        "evidence_ref": "evidence",
+        "reason": null
+      },
+      "parent_model": {
+        "value": "gpt-6-astra",
+        "evidence_ref": "evidence",
+        "reason": null
+      },
+      "parent_effort": {
+        "value": "high",
+        "evidence_ref": "evidence",
+        "reason": null
+      }
+    },
+    "coverage": {
+      "value": true,
+      "evidence_ref": "evidence",
+      "reason": null
+    },
+    "independent": {
+      "value": true,
+      "evidence_ref": "evidence",
+      "reason": null
+    },
+    "quality": {
+      "value": true,
+      "evidence_ref": "evidence",
+      "reason": null
+    },
+    "chat_messages": {
+      "value": null,
+      "evidence_ref": null,
+      "reason": "unavailable"
+    }
+  },
+  "candidate": {
+    "completion": {
+      "state": "completed",
+      "scope": "complete work",
+      "measurement": {
+        "state": "measured",
+        "reason": null
+      },
+      "verification": {
+        "reference": "tests",
+        "reason": null
+      },
+      "rework": "none",
+      "runs": [
+        {
+          "run_key": "parent",
+          "relationship": "parent",
+          "state": "completed",
+          "run_id": "after-parent",
+          "run_id_reason": null,
+          "requested": {
+            "model": "gpt-6.1-sol",
+            "effort": "xhigh",
+            "reason": null
+          },
+          "observed": {
+            "model": "gpt-6-astra",
+            "effort": "high",
+            "evidence_ref": "parent-settings",
+            "reason": null
+          },
+          "usage": {
+            "state": "measured",
+            "reason": null,
+            "evidence_ref": "tool-result:child-1",
+            "turn_scope": "full_turn",
+            "input_tokens": 60,
+            "cache_input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_tokens": 0,
+            "unknown_reasons": {}
+          }
+        },
+        {
+          "run_key": "child-implementation",
+          "relationship": "child",
+          "state": "completed",
+          "run_id": "after-child",
+          "run_id_reason": null,
+          "requested": {
+            "model": "gpt-6.1-sol",
+            "effort": "xhigh",
+            "reason": null
+          },
+          "observed": {
+            "model": "gpt-6.1-sol",
+            "effort": "xhigh",
+            "evidence_ref": "tool-result:child-1",
+            "reason": null
+          },
+          "usage": {
+            "state": "measured",
+            "reason": null,
+            "evidence_ref": "tool-result:child-1",
+            "turn_scope": "full_turn",
+            "input_tokens": 100,
+            "cache_input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_tokens": 0,
+            "unknown_reasons": {}
+          }
+        }
+      ]
+    },
+    "completion_ref": "after",
+    "conditions": {
+      "work": {
+        "value": "same task",
+        "evidence_ref": "evidence",
+        "reason": null
+      },
+      "acceptance": {
+        "value": "same checks",
+        "evidence_ref": "evidence",
+        "reason": null
+      },
+      "environment": {
+        "value": "same environment",
+        "evidence_ref": "evidence",
+        "reason": null
+      },
+      "parent_model": {
+        "value": "gpt-6-astra",
+        "evidence_ref": "evidence",
+        "reason": null
+      },
+      "parent_effort": {
+        "value": "high",
+        "evidence_ref": "evidence",
+        "reason": null
+      }
+    },
+    "coverage": {
+      "value": true,
+      "evidence_ref": "evidence",
+      "reason": null
+    },
+    "independent": {
+      "value": true,
+      "evidence_ref": "evidence",
+      "reason": null
+    },
+    "quality": {
+      "value": true,
+      "evidence_ref": "evidence",
+      "reason": null
+    },
+    "chat_messages": {
+      "value": null,
+      "evidence_ref": null,
+      "reason": "unavailable"
+    }
+  },
+  "independent_comparisons": {
+    "value": true,
+    "evidence_ref": "evidence",
+    "reason": null
+  }
+}

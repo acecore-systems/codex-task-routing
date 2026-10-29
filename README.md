@@ -122,7 +122,7 @@ helperは送信しません。rootが新方針と現在のホスト許可・対�
 
 通常ChatのProはWork/Codexと別枠ですが、親の準備・操作・検収はCodex側に残ります。Proには契約別の上限があり、無制限ではありません。モデルや残量は実際のUIで確認し、第三者ツール固有の料金まで無料と扱いません。[公式の利用枠](https://help.openai.com/en/articles/20001354)、[Work/Codexの共有枠](https://learn.chatgpt.com/docs/pricing)。
 
-Cloud優先の独立repo工程以外で、有効なrootまたはroot直下Sol子のbrowser経路では、Proを分析・設計・比較・文案・レビューの**最初の主担当候補**にします。実際の接続・書込み権限・検証環境がそろう実装・テスト・PR作成も対象です。短い仕事や引継ぎ負担が大きい仕事は現在の適任担当で終え、Codex側の現物との頻繁な往復はSolを主担当にします。分類だけで外部書込みやマージを承認せず、同じ分析を別のAstraで全面再実行しません。
+Cloud優先の独立repo工程以外で、有効なrootまたはroot直下Sol子のbrowser経路では、Proを分析・設計・比較・文案・レビューの**最初の主担当候補**にします。実際の接続・書込み権限・検証環境がそろう実装・テスト・PR作成も対象です。短い仕事や引継ぎ負担が大きい仕事は現在の適任担当で終え、Codex側の現物との頻繁な往復を伴う通常工程はTerraを既定の主担当とし、合意済み設計の具体化や能力不足時は理由を記してSolを選びます。分類だけで外部書込みやマージを承認せず、同じ分析を別のAstraで全面再実行しません。
 
 Pro $200の週次枠を積極活用する運用ですが、契約価格だけで経路を有効化しません。[最新上限・送受信方法の許可・比較計画](plugins/codex-task-routing/skills/task-routing/references/chat-limits.md)を確認してください。送信直前は`chat_plan.py --live`で新しい観測を照合し、上限・モデル変更・許可不明で停止します。自動抽出に関する例外の許可は本プラグインでは確認していません。
 
@@ -155,7 +155,7 @@ Pro $200の週次枠を積極活用する運用ですが、契約価格だけで
 python plugins/codex-task-routing/scripts/routing.py observation status --json
 ```
 
-記録はCodexホームのプラグイン専用領域へ保存し、リポジトリや公開用ファイルへ会話内容を追加しません。入力例と状態の意味は[観測手順](plugins/codex-task-routing/skills/task-routing/references/observation.md)を参照してください。自動的な利用料の集計や節約率の算定は行いません。
+記録はCodexホームのプラグイン専用領域へ保存し、リポジトリや公開用ファイルへ会話内容を追加しません。入力例と状態の意味は[観測手順](plugins/codex-task-routing/skills/task-routing/references/observation.md)を参照してください。実使用量の自動取得や自動的な利用料・節約率の算定は行いません。証拠がある前後の観測記録は `compare_observations.py --input <comparison.json>` で手動比較でき、親と親子合計、Chat、品質・手戻りを分けます。[入力例と比較条件](plugins/codex-task-routing/skills/task-routing/references/observation.md#根拠付きの前後比較)を確認してください。
 
 ### 普段の起動方法のまま自動更新する
 
