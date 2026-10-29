@@ -754,15 +754,11 @@ def _chatgpt_context(home: Path, plugin_root: Path, *, for_child: bool = False) 
         "existing owner. Short work or repeated Codex-local access stays in Codex. "
         "Parallel delegation requires useful independent parent work from the delegating owner itself. "
         "Serial specialist delegation requires explicit host permission and concrete added value; no invented work. "
-        "Read before use: <plugin-root>/skills/task-routing/references/chatgpt.md. "
-        "Use chat_plan.py --live; optional actor declares role/depth/executor/owner/host_allows_chat. Legacy "
-        "is_root:true remains valid; is_root:false alone does not. Declared host checks reuse valid approval "
-        "and never attest authority. unknown authorization blocks dispatch. Keep private authentication local. "
-        "--phase inspect is no-send preflight; dispatch yields next_action:send_once; --phase receive collects "
-        "without resend/new-generation quota. Reuse browser_checks or legacy transport_authorized:true, not "
-        "both; transport_evidence is optional. Preserve source/freshness/tool/return/stop conditions. See "
-        "chat-authorization.md. No extra provider exception without an applicable constraint; native tools "
-        "inside current Chat are outside the transfer gate. Use normal Chat only; never Work or a model API. "
+        "Read <plugin-root>/skills/task-routing/references/chatgpt.md and chat-authorization.md before use. "
+        "Use chat_plan.py --live: inspect is no-send; dispatch plans one send; receive plans collection without resend. "
+        "Reuse valid approvals; transport_evidence is optional. Host checks do not attest authority; unknown authorization blocks dispatch. "
+        "Keep authentication local. Preserve source, freshness, tool, return and stop conditions. "
+        "Native tools inside current Chat are outside the transfer gate. Use normal Chat only; never Work or a model API. "
         "Verify Chat/Pro before sending and after completion; no backend attestation. "
         + transport_note
         + "One request owner and same tab/request ID/input hash; handoff records sent/collected state and "
@@ -807,16 +803,15 @@ def hook_payload(
         )
         rendered_context = (
             f"Rendered policy directory: {_absolute(cache_dir)} "
-            f"(effective.md; detailed files: {', '.join(DETAILED_TEMPLATE_NAMES)})."
+            "(effective.md and detailed policy files)."
         )
         local_auth_context = (
-            "Private authentication: before cloud model selection, inspect the available local-auth-lfm MCP "
-            "with local_auth_status and local_auth_handoffs. Pass only a registered preset to "
+            "Private authentication: before cloud model selection inspect local-auth-lfm MCP with "
+            "local_auth_status and local_auth_handoffs. Use only registered presets with "
             "local_auth_request_handoff and local_auth_check_handoff. Tool availability, owner approval, "
-            "implemented stages and verified authentication are separate. A queued request is not completed "
-            "authentication. Keep credentials, OAuth JSON, cookies and private screens local. Hooks never "
-            "start workers or models. Read the handoff instructions when this stage is needed: "
-            "<plugin-root>/skills/task-routing/references/local-auth.md."
+            "implemented stages and verified authentication differ. A queued request is not completed "
+            "authentication. Keep credentials, OAuth JSON, cookies and private screens local. "
+            "Hooks never start workers or models. Details: <plugin-root>/skills/task-routing/references/local-auth.md."
         )
         if event == "SubagentStart":
             local_auth_context += (
@@ -826,7 +821,6 @@ def hook_payload(
         # Observation state is deliberately treated as optional diagnostics.
         # A corrupt or unavailable ledger must never suppress policy delivery.
         observation = observation_status(codex_home=home, policy=policy)
-        observation_cli = "<plugin-root>/scripts/routing.py"
         if observation["state"] != "valid":
             observation_instruction = (
                 "Observation sample state is unknown; do not start observation work and continue the original task."
@@ -835,19 +829,30 @@ def hook_payload(
             observation_instruction = (
                 "Observation capacity is full; " if observation["remaining"] == 0 else "No active observation campaign; "
             ) + "do not start a new record. Continue an existing task only with its saved sampling key."
+        elif observation["campaign"]["armed"]:
+            observation_instruction = (
+                "Next prompt armed: confirm normal work or mark excluded work interrupted. "
+                "Follow <plugin-root>/skills/task-routing/references/observation.md; do not duplicate the reservation."
+            )
         elif observation["campaign"]["remaining"] == 0:
             observation_instruction = (
                 "Observation campaign has no available slot; continue existing tasks only. "
                 "Do not open another campaign without explicit user direction."
             )
         else:
-            campaign_id = observation["campaign_id"]
             observation_instruction = (
-                f"Record only a normal parent task with: python {observation_cli} observation start "
-                f"--campaign-id {campaign_id} --task-id <stable-parent-thread-and-start-turn> --kind normal --json. "
-                f"Close it from a checked JSON file with: python {observation_cli} observation complete "
-                f"--campaign-id {campaign_id} --sampling-key <start-result-key> --task-id <same-id> --input <completion.json>."
+                "Normal parent work only. Follow <plugin-root>/skills/task-routing/references/observation.md "
+                "for pre-prompt arm, capture and comparison; do not duplicate an armed task."
             )
+        campaign = observation.get("campaign")
+        campaign_context = (
+            f"campaign={observation['campaign_id']}, attempts={campaign['attempts']}, "
+            f"measured={campaign['measured']}, pending={campaign['pending']}, "
+            f"missing={campaign['missing']}, remaining={campaign['remaining']}, "
+            f"armed={campaign['armed']}, capture-pending={campaign['capture_pending']}, "
+            f"arm-failure={campaign['arm_failure']}, terminal={campaign['terminal']}"
+            if campaign is not None else "campaign=None"
+        )
         if event == "SessionStart":
             # A session receives the compact effective document once.  The
             # detailed rendered policy remains referenced by path.
@@ -865,7 +870,7 @@ def hook_payload(
                         "Observation sample (normal work only): "
                         f"remaining={observation['remaining']}, pending={observation['pending']}, "
                         f"completed={observation['completed']}, measurement-missing={observation['missing']}; "
-                        f"campaign={observation['campaign_id']}, campaign-status={observation['campaign']}."
+                        f"{campaign_context}."
                         if observation["state"] == "valid"
                         else "Observation state unknown; policy delivery continues without reading it."
                     ),

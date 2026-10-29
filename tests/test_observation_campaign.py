@@ -65,12 +65,13 @@ class CampaignTests(unittest.TestCase):
         self.assertNotEqual(routing.observation_sampling_key(changed), self.key)
         self.assertIsNone(routing.observation_status(codex_home=self.home, policy=changed)['campaign_id'])
 
-    def test_active_campaign_hook_includes_start_within_limit(self):
+    def test_active_campaign_hook_includes_reference_within_limit(self):
         campaign = 'c' * 64
         self.open(campaign)
         hook = routing.hook_payload(event='SessionStart', source='startup', codex_home=self.home, cwd=self.base)
         context = hook['hookSpecificOutput']['additionalContext']
-        self.assertIn('observation start --campaign-id ' + campaign, context)
+        self.assertIn('campaign=' + campaign, context)
+        self.assertIn('references/observation.md', context)
         self.assertLessEqual(len(context), routing.MAX_ADDITIONAL_CONTEXT_CHARS)
 
     def test_migrates_legacy_without_erasing_records(self):
