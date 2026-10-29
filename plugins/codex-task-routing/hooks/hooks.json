@@ -26,6 +26,19 @@
           }
         ]
       }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "spawn_agent|Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','spawn_guard.py'),run_name='__main__')\" hook",
+            "timeout": 5,
+            "statusMessage": "Checking delegation guard"
+          }
+        ]
+      }
     ]
   }
 }
