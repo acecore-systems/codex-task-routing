@@ -17,7 +17,7 @@ def check():
     assert not {'hooks', 'mcpServers', 'apps'} & manifest.keys()
     assert re.fullmatch(r'\d+\.\d+\.\d+(?:[+-][\w.-]+)?', manifest['version'])
     assert manifest['author']['name'] == 'Acecore'
-    for name in ['LICENSE', 'scripts/routing.py', 'scripts/chatgpt_route.py', 'scripts/updater.py', 'scripts/updater_entry.py', 'scripts/install_updater.py', 'hooks/hooks.json', 'defaults/config.json', 'skills/task-routing/SKILL.md', 'skills/task-routing/references/configuration.md', 'skills/task-routing/references/chatgpt.md', 'skills/task-routing/references/observation.md', 'skills/task-routing/references/chat-limits.md', 'skills/task-routing/references/observation-example.json']:
+    for name in ['LICENSE', 'scripts/routing.py', 'scripts/chatgpt_route.py', 'scripts/spawn_guard.py', 'scripts/updater.py', 'scripts/updater_entry.py', 'scripts/install_updater.py', 'hooks/hooks.json', 'defaults/config.json', 'skills/task-routing/SKILL.md', 'skills/task-routing/references/configuration.md', 'skills/task-routing/references/chatgpt.md', 'skills/task-routing/references/observation.md', 'skills/task-routing/references/chat-limits.md', 'skills/task-routing/references/observation-example.json']:
         assert (PLUGIN / name).is_file(), name
     hooks = json.loads((PLUGIN / 'hooks/hooks.json').read_text(encoding='utf-8'))['hooks']
     for name in ['scripts/compare_observations.py', 'skills/task-routing/references/observation-comparison-example.json', 'scripts/routing_core/__init__.py', 'scripts/routing_core/common.py', 'scripts/routing_core/observation.py', 'scripts/chat_plan.py', 'scripts/session_plan.py', 'scripts/cloud_record.py', 'skills/task-routing/references/session-routing.md', 'scripts/chat_transfer.py', 'skills/task-routing/references/chat-capabilities.md', 'skills/task-routing/references/chat-transfer.md', 'skills/task-routing/references/local-auth.md', 'skills/task-routing/references/chat-authorization.md']:
@@ -25,12 +25,16 @@ def check():
     for removed in ['scripts/cloud_run.py', 'skills/task-routing/references/cloud-transport.md']:
         assert not (PLUGIN / removed).exists(), removed
     assert (PLUGIN / 'skills/task-routing/references/native-cloud.md').is_file()
-    assert set(hooks) == {'SessionStart', 'SubagentStart'}
-    for groups in hooks.values():
+    assert set(hooks) == {'SessionStart', 'SubagentStart', 'PreToolUse'}
+    routing_command = "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','routing.py'),run_name='__main__')\" hook"
+    guard_command = "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','spawn_guard.py'),run_name='__main__')\" hook"
+    for event, groups in hooks.items():
         for group in groups:
+            if event == 'PreToolUse':
+                assert group['matcher'] == 'spawn_agent|Agent'
             for hook in group['hooks']:
                 assert hook['type'] == 'command'
-                assert hook['command'] == "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','routing.py'),run_name='__main__')\" hook"
+                assert hook['command'] == (guard_command if event == 'PreToolUse' else routing_command)
                 assert hook['timeout'] <= 10
     config = json.loads((PLUGIN / 'defaults/config.json').read_text(encoding='utf-8'))
     assert config['policy_revision'] == '2026-10-28-terra-default-delegation'

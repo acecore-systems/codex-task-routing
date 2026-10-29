@@ -82,3 +82,37 @@ effortの設定値は `medium`、`high`、`xhigh`、`max` で、下限≤標準�
 旧指示の検出は各ディレクトリの非空の `AGENTS.override.md` を優先し、なければ `AGENTS.md` を調べます。独自のfallbackファイル名や追加のプロジェクトルート設定、表現が異なる類似指示は自動検出の対象外です。
 
 上書きとキャッシュには利用者が記述した文章が含まれます。秘密を記述しないでください。初版はキャッシュの自動削除を行いません。不要になった場合は有効な参照がないことを確認し、対象ディレクトリだけを整理します。
+
+## 同モデル委譲ガード（任意）
+
+既定はオフです。利用者が次のファイルを自分で作成します。プラグインのキャッシュ内には置かず、自動作成・自動編集はしません。
+
+`<CODEX_HOME>/codex-task-routing/spawn-guard.json`
+
+```json
+{
+  "schema_version": 1,
+  "mode": "observe"
+}
+```
+
+- `schema_version` は1。`mode` は `off`（既定）、`observe`（出力せず判定結果を記録）、`enforce`（同モデルと確定したときだけ拒否し、同じ記録を残す）の3つです。
+- ファイルなし、JSON不正、未知の `mode`、安全でないパスは、すべて `off` として扱います。
+- 対象は呼出し元が子の `spawn_agent` だけです。Codexは子からの呼出しにだけ `agent_id` を付けるため、rootからの起動は対象外で記録もしません。
+- 判定は、呼び先の `model` 引数が呼出し元の `model` と（前後の空白を除いて）完全一致し、`agent_type` の指定がない場合だけ `same_model` です。異なる `model` は `not_same_model`、それ以外は `undetermined` です。上位役割の判定はしません。
+
+reason の固定コードは次のとおりです。
+
+| reason | verdict | 意味 |
+| --- | --- | --- |
+| same_model | same_model | 呼び先の `model` が呼出し元と（前後の空白を除いて）完全一致し、`agent_type` の指定がない |
+| different_model | not_same_model | 両方の `model` が確認でき、異なる |
+| model_omitted | undetermined | 呼び先の `model` の省略。継承や既定モデルで変わり得る |
+| role_may_override_model | undetermined | `agent_type` の指定。役割設定が `model` を上書きし得る |
+| model_invalid | undetermined | `model` の型が不正 |
+| caller_model_missing | undetermined | 呼出し元の `model` が空、または入力にない |
+| tool_input_unreadable | undetermined | ツール入力がオブジェクトとして読めない |
+
+- 記録は `<CODEX_HOME>/codex-task-routing/spawn-guard/events.jsonl` に1判定1行を追記します。項目は schema_version、UTC時刻（分まで）、mode、verdict、reason、`would_deny` だけで、モデル名・agent_id・session_id・パス・本文は含みません。128 KiBに達すると以後の記録を止めます。削除・回転はしません。
+- `python plugins/codex-task-routing/scripts/spawn_guard.py status --json` は読取専用で、`mode` と集計（`total`、`by_verdict`、`by_reason`、`would_deny`、`capped`）を返します。
+- 切替は新しいタスクから確認します。フック定義を変えた版では、Codexの `/hooks` での再信頼が必要です。実機のCodexでのPreToolUse入力例と拒否の反映は未確認です。
