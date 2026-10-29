@@ -72,7 +72,7 @@ class CampaignTests(unittest.TestCase):
         context = hook['hookSpecificOutput']['additionalContext']
         self.assertIn('campaign=' + campaign, context)
         self.assertIn('references/observation.md', context)
-        self.assertLessEqual(len(context), routing.MAX_ADDITIONAL_CONTEXT_CHARS)
+        self.assertLessEqual(len(context.encode("utf-8")), routing.MAX_ADDITIONAL_CONTEXT_BYTES)
 
     def test_migrates_legacy_without_erasing_records(self):
         for number in range(3):

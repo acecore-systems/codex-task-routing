@@ -57,14 +57,14 @@ class ChatHookTests(unittest.TestCase):
         self.assertIn("unknown authorization blocks dispatch", parent)
         self.assertIn("never use send_message_to_thread", parent)
         self.assertIn("never Work or a model API", parent)
-        self.assertLessEqual(len(parent), routing.MAX_ADDITIONAL_CONTEXT_CHARS)
+        self.assertLessEqual(len(parent.encode("utf-8")), routing.MAX_ADDITIONAL_CONTEXT_BYTES)
         child = self.payload("SubagentStart")["hookSpecificOutput"]["additionalContext"]
         self.assertIn("Choose suitable Cloud for new independent repository units before Pro", child)
         self.assertIn("Opt-in ChatGPT Chat route is enabled", child)
         self.assertIn("Conditional only: root-direct Sol child, depth=1", child)
         self.assertIn("SubagentStart does not prove role/depth", child)
         self.assertIn("Astra/Terra/Luna children and all grandchildren must not use Chat", child)
-        self.assertLessEqual(len(child), routing.MAX_ADDITIONAL_CONTEXT_CHARS)
+        self.assertLessEqual(len(child.encode("utf-8")), routing.MAX_ADDITIONAL_CONTEXT_BYTES)
 
     def test_installed_long_path_keeps_enabled_chat_within_hook_limit(self):
         # A native installation adds cache namespaces to an already long
@@ -80,12 +80,12 @@ class ChatHookTests(unittest.TestCase):
                     plugin_root=installed, codex_home=self.home, cwd=self.home)
                 self.assertNotIn('systemMessage', payload)
                 context = payload['hookSpecificOutput']['additionalContext']
-                self.assertLessEqual(len(context), routing.MAX_ADDITIONAL_CONTEXT_CHARS)
+                self.assertLessEqual(len(context.encode("utf-8")), routing.MAX_ADDITIONAL_CONTEXT_BYTES)
                 child = routing.hook_payload(event='SubagentStart', source='startup',
                     plugin_root=installed, codex_home=self.home, cwd=self.home)
                 self.assertNotIn('systemMessage', child)
-                self.assertLessEqual(len(child['hookSpecificOutput']['additionalContext']),
-                                     routing.MAX_ADDITIONAL_CONTEXT_CHARS)
+                self.assertLessEqual(len(child['hookSpecificOutput']['additionalContext'].encode("utf-8")),
+                                     routing.MAX_ADDITIONAL_CONTEXT_BYTES)
                 self.assertEqual('Opt-in ChatGPT' in child['hookSpecificOutput']['additionalContext'],
                                  transport == 'browser-temporary')
                 for phrase in ('Opt-in ChatGPT Chat route is enabled', 'Keep a suitable existing owner',
@@ -108,7 +108,7 @@ class ChatHookTests(unittest.TestCase):
         context = payload['hookSpecificOutput']['additionalContext']
         self.assertIn('references/observation.md', context)
         self.assertIn('Opt-in ChatGPT Chat route is enabled', context)
-        self.assertLessEqual(len(context), routing.MAX_ADDITIONAL_CONTEXT_CHARS)
+        self.assertLessEqual(len(context.encode("utf-8")), routing.MAX_ADDITIONAL_CONTEXT_BYTES)
 
     def test_custom_summary_and_armed_campaign_fit_with_maximum_ids(self):
         namespace = self.home / 'plugins/cache/codex-task-routing/codex-task-routing'
@@ -148,7 +148,7 @@ class ChatHookTests(unittest.TestCase):
         self.assertIn('references/observation.md', context)
         self.assertIn('attempts=2', context)
         self.assertNotIn('z' * MAX_OBSERVATION_TASK_ID_CHARS, context)
-        self.assertLessEqual(len(context), routing.MAX_ADDITIONAL_CONTEXT_CHARS)
+        self.assertLessEqual(len(context.encode("utf-8")), routing.MAX_ADDITIONAL_CONTEXT_BYTES)
 
     def test_two_hundred_character_install_root_is_stated_once_within_hook_limit(self):
         # The installed root and the rendered cache directory are the only absolute
@@ -166,7 +166,7 @@ class ChatHookTests(unittest.TestCase):
                                                    codex_home=self.home, cwd=self.home)
                     self.assertNotIn('systemMessage', payload)
                     context = payload['hookSpecificOutput']['additionalContext']
-                    self.assertLessEqual(len(context), routing.MAX_ADDITIONAL_CONTEXT_CHARS)
+                    self.assertLessEqual(len(context.encode("utf-8")), routing.MAX_ADDITIONAL_CONTEXT_BYTES)
                     self.assertEqual(context.count(str(installed)), 1)
                     self.assertEqual(context.count(cache_namespace), 1)
                     self.assertIn('<plugin-root>/skills/task-routing/references/local-auth.md', context)

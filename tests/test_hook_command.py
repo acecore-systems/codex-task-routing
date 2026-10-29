@@ -1,5 +1,7 @@
 """Exercise the shipped shell command and official hook protocol without Codex."""
+import importlib.util
 import json
+import math
 import os
 from pathlib import Path
 import shutil
@@ -9,7 +11,30 @@ import tempfile
 import unittest
 
 
+ROOT = Path(__file__).resolve().parents[1]
+_SPEC = importlib.util.spec_from_file_location("routing_hook_command", ROOT / "plugins/codex-task-routing/scripts/routing.py")
+routing = importlib.util.module_from_spec(_SPEC)
+sys.modules[_SPEC.name] = routing
+_SPEC.loader.exec_module(routing)
+
+
 class HookCommandTest(unittest.TestCase):
+    def test_context_limit_matches_hooks_json_in_host_units(self):
+        # Codex compares additionalContext with ceil(UTF-8 bytes / 4) against additionalContextLimit
+        # (hooks/src/output_spill.rs). The runtime ceiling must stay below that host threshold.
+        hooks = json.loads((ROOT / "plugins/codex-task-routing/hooks/hooks.json").read_text(encoding="utf-8"))["hooks"]
+        for event in ("SessionStart", "SubagentStart"):
+            with self.subTest(event=event):
+                entry = hooks[event][0]["hooks"][0]
+                self.assertIn("routing.py", entry["command"])
+                self.assertEqual(entry["additionalContextLimit"], routing.HOOK_ADDITIONAL_CONTEXT_TOKEN_LIMIT)
+        self.assertEqual(routing.HOOK_BYTES_PER_TOKEN, 4)
+        self.assertEqual(routing.MAX_ADDITIONAL_CONTEXT_BYTES,
+                         routing.HOOK_ADDITIONAL_CONTEXT_TOKEN_LIMIT * 4 - routing.HOOK_CONTEXT_MARGIN_BYTES)
+        self.assertGreater(routing.HOOK_CONTEXT_MARGIN_BYTES, 0)
+        self.assertLessEqual(math.ceil(routing.MAX_ADDITIONAL_CONTEXT_BYTES / 4),
+                             routing.HOOK_ADDITIONAL_CONTEXT_TOKEN_LIMIT)
+
     def test_shipped_command_supports_spaces_and_both_events(self):
         root = Path(__file__).resolve().parents[1]
         source = root / "plugins/codex-task-routing"
@@ -50,6 +75,9 @@ class HookCommandTest(unittest.TestCase):
                     self.assertEqual(context["additionalContext"].count(str(plugin)), 1)
                     self.assertIn("<plugin-root>/skills/task-routing/references/local-auth.md",
                                   context["additionalContext"])
-                    self.assertLessEqual(len(context["additionalContext"]), 8000)
+                    context_bytes = len(context["additionalContext"].encode("utf-8"))
+                    self.assertLessEqual(context_bytes, routing.MAX_ADDITIONAL_CONTEXT_BYTES)
+                    self.assertLessEqual(math.ceil(context_bytes / 4),
+                                         hooks[event][0]["hooks"][0]["additionalContextLimit"])
         finally:
             shutil.rmtree(base)

@@ -90,7 +90,7 @@ class LocalAuthenticationRoutingTests(unittest.TestCase):
         for text in ('local_auth_status', 'local_auth_handoffs', 'local_auth_request_handoff',
                      'local_auth_check_handoff', 'local-auth.md', 'A queued request is not completed'):
             self.assertIn(text, context)
-        self.assertLessEqual(len(context), routing.MAX_ADDITIONAL_CONTEXT_CHARS)
+        self.assertLessEqual(len(context.encode("utf-8")), routing.MAX_ADDITIONAL_CONTEXT_BYTES)
 
     def test_child_returns_authentication_stage_to_parent(self):
         payload = routing.hook_payload(event='SubagentStart', source='startup',
@@ -98,7 +98,7 @@ class LocalAuthenticationRoutingTests(unittest.TestCase):
         context = payload['hookSpecificOutput']['additionalContext']
         self.assertIn('Return authentication requirements to the parent', context)
         self.assertNotIn('Opt-in ChatGPT', context)
-        self.assertLessEqual(len(context), routing.MAX_ADDITIONAL_CONTEXT_CHARS)
+        self.assertLessEqual(len(context.encode("utf-8")), routing.MAX_ADDITIONAL_CONTEXT_BYTES)
 
     def test_hook_does_not_read_authentication_or_start_a_worker(self):
         private_file = self.home / 'auth.json'
