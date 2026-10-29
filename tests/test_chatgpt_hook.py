@@ -3,6 +3,7 @@ import importlib.util
 import json
 from pathlib import Path
 from legacy_observation_fixture import seed_legacy
+from test_observation import missing_completion
 import shutil
 import sys
 import unittest
@@ -13,6 +14,7 @@ SPEC = importlib.util.spec_from_file_location("routing_chat_hook", ROOT / "plugi
 routing = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = routing
 SPEC.loader.exec_module(routing)
+from routing_core.observation import MAX_OBSERVATION_TASK_ID_CHARS
 
 
 class ChatHookTests(unittest.TestCase):
@@ -104,8 +106,48 @@ class ChatHookTests(unittest.TestCase):
                                        plugin_root=installed, codex_home=self.home, cwd=self.home)
         self.assertNotIn('systemMessage', payload)
         context = payload['hookSpecificOutput']['additionalContext']
-        self.assertIn('observation start --campaign-id', context)
+        self.assertIn('references/observation.md', context)
         self.assertIn('Opt-in ChatGPT Chat route is enabled', context)
+        self.assertLessEqual(len(context), routing.MAX_ADDITIONAL_CONTEXT_CHARS)
+
+    def test_custom_summary_and_armed_campaign_fit_with_maximum_ids(self):
+        namespace = self.home / 'plugins/cache/codex-task-routing/codex-task-routing'
+        installed = namespace / ('installed-' + 'x' * max(0, 200 - len(str(namespace)) - 11))
+        shutil.copytree(routing.PLUGIN_ROOT, installed, ignore=shutil.ignore_patterns('__pycache__'))
+        self.settings(dict(schema_version=1, enabled=True, required_model='Pro',
+                           transport='browser-temporary'))
+        custom_summary = 'Custom policy: ' + 'x' * 3270
+        override = self.home / 'codex-task-routing/overrides.json'
+        override.write_text(json.dumps({'schema_version': 1, 'principles': {'summary': custom_summary}}),
+                            encoding='utf-8')
+        policy = routing.load_policy(plugin_root=installed, codex_home=self.home)
+        campaign = 'c' * 64
+        opened = routing.observation_campaign_open(codex_home=self.home, policy=policy,
+                                                    campaign_id=campaign, purpose='test')
+        for suffix in ('a', 'b'):
+            task = 't' * (MAX_OBSERVATION_TASK_ID_CHARS - 1) + suffix
+            routing.observation_start(codex_home=self.home, policy=policy, task_id=task,
+                                      kind='normal', campaign_id=campaign)
+            routing.observation_complete(codex_home=self.home, sampling_key=opened['sampling_key'],
+                                         task_id=task, completion=missing_completion(), campaign_id=campaign)
+        root = '019c0000-0000-7000-8000-000000000001'
+        enrollment = {'schema_version': 1, 'root_id': root,
+                      'threads': [{'thread_id': root, 'parent_id': None, 'depth': 0}],
+                      'allow_descendants': False, 'start_evidence_ref': None}
+        routing.observation_arm(codex_home=self.home, sampling_key=opened['sampling_key'],
+                                campaign_id=campaign, task_id='z' * MAX_OBSERVATION_TASK_ID_CHARS,
+                                enrollment=enrollment)
+        payload = routing.hook_payload(event='SessionStart', source='startup', plugin_root=installed,
+                                       codex_home=self.home, cwd=self.home)
+        self.assertNotIn('systemMessage', payload)
+        context = payload['hookSpecificOutput']['additionalContext']
+        self.assertIn(custom_summary, context)
+        self.assertIn('Opt-in ChatGPT Chat route is enabled', context)
+        self.assertIn('armed=True', context)
+        self.assertIn('confirm normal work', context)
+        self.assertIn('references/observation.md', context)
+        self.assertIn('attempts=2', context)
+        self.assertNotIn('z' * MAX_OBSERVATION_TASK_ID_CHARS, context)
         self.assertLessEqual(len(context), routing.MAX_ADDITIONAL_CONTEXT_CHARS)
 
     def test_two_hundred_character_install_root_is_stated_once_within_hook_limit(self):
