@@ -49,6 +49,8 @@ codex plugin add codex-task-routing@codex-task-routing
 
 導入後、CLIの `/hooks` でこのプラグインのフックを確認して信頼し、新しいタスクを開始してください。フックの定義を変更した版は、再確認が必要な場合があります。スキルの検出だけでは常時適用されません。[公式フック仕様](https://learn.chatgpt.com/docs/hooks)
 
+0.22.0で`PreToolUse`フックが加わり、フック定義が変わりました。0.21.1以前の版から更新した場合は、更新後に`/hooks`で一度再信頼してください。任意の同モデル委譲ガードは既定でオフのため、オフのままなら何も出力せず、何も書きません。有効化する場合は「任意機能」の「子からの同モデル委譲を検出・拒否する」を参照してください。
+
 ## 適用確認
 
 新しいタスクの開始時に有効方針の版、policy hash、参照先が渡されることを確認します。開始・再開・コンパクション時に有効方針を読み込み、子には短い引継ぎ用のコンテキストと参照先を渡します。フック自体はモデル呼出し・ネットワークアクセス・子の起動を行いません。
@@ -159,6 +161,49 @@ python plugins/codex-task-routing/scripts/routing.py observation status --json
 
 記録はCodexホームのプラグイン専用領域へ保存し、リポジトリや公開用ファイルへ会話内容を追加しません。入力例と状態の意味は[観測手順](plugins/codex-task-routing/skills/task-routing/references/observation.md)を参照してください。明示したcampaign・対象rootの次の依頼をarmし、登録対象のrequest counterとthread累積値を照合する手順があります。開始・終了の境界や収集範囲は別途根拠が必要で、利用料・節約率は自動算定しません。証拠がある前後の観測記録は `compare_observations.py --input <comparison.json>` で手動比較でき、親と親子合計、Chat、品質・手戻りを分けます。[入力例と比較条件](plugins/codex-task-routing/skills/task-routing/references/observation.md#根拠付きの前後比較)を確認してください。
 
+### 子からの同モデル委譲を検出・拒否する
+
+既定でオフの任意機能です。子のエージェントが親と同じモデルを明示して`spawn_agent`（Agentツールを含む）で委譲する場合を、PreToolUseフックで検出します。0.22.0でフック定義が加わるため、更新後に`/hooks`で一度再信頼してください。オフのままなら何も出力せず、何も書きません。
+
+有効化するには、利用者が次のファイルを自分で作成・編集します。保存先はプラグインのキャッシュ内ではなく、`<CODEX_HOME>/codex-task-routing/spawn-guard.json`です。自動作成や自動編集はしません。
+
+```json
+{
+  "schema_version": 1,
+  "mode": "observe"
+}
+```
+
+`mode`は次の3つです。ファイルがない、JSONが不正、未知の`mode`、安全でないパスは、すべて`off`として扱います。
+
+- `off`: 既定です。何もしません。
+- `observe`: 出力せず、判定結果を記録します。拒否はしません。
+- `enforce`: 同モデルと確定したときだけ、固定の理由で拒否し、同じ記録を残します。それ以外は素通しします。
+
+切り替えは新しいタスクから確認してください。
+
+**対象:** 呼出し元が子のときの`spawn_agent`だけです。Codexは子からの呼出しにだけ`agent_id`を付けるため、rootからの起動は対象外で、記録もしません。
+
+**判定:** 呼び先の`model`引数が呼出し元の`model`と（前後の空白を除いて）完全に一致し、`agent_type`の指定がない場合だけ「同モデル」と確定します。次は素通しします（判定不能、または非同一）。
+
+- `model`の省略: 継承・既定モデル・役割設定で変わり得るため。
+- `agent_type`の指定: 役割設定が`model`を上書きし得るため。
+- 型不正、入力欠落、異なる`model`。
+
+上位役割かどうかは判定しません。`agent_type`は設定上の役割名で、このプラグインの割当て役割とは別です。深さも入力にありません。判定するのは、呼び先が明示した`model`引数と呼出し元の`model`が一致するかという事実だけです。
+
+**記録:** `observe`と`enforce`では、`<CODEX_HOME>/codex-task-routing/spawn-guard/events.jsonl`に1判定1行を追記します。記録する項目は、schema_version、UTC時刻（分まで）、mode、verdict（`same_model`、`not_same_model`、`undetermined`のいずれか）、固定の理由コード、`would_deny`です。モデル名、agent_id、session_id、パス、本文は記録しません。128 KiBに達すると以後の記録を止めます。削除や回転はしません。
+
+`would_deny`と判定不能の理由の件数は、ガードが何を拾い、何を拾えないかを確認するためのものです。実使用量の取得ではありません。集計は読取専用で確認できます。
+
+```text
+python plugins/codex-task-routing/scripts/spawn_guard.py status --json
+```
+
+`mode`、`total`、`by_verdict`、`by_reason`、`would_deny`、`capped`を返します。
+
+**限界:** PreToolUseは公式に完全な強制境界ではなく、ガードレールとされています。WebSearchなどフック対象外のツールや、他の経路での委譲は止められません。公式実装では、openai/codexのmain（rust-v0.165.0時点）のhooks schemaとcore実装を確認しています。ただし、実機のCodexでのPreToolUse入力例、denyの反映、導入先のCodexが`agent_id`を渡す版かは未確認です。他OSも未確認です。
+
 ### 普段の起動方法のまま自動更新する
 
 Windowsで自動更新を一度登録すると、ログオン中に15分ごとに登録したGit refを確認します。`--ref main`で導入した場合はmainを追従し、固定したcommit SHAは維持します。**専用ショートカットは不要です。普段どおりCodexを開いてください。**
@@ -231,6 +276,7 @@ codex plugin remove codex-task-routing@codex-task-routing
 - **通常Chat経路が有効にならない:** `chatgpt.json`、新しいタスクのフック表示、ログイン済みBrowser、UIの `Pro` 表示を順に確認します。上限・モデル変更・許可不明の場合は送信しません。
 - **自動更新されない:** `install_updater.py status` と `last-sync.json` を確認します。CodexかChatGPTが稼働中、稼働状態が不明、別更新が実行中、PCが休止・ログオフ中の場合は更新を見送ります。
 - **別の版へ戻す、または固定する:** 実行中のCodexアプリ・CLIを終了し、上の再登録手順でcommit SHAまたは公開タグを指定します。上書きは自動削除されません。
+- **同モデル委譲ガードが効かない、または拒否された:** まず`<CODEX_HOME>/codex-task-routing/spawn-guard.json`の`mode`を確認します。ファイルがない、不正、未知の`mode`、安全でないパスは`off`として扱われます。次に、更新後に`/hooks`で再信頼したか、新しいタスクから切り替えたかを確認します。`spawn_guard.py status --json`の`by_verdict`、`by_reason`、`would_deny`で集計を見て、判定不能の理由（`model_omitted`、`role_may_override_model`など）が多い場合は、判定できない委譲が多いことを示します。
 
 ## 開発と検証
 
@@ -243,6 +289,6 @@ python scripts/check_package.py
 
 詳細は必要な節だけ読みます。方針の正本は `defaults/config.json`、分類と引継ぎのテンプレートは `defaults/templates/` にあります。既定の元文書は個人パスと適用経路を調整し、意味を保った正本スナップショットと照合しています。
 
-このプラグインは認証・会話履歴・メモリ・契約の利用率を読みません。方針フックはローカルの有効方針キャッシュを書き出し、観測台帳は読み取るだけです。観測CLIはAIから渡された短い構造化データを専用台帳へ保存します。任意の自動更新機能は専用ファイル・設定・同期診断とWindowsの定期タスクを作成し、標準CLIによるmarketplace更新を行います。内部ログ解析や常時計測は含みません。
+このプラグインは認証・会話履歴・メモリ・契約の利用率を読みません。方針フックはローカルの有効方針キャッシュを書き出し、観測台帳は読み取るだけです。観測CLIはAIから渡された短い構造化データを専用台帳へ保存します。任意の自動更新機能は専用ファイル・設定・同期診断とWindowsの定期タスクを作成し、標準CLIによるmarketplace更新を行います。任意の同モデル委譲ガードは既定でオフで、オフの間は何も出力せず、何も記録しません。有効化した場合だけ、モデル名や本文を含まない判定結果を専用ファイルへ記録し、拒否は同モデルと確定した`enforce`のときだけ行います。このフックは認証・会話履歴・メモリを読まず、モデル・ネットワーク・子の起動を行いません。内部ログ解析や常時計測は含みません。
 
 MIT License。詳細は [plugins/codex-task-routing/LICENSE](plugins/codex-task-routing/LICENSE) を参照してください。

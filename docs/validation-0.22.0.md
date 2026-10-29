@@ -1,5 +1,9 @@
 # 0.22.0 検証記録
 
-2026-10-29、Windows・Python 3.13の専用worktreeで既存の観測台帳の互換性、有限campaign、欠測・上限・明示停止、hookの未開始時no-op、配布検査を確認しました。既存schema 1記録を保持し、campaign開始時だけschema 2へ拡張します。プラグイン版変更や新しい方針hashだけではcampaignを開始しません。
+2026-10-29、Windows・Python 3.13の専用cloneで確認しました。変更後に348件のunittest（変更前312件）、`python scripts/check_package.py`、`git diff --check`が成功しました。
 
-テストは一時的なCodexホームと架空の入力を使い、稼働中の台帳・設定を変更していません。合成SQLiteによる登録ID・固定列の読取、次回armから親子hook・Stop時の安定照合・記録・比較までの合成E2E、欠落・重複・プライバシー境界をテストしました。現ホストでは、同梱adapterによる指定親子2行のメタデータ取得のみを読み取り権限で確認しました。これは本作業の累積値であり、通常作業の比較に使っていません。実サービスにおける開始前・終了後の境界確認、親子の完全なtoken取得、品質を揃えた前後比較、利用量削減の実証は未完了です。新規campaignの本番開始はこの検証に含めていません。
+- 一次情報: openai/codex main（rust-v0.165.0時点）のhooks schema（PreToolUseの入力に`model`、子からの呼出しだけに`agent_id`/`agent_type`、出力の`permissionDecision: deny`）、core実装（spawn_agentのhook名は`spawn_agent`、matcher aliasは`Agent`、`tool_input`は引数JSONそのまま、`model`省略時の継承と既定model・役割設定による上書き）を読んで確認しました。深さと割当て役割は入力にないため、上位役割は判定しません。
+- 新しいテスト36件で、既定・不正設定での無出力・無書込み、observeの値を含まない記録、enforceのdeny、root・省略・役割指定・型不正等の素通し、記録上限、status、hooks.jsonの実コマンドを確認しました。
+- SessionStart/SubagentStartの注入文は変更なしです。同じ条件の測定でSessionStart 4,901字、SubagentStart 2,985字の前後同値で、8,000字の上限に影響しません。defaults・policy_revision・provenance・fixtureは変更していません。
+
+未確認: 実機CodexでのPreToolUse入力例とdenyの反映、導入先Codexが`agent_id`を渡す版か、`/hooks`の再信頼、Python 3.11、他OS（CIで確認）、実際の運用での誤検知率です。観測と強制は利用者がファイルで有効にしたときだけ動き、稼働環境へは導入していません。

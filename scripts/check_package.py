@@ -17,22 +17,34 @@ def check():
     assert not {'hooks', 'mcpServers', 'apps'} & manifest.keys()
     assert re.fullmatch(r'\d+\.\d+\.\d+(?:[+-][\w.-]+)?', manifest['version'])
     assert manifest['author']['name'] == 'Acecore'
-    for name in ['LICENSE', 'scripts/routing.py', 'scripts/chatgpt_route.py', 'scripts/updater.py', 'scripts/updater_entry.py', 'scripts/install_updater.py', 'hooks/hooks.json', 'defaults/config.json', 'skills/task-routing/SKILL.md', 'skills/task-routing/references/configuration.md', 'skills/task-routing/references/chatgpt.md', 'skills/task-routing/references/observation.md', 'skills/task-routing/references/chat-limits.md', 'skills/task-routing/references/observation-example.json']:
+    for name in ['LICENSE', 'scripts/routing.py', 'scripts/chatgpt_route.py', 'scripts/spawn_guard.py', 'scripts/updater.py', 'scripts/updater_entry.py', 'scripts/install_updater.py', 'hooks/hooks.json', 'defaults/config.json', 'skills/task-routing/SKILL.md', 'skills/task-routing/references/configuration.md', 'skills/task-routing/references/chatgpt.md', 'skills/task-routing/references/observation.md', 'skills/task-routing/references/chat-limits.md', 'skills/task-routing/references/observation-example.json']:
         assert (PLUGIN / name).is_file(), name
     hooks = json.loads((PLUGIN / 'hooks/hooks.json').read_text(encoding='utf-8'))['hooks']
-    for name in ['scripts/capture_hook.py', 'scripts/routing_core/observation_capture.py', 'scripts/usage_snapshot.py', 'scripts/usage_interval.py', 'scripts/routing_core/usage_metadata.py', 'skills/task-routing/references/usage-enrollment-example.json', 'scripts/compare_observations.py', 'skills/task-routing/references/observation-comparison-example.json', 'scripts/routing_core/__init__.py', 'scripts/routing_core/common.py', 'scripts/routing_core/observation.py', 'scripts/chat_plan.py', 'scripts/session_plan.py', 'scripts/cloud_record.py', 'skills/task-routing/references/session-routing.md', 'scripts/chat_transfer.py', 'skills/task-routing/references/chat-capabilities.md', 'skills/task-routing/references/chat-transfer.md', 'skills/task-routing/references/local-auth.md', 'skills/task-routing/references/chat-authorization.md']:
+    for name in ['scripts/spawn_guard.py', 'scripts/capture_hook.py', 'scripts/routing_core/observation_capture.py', 'scripts/usage_snapshot.py', 'scripts/usage_interval.py', 'scripts/routing_core/usage_metadata.py', 'skills/task-routing/references/usage-enrollment-example.json', 'scripts/compare_observations.py', 'skills/task-routing/references/observation-comparison-example.json', 'scripts/routing_core/__init__.py', 'scripts/routing_core/common.py', 'scripts/routing_core/observation.py', 'scripts/chat_plan.py', 'scripts/session_plan.py', 'scripts/cloud_record.py', 'skills/task-routing/references/session-routing.md', 'scripts/chat_transfer.py', 'skills/task-routing/references/chat-capabilities.md', 'skills/task-routing/references/chat-transfer.md', 'skills/task-routing/references/local-auth.md', 'skills/task-routing/references/chat-authorization.md']:
         assert (PLUGIN / name).is_file(), name
     for removed in ['scripts/cloud_run.py', 'skills/task-routing/references/cloud-transport.md']:
         assert not (PLUGIN / removed).exists(), removed
     assert (PLUGIN / 'skills/task-routing/references/native-cloud.md').is_file()
-    assert set(hooks) == {'SessionStart', 'SubagentStart', 'PreModelRequest', 'PostModelRequest', 'Stop', 'SubagentStop', 'UserPromptSubmit'}
-    for groups in hooks.values():
+    expected_events = {'SessionStart', 'SubagentStart', 'PreToolUse', 'PreModelRequest',
+                       'PostModelRequest', 'Stop', 'SubagentStop', 'UserPromptSubmit'}
+    assert set(hooks) == expected_events
+    routing_command = "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','routing.py'),run_name='__main__')\" hook"
+    guard_command = "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','spawn_guard.py'),run_name='__main__')\" hook"
+    capture_command = "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','capture_hook.py'),run_name='__main__')\""
+    for event, groups in hooks.items():
         for group in groups:
+            if event == 'PreToolUse':
+                assert group['matcher'] == 'spawn_agent|Agent'
+                expected = [guard_command]
+            elif event == 'SessionStart':
+                expected = [routing_command]
+            elif event == 'SubagentStart':
+                expected = [routing_command, capture_command]
+            else:
+                expected = [capture_command + (' prompt' if event == 'UserPromptSubmit' else '')]
+            assert [hook['command'] for hook in group['hooks']] == expected
             for hook in group['hooks']:
                 assert hook['type'] == 'command'
-                script = 'routing.py' if hook['command'].endswith(' hook') else 'capture_hook.py'
-                suffix = ' hook' if script == 'routing.py' else (' prompt' if hook['command'].endswith(' prompt') else '')
-                assert hook['command'] == f"python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','{script}'),run_name='__main__')\"{suffix}"
                 assert hook['timeout'] <= 10
     config = json.loads((PLUGIN / 'defaults/config.json').read_text(encoding='utf-8'))
     assert config['policy_revision'] == '2026-10-29-finite-observation-campaign'
