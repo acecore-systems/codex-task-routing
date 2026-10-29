@@ -5,17 +5,19 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
-import uuid
 
 
 class HookCommandTest(unittest.TestCase):
     def test_shipped_command_supports_spaces_and_both_events(self):
         root = Path(__file__).resolve().parents[1]
         source = root / "plugins/codex-task-routing"
-        base = root / "tests/.tmp-runtime-tests" / f"command-{uuid.uuid4().hex}"
+        # Keep the scratch tree outside the checkout: base is the child's working directory,
+        # and Windows refuses a working directory of about 256 characters or more (WinError 267)
+        # before the shipped command runs. Resolve links as test_updater does.
+        base = Path(tempfile.mkdtemp(prefix="hook-command-")).resolve()
         plugin = base / "plugin with spaces"
-        base.mkdir(parents=True)
         try:
             for directory in ("scripts", "defaults", "hooks", ".codex-plugin", "skills"):
                 shutil.copytree(source / directory, plugin / directory,
