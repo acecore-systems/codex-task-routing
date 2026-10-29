@@ -80,6 +80,12 @@ def compare(data: Any) -> dict[str, Any]:
         elif av != bv:
             reasons.append(f'{field} differs')
 
+    bases = {run['usage'].get('basis', 'separate_counters')
+             for side in (a, b) for run in side['completion']['runs']}
+    if len(bases) > 1:
+        reasons.append('usage bases differ')
+    basis = next(iter(bases)) if len(bases) == 1 else None
+
     seen_run_ids: set[str] = set()
     for name, side in (('baseline', a), ('candidate', b)):
         completion = side['completion']
@@ -96,7 +102,7 @@ def compare(data: Any) -> dict[str, Any]:
             if side[flag]['value'] is not True:
                 reasons.append(f'{name} {flag}: {side[flag]["reason"]}')
         for run in completion['runs']:
-            if run['relationship'] == 'parent' and (
+            if basis == 'separate_counters' and run['relationship'] == 'parent' and (
                 run['observed']['model'] != side['conditions']['parent_model']['value']
                 or run['observed']['effort'] != side['conditions']['parent_effort']['value']
             ):
@@ -105,7 +111,8 @@ def compare(data: Any) -> dict[str, Any]:
 
     def amount(side: dict[str, Any], parent_only: bool) -> int:
         return sum(
-            run['usage']['input_tokens'] + run['usage']['output_tokens']
+            (run['usage']['total_tokens'] if basis == 'aggregate_total_tokens' else
+             run['usage']['input_tokens'] + run['usage']['output_tokens'])
             for run in side['completion']['runs']
             if not parent_only or run['relationship'] == 'parent'
         )
@@ -122,11 +129,12 @@ def compare(data: Any) -> dict[str, Any]:
                 'reduction_percent': (baseline - candidate) * 100 / baseline, 'reason': None}
 
     return {
+        'basis': basis, 'runtime_model_verified': False if basis in {'aggregate_total_tokens', 'hook_request_counters'} else None,
         'parent_tokens': metric(True), 'total_tokens': metric(False),
         'baseline_chat_messages': a['chat_messages'], 'candidate_chat_messages': b['chat_messages'],
         'baseline_rework': a['completion']['rework'], 'candidate_rework': b['completion']['rework'],
         'baseline_quality': a['quality'], 'candidate_quality': b['quality'],
-        'interpretation': 'input + output tokens; cache and reasoning are subsets; not price or account usage',
+        'interpretation': 'aggregate total or input + output tokens; cache and reasoning are subsets; not price or account usage',
     }
 
 

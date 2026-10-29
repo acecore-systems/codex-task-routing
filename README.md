@@ -149,7 +149,7 @@ Pro $200の週次枠を積極活用する運用ですが、契約価格だけで
 
 ### 使用量の振返りを残す
 
-有効方針ごとに通常作業3件までを観測対象にします。開始時フックが残枠と記録状態を知らせ、AIが対象作業の開始と最終報告前に同じ記録を更新します。再開や子の仕事は同じ作業にまとめ、設定確認・監査は3件に含めません。プラグインの版だけが変わって分担方針が同じ場合も枠を取り直しません。
+利用者が明示開始した有限campaignで、通常作業の全範囲実測3件を目標に最大6試行します。欠測は試行数に数え、実測の成功には数えません。開始時フックは状態を知らせ、再開や子の仕事は同じ作業にまとめます。設定確認・監査・導入作業は対象外です。campaign未開始時や終了後、版更新時に自動開始しません。
 
 記録には親子の要求設定と確認できた実行設定、使用量の対象範囲、検証結果と手直しを残します。使用量を取得できない項目は理由付きの欠測になります。記録が閉じても、実測が揃ったとは限りません。会話ログ・DBを自動収集する仕組みや、毎回の計測用モデル実行はありません。
 
@@ -157,7 +157,7 @@ Pro $200の週次枠を積極活用する運用ですが、契約価格だけで
 python plugins/codex-task-routing/scripts/routing.py observation status --json
 ```
 
-記録はCodexホームのプラグイン専用領域へ保存し、リポジトリや公開用ファイルへ会話内容を追加しません。入力例と状態の意味は[観測手順](plugins/codex-task-routing/skills/task-routing/references/observation.md)を参照してください。実使用量の自動取得や自動的な利用料・節約率の算定は行いません。証拠がある前後の観測記録は `compare_observations.py --input <comparison.json>` で手動比較でき、親と親子合計、Chat、品質・手戻りを分けます。[入力例と比較条件](plugins/codex-task-routing/skills/task-routing/references/observation.md#根拠付きの前後比較)を確認してください。
+記録はCodexホームのプラグイン専用領域へ保存し、リポジトリや公開用ファイルへ会話内容を追加しません。入力例と状態の意味は[観測手順](plugins/codex-task-routing/skills/task-routing/references/observation.md)を参照してください。明示したcampaign・対象rootの次の依頼をarmし、登録対象のrequest counterとthread累積値を照合する手順があります。開始・終了の境界や収集範囲は別途根拠が必要で、利用料・節約率は自動算定しません。証拠がある前後の観測記録は `compare_observations.py --input <comparison.json>` で手動比較でき、親と親子合計、Chat、品質・手戻りを分けます。[入力例と比較条件](plugins/codex-task-routing/skills/task-routing/references/observation.md#根拠付きの前後比較)を確認してください。
 
 ### 普段の起動方法のまま自動更新する
 

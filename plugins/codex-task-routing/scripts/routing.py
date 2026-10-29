@@ -34,10 +34,11 @@ from routing_core.common import (
     _assert_safe_ancestors, _read_limited_utf8, _load_json,
     _is_schema_version_one, _canonical_json, _safe_mkdir, _write_atomic,
 )
+from routing_core.observation_capture import export_capture, record_baseline, verify_capture, certify_capture
 from routing_core.observation import (
     OBSERVATIONS_RELATIVE, OBSERVATION_LOCK_NAME,
     MAX_OBSERVATION_INPUT_BYTES, observation_sampling_key, observation_status,
-    observation_start, observation_complete, _observation_sampling_key,
+    observation_start, observation_complete, observation_campaign_open, observation_campaign_close, observation_enroll, observation_arm, observation_confirm_normal, _observation_sampling_key,
     _observation_task_id, _find_observation_task, _read_observation_state,
     _observation_write_lock,
 )
@@ -84,7 +85,7 @@ MODEL_LABELS = {"luna": "Luna", "sol": "Sol", "terra61": "Terra", "astra": "Astr
 ROUTING_PRINCIPLE_KEYS = frozenset({
     "summary", "policy_intro", "policy_effort", "policy_classification",
     "policy_test_image", "policy_originals", "policy_retrieval", "policy_escalation",
-    "policy_handoff", "policy_reasoning", "policy_parent", "policy_hierarchy",
+    "policy_handoff", "policy_reasoning", "policy_parent", "policy_hierarchy", "policy_observation",
 })
 SAFE_MODEL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 SAFE_TOKEN = re.compile(
@@ -597,7 +598,7 @@ def _override_review(policy: Policy) -> dict[str, Any] | None:
     return {
         "keys": keys,
         "reason": "custom_routing_principles_replace_current_defaults",
-        "hint": "Review custom routing text against terra61 and current role/Chat boundaries; overrides are preserved, not migrated or semantically validated.",
+        "hint": "Review custom routing text against terra61, current role/Chat and observation campaign boundaries; overrides are preserved, not migrated or semantically validated.",
     }
 
 
@@ -830,16 +831,22 @@ def hook_payload(
             observation_instruction = (
                 "Observation sample state is unknown; do not start observation work and continue the original task."
             )
-        elif observation["remaining"] == 0:
+        elif observation["campaign_id"] is None:
             observation_instruction = (
-                "Observation capacity is full; update existing tasks only during normal continuation with the saved sampling key. Do not start a new record."
+                "Observation capacity is full; " if observation["remaining"] == 0 else "No active observation campaign; "
+            ) + "do not start a new record. Continue an existing task only with its saved sampling key."
+        elif observation["campaign"]["remaining"] == 0:
+            observation_instruction = (
+                "Observation campaign has no available slot; continue existing tasks only. "
+                "Do not open another campaign without explicit user direction."
             )
         else:
+            campaign_id = observation["campaign_id"]
             observation_instruction = (
                 f"Record only a normal parent task with: python {observation_cli} observation start "
-                "--task-id <stable-parent-thread-and-start-turn> --kind normal --json. "
+                f"--campaign-id {campaign_id} --task-id <stable-parent-thread-and-start-turn> --kind normal --json. "
                 f"Close it from a checked JSON file with: python {observation_cli} observation complete "
-                "--sampling-key <start-result-key> --task-id <same-id> --input <completion.json>."
+                f"--campaign-id {campaign_id} --sampling-key <start-result-key> --task-id <same-id> --input <completion.json>."
             )
         if event == "SessionStart":
             # A session receives the compact effective document once.  The
@@ -857,7 +864,8 @@ def hook_payload(
                     (
                         "Observation sample (normal work only): "
                         f"remaining={observation['remaining']}, pending={observation['pending']}, "
-                        f"completed={observation['completed']}, measurement-missing={observation['missing']}."
+                        f"completed={observation['completed']}, measurement-missing={observation['missing']}; "
+                        f"campaign={observation['campaign_id']}, campaign-status={observation['campaign']}."
                         if observation["state"] == "valid"
                         else "Observation state unknown; policy delivery continues without reading it."
                     ),
@@ -882,7 +890,7 @@ def hook_payload(
             )
         review = _override_review(policy)
         if review:
-            context += "\nCustom routing principles preserved: " + ", ".join(review["keys"]) + ". Check Terra/role/Chat consistency; unresolved contradictions return to root, not automatic migration."
+            context += "\nCustom routing principles preserved: " + ", ".join(review["keys"]) + ". Check Terra/role/Chat and observation campaign consistency; unresolved contradictions return to root, not automatic migration."
         route_diagnostic = None
         route_context = ""
         if event in {"SessionStart", "SubagentStart"}:
@@ -919,19 +927,64 @@ def _parser() -> argparse.ArgumentParser:
     render = subparsers.add_parser("render", help="Render an effective policy directory")
     render.add_argument("--output-dir", type=Path, required=True)
     subparsers.add_parser("hook", help="Read a SessionStart/SubagentStart JSON payload from stdin")
-    observation = subparsers.add_parser("observation", help="Record up to three normal-work observations per rendered policy")
+    observation = subparsers.add_parser("observation", help="Record finite normal-work observation campaigns")
     observation_commands = observation.add_subparsers(dest="observation_command", required=True)
     observation_start_parser = observation_commands.add_parser("start", help="Reserve one normal-work observation")
+    observation_open_parser = observation_commands.add_parser("campaign-open", help="Explicitly open a finite campaign")
+    observation_open_parser.add_argument("--campaign-id", required=True)
+    observation_open_parser.add_argument("--purpose", required=True)
+    for action in ("capture-baseline", "capture-verify"):
+        capture_parser = observation_commands.add_parser(action, help="Read enrolled aggregate counter metadata")
+        capture_parser.add_argument("--campaign-id", required=True)
+        capture_parser.add_argument("--sampling-key", required=True)
+        capture_parser.add_argument("--task-id", required=True)
+        capture_parser.add_argument("--db", type=Path, required=True)
+        if action == "capture-verify":
+            capture_parser.add_argument("--continuity-ref", required=True)
+    observation_certify_parser = observation_commands.add_parser("capture-certify", help="Certify a frozen matching counter result")
+    observation_certify_parser.add_argument("--campaign-id", required=True)
+    observation_certify_parser.add_argument("--sampling-key", required=True)
+    observation_certify_parser.add_argument("--task-id", required=True)
+    observation_certify_parser.add_argument("--continuity-ref", required=True)
+    observation_export_parser = observation_commands.add_parser("capture-export", help="Read enrolled hook counter evidence")
+    observation_export_parser.add_argument("--campaign-id", required=True)
+    observation_export_parser.add_argument("--sampling-key", required=True)
+    observation_export_parser.add_argument("--task-id", required=True)
+    observation_export_parser.add_argument("--evidence-ref", required=True)
+    observation_export_parser.add_argument("--coverage-ref")
+    observation_export_parser.add_argument("--work-completed-ref")
+    observation_arm_parser = observation_commands.add_parser("arm-next", help="Arm a root for its next prompt")
+    observation_arm_parser.add_argument("--campaign-id", required=True)
+    observation_arm_parser.add_argument("--sampling-key", required=True)
+    observation_arm_parser.add_argument("--task-id", required=True)
+    observation_arm_parser.add_argument("--input", type=Path, required=True)
+    observation_confirm_parser = observation_commands.add_parser("confirm-normal", help="Confirm a provisional task is normal work")
+    observation_confirm_parser.add_argument("--campaign-id", required=True)
+    observation_confirm_parser.add_argument("--sampling-key", required=True)
+    observation_confirm_parser.add_argument("--task-id", required=True)
+    observation_confirm_parser.add_argument("--evidence-ref", required=True)
+    observation_enroll_parser = observation_commands.add_parser("enroll", help="Enroll exact thread IDs for one reserved normal task")
+    observation_enroll_parser.add_argument("--campaign-id", required=True)
+    observation_enroll_parser.add_argument("--sampling-key", required=True)
+    observation_enroll_parser.add_argument("--task-id", required=True)
+    observation_enroll_parser.add_argument("--input", type=Path, required=True)
+    observation_close_parser = observation_commands.add_parser("campaign-close", help="Stop a campaign without deleting evidence")
+    observation_close_parser.add_argument("--campaign-id", required=True)
+    observation_close_parser.add_argument("--sampling-key", required=True)
+    observation_close_parser.add_argument("--reason", required=True)
+    observation_start_parser.add_argument("--campaign-id")
     observation_start_parser.add_argument("--task-id", required=True)
     observation_start_parser.add_argument("--kind", choices=("normal", "audit", "config"), default="normal")
     observation_start_parser.add_argument("--json", action="store_true")
     observation_complete_parser = observation_commands.add_parser("complete", help="Close an existing observation from JSON")
+    observation_complete_parser.add_argument("--campaign-id")
     observation_complete_parser.add_argument("--sampling-key", required=True)
     observation_complete_parser.add_argument("--task-id", required=True)
     observation_complete_parser.add_argument("--input", type=Path, required=True)
     observation_status_parser = observation_commands.add_parser("status", help="Inspect observation capacity without writing")
     observation_status_parser.add_argument("--json", action="store_true", required=True)
     observation_status_parser.add_argument("--sampling-key", help="Read one explicit policy sampling group")
+    observation_status_parser.add_argument("--campaign-id")
     observation_status_parser.add_argument("--task-id", help="Read exactly one existing record for a continuation")
     return parser
 
@@ -971,13 +1024,68 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "observation":
         try:
-            if args.observation_command == "start":
+            if args.observation_command == "campaign-open":
                 policy = load_policy(codex_home=home, config_path=config)
+                result = observation_campaign_open(codex_home=home, policy=policy,
+                                                   campaign_id=args.campaign_id, purpose=args.purpose)
+            elif args.observation_command in {"capture-baseline", "capture-verify"}:
+                from usage_snapshot import read_snapshot
+                key = _observation_sampling_key(args.sampling_key)
+                task_id = _observation_task_id(args.task_id)
+                reader = lambda enrollment, thread_id: read_snapshot(args.db, enrollment, thread_id)
+                if args.observation_command == "capture-baseline":
+                    result = record_baseline(codex_home=home, sampling_key=key, campaign_id=args.campaign_id,
+                                             task_id=task_id, snapshot_reader=reader)
+                else:
+                    result = verify_capture(codex_home=home, sampling_key=key, campaign_id=args.campaign_id,
+                                            task_id=task_id, snapshot_reader=reader,
+                                            continuity_ref=args.continuity_ref)
+            elif args.observation_command == "capture-certify":
+                result = certify_capture(codex_home=home, sampling_key=args.sampling_key,
+                                         campaign_id=args.campaign_id, task_id=args.task_id,
+                                         continuity_ref=args.continuity_ref)
+            elif args.observation_command == "capture-export":
+                key = _observation_sampling_key(args.sampling_key)
+                task_id = _observation_task_id(args.task_id)
+                state = _read_observation_state(home, key)
+                sample = state["samples"][key]
+                if state["schema_version"] != 2 or args.campaign_id not in sample["campaigns"]:
+                    raise RoutingError("campaign is unavailable")
+                campaign = sample["campaigns"][args.campaign_id]
+                if task_id not in campaign["enrollments"] or task_id not in campaign["captures"]:
+                    raise RoutingError("observation capture is unavailable")
+                result = export_capture(campaign["enrollments"][task_id], campaign["captures"][task_id],
+                                        evidence_ref=args.evidence_ref, coverage_ref=args.coverage_ref,
+                                        work_completed_ref=args.work_completed_ref)
+            elif args.observation_command == "arm-next":
+                enrollment = _load_json(_absolute(args.input), "observation arm", MAX_OBSERVATION_INPUT_BYTES)
+                result = observation_arm(codex_home=home, sampling_key=args.sampling_key,
+                                         campaign_id=args.campaign_id, task_id=args.task_id, enrollment=enrollment)
+            elif args.observation_command == "confirm-normal":
+                result = observation_confirm_normal(codex_home=home, sampling_key=args.sampling_key,
+                                                    campaign_id=args.campaign_id, task_id=args.task_id,
+                                                    evidence_ref=args.evidence_ref)
+            elif args.observation_command == "enroll":
+                enrollment = _load_json(_absolute(args.input), "observation enrollment", MAX_OBSERVATION_INPUT_BYTES)
+                result = observation_enroll(codex_home=home, sampling_key=args.sampling_key,
+                                            campaign_id=args.campaign_id, task_id=args.task_id,
+                                            enrollment=enrollment)
+            elif args.observation_command == "campaign-close":
+                result = observation_campaign_close(codex_home=home, sampling_key=args.sampling_key,
+                                                    campaign_id=args.campaign_id, reason=args.reason)
+            elif args.observation_command == "start":
+                policy = load_policy(codex_home=home, config_path=config)
+                if args.campaign_id is None and args.kind == "normal":
+                    key = observation_sampling_key(policy)
+                    existing = _find_observation_task(_read_observation_state(home, key), key, args.task_id)
+                    if existing is None:
+                        raise RoutingError("a new observation requires an explicit campaign")
                 result = observation_start(
                     codex_home=home,
                     policy=policy,
                     task_id=args.task_id,
                     kind=args.kind,
+                    campaign_id=args.campaign_id,
                 )
             elif args.observation_command == "complete":
                 completion = _load_json(
@@ -990,6 +1098,7 @@ def main(argv: list[str] | None = None) -> int:
                     sampling_key=args.sampling_key,
                     task_id=args.task_id,
                     completion=completion,
+                    campaign_id=args.campaign_id,
                 )
             elif args.observation_command == "status":
                 if args.task_id is not None:
@@ -1000,6 +1109,7 @@ def main(argv: list[str] | None = None) -> int:
                         _read_observation_state(home, sampling_key),
                         sampling_key,
                         _observation_task_id(args.task_id),
+                        args.campaign_id,
                     )
                     if existing is None:
                         raise RoutingError("observation task is not reserved")
@@ -1008,10 +1118,11 @@ def main(argv: list[str] | None = None) -> int:
                     result = observation_status(
                         codex_home=home,
                         sampling_key=args.sampling_key,
+                        campaign_id=args.campaign_id,
                     )
                 else:
                     policy = load_policy(codex_home=home, config_path=config)
-                    result = observation_status(codex_home=home, policy=policy)
+                    result = observation_status(codex_home=home, policy=policy, campaign_id=args.campaign_id)
             else:
                 raise AssertionError("unreachable observation command")
         except RoutingError as exc:

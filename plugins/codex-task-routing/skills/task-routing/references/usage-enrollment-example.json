@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "root_id": "019c0000-0000-7000-8000-000000000001",
+  "threads": [
+    {
+      "thread_id": "019c0000-0000-7000-8000-000000000001",
+      "parent_id": null,
+      "depth": 0
+    },
+    {
+      "thread_id": "019c0000-0000-7000-8000-000000000002",
+      "parent_id": "019c0000-0000-7000-8000-000000000001",
+      "depth": 1
+    }
+  ],
+  "allow_descendants": false,
+  "start_evidence_ref": null
+}

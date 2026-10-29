@@ -73,6 +73,57 @@ class ComparisonTests(unittest.TestCase):
         self.assertEqual(result['parent_tokens']['baseline'], 150)
         self.assertEqual(result['total_tokens']['baseline'], 180)
 
+    def test_aggregate_basis_comparison_and_mixed_basis_rejection(self):
+        data = inputs()
+        for side_name, counts in (('baseline', (100, 30)), ('candidate', (60, 100))):
+            for run, total in zip(data[side_name]['completion']['runs'], counts):
+                run['usage'] = {'basis': 'aggregate_total_tokens', 'state': 'measured',
+                                'reason': None, 'evidence_ref': 'counter evidence',
+                                'turn_scope': 'full_turn', 'start_tokens': 200,
+                                'end_tokens': 200 + total, 'total_tokens': total,
+                                'start_boundary_ref': 'before', 'end_boundary_ref': 'after', 'continuity_ref': 'no-reset'}
+        for side in data.values():
+            if isinstance(side, dict) and 'completion' in side:
+                side['completion']['runs'][0]['observed'].update(model=None, effort=None, evidence_ref=None, reason='runtime unavailable')
+        result = module.compare(data)
+        self.assertFalse(result['runtime_model_verified'])
+        self.assertEqual(result['basis'], 'aggregate_total_tokens')
+        self.assertEqual(result['parent_tokens']['reduction_percent'], 40)
+        self.assertEqual(result['total_tokens']['candidate'], 160)
+        mixed = inputs()['candidate']['completion']['runs'][0]['usage']
+        data['candidate']['completion']['runs'][0]['usage'] = mixed
+        result = module.compare(data)
+        self.assertIsNone(result['total_tokens']['reduction_percent'])
+        self.assertIn('bases differ', result['total_tokens']['reason'])
+
+    def test_hook_counters_use_settings_without_claiming_runtime_model(self):
+        data = inputs()
+        for side in data.values():
+            if isinstance(side, dict) and 'completion' in side:
+                for run in side['completion']['runs']:
+                    run['usage']['basis'] = 'hook_request_counters'
+                    run['observed'].update(model=None, effort=None, evidence_ref=None, reason='runtime unavailable')
+        result = module.compare(data)
+        self.assertEqual(result['basis'], 'hook_request_counters')
+        self.assertFalse(result['runtime_model_verified'])
+        self.assertEqual(result['parent_tokens']['reduction_percent'], 40)
+
+    def test_aggregate_reset_and_inconsistent_delta_are_invalid(self):
+        data = inputs()
+        usage = {'basis': 'aggregate_total_tokens', 'state': 'measured',
+                 'reason': None, 'evidence_ref': 'counter evidence', 'turn_scope': 'full_turn',
+                 'start_tokens': 100, 'end_tokens': 90, 'total_tokens': 0,
+                 'start_boundary_ref': 'before', 'end_boundary_ref': 'after', 'continuity_ref': 'no-reset'}
+        data['baseline']['completion']['runs'][0]['usage'] = usage
+        with self.assertRaises(module.RoutingError):
+            module.compare(data)
+        usage.update(end_tokens=110, total_tokens=11)
+        with self.assertRaises(module.RoutingError):
+            module.compare(data)
+        usage.update(total_tokens=10, continuity_ref=None)
+        with self.assertRaises(module.RoutingError):
+            module.compare(data)
+
     def test_zero_baseline_does_not_divide(self):
         data = inputs()
         data['baseline'] = side('before', 0, 0)

@@ -10,6 +10,7 @@ import unittest
 import uuid
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from legacy_observation_fixture import seed_legacy
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "plugins" / "codex-task-routing" / "scripts" / "routing.py"
@@ -133,12 +134,7 @@ class ObservationTestCase(unittest.TestCase):
         return self.home / "codex-task-routing" / "observations" / f"{self.sampling_key(policy=policy)}.json"
 
     def start(self, task_id: str, *, policy=None, kind: str = "normal") -> dict:
-        return routing.observation_start(
-            codex_home=self.home,
-            policy=policy or self.policy(),
-            task_id=task_id,
-            kind=kind,
-        )
+        return seed_legacy(routing, self.home, policy or self.policy(), task_id, kind)
 
     def complete(self, task_id: str, completion: dict, *, policy=None) -> dict:
         return routing.observation_complete(
@@ -339,11 +335,13 @@ class ObservationTestCase(unittest.TestCase):
     def test_cli_start_complete_and_status_accept_the_documented_json_flag(self) -> None:
         completion_path = self.base / "completion.json"
         completion_path.write_text(json.dumps(missing_completion()), encoding="utf-8")
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(routing.main(["--codex-home", str(self.home), "observation", "campaign-open", "--campaign-id", "test", "--purpose", "finite comparison"]), 0)
         with redirect_stdout(io.StringIO()) as stdout:
             exit_code = routing.main(
                 [
                     "--codex-home", str(self.home), "observation", "start",
-                    "--task-id", "cli-parent:start", "--kind", "normal", "--json",
+                    "--campaign-id", "test", "--task-id", "cli-parent:start", "--kind", "normal", "--json",
                 ]
             )
         self.assertEqual(exit_code, 0)
@@ -354,7 +352,7 @@ class ObservationTestCase(unittest.TestCase):
             exit_code = routing.main(
                 [
                     "--codex-home", str(self.home), "observation", "complete",
-                    "--sampling-key", sampling_key, "--task-id", "cli-parent:start", "--input", str(completion_path),
+                    "--campaign-id", "test", "--sampling-key", sampling_key, "--task-id", "cli-parent:start", "--input", str(completion_path),
                 ]
             )
         self.assertEqual(exit_code, 0)
@@ -365,11 +363,11 @@ class ObservationTestCase(unittest.TestCase):
             )
         self.assertEqual(exit_code, 0)
         status = json.loads(stdout.getvalue())
-        self.assertEqual((status["completed"], status["missing"]), (1, 1))
+        self.assertEqual((status["campaign"]["attempts"], status["campaign"]["missing"]), (1, 1))
         with redirect_stdout(io.StringIO()) as stdout:
             exit_code = routing.main([
                 "--codex-home", str(self.home), "observation", "status", "--json",
-                "--sampling-key", sampling_key, "--task-id", "cli-parent:start",
+                "--sampling-key", sampling_key, "--campaign-id", "test", "--task-id", "cli-parent:start",
             ])
         self.assertEqual(exit_code, 0)
         self.assertEqual(json.loads(stdout.getvalue())["record"]["task_id"], "cli-parent:start")

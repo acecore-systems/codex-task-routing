@@ -1,5 +1,5 @@
 {
-  "policy_revision": "2026-10-28-terra-default-delegation",
+  "policy_revision": "2026-10-29-finite-observation-campaign",
   "source_sha256": {
     "AGENTS.md": "bd2584d350c204f1ffbc8c005c084fc34360acddf8812557504350820e34be42",
     "model-routing-policy.md": "9335ccec4516bc71b68d01f9304d6e71d3b5efcd77a210476571cd7d060c476c",
@@ -32,7 +32,8 @@
     "0.18.0 intentional policy change: add root-owned native continuation and collection of an observed existing Codex durable task; separate schema-2 native plans and schema-3 per-message claims with host/task/scope/predecessor binding and permanent successor exclusion; no native creation, tool dispatcher, Work/CLI fallback or execution during older UI-only host instructions; UI schema-1 plans and schema-2 claims, 0.17 handoff rules, all model/effort defaults and overrides preserved; historical source hashes retained",
     "0.19.0 intentional policy change: suitable new independent repository units choose Cloud before Pro; per-repository environment reuse, unknown inspection, confirmed-absence supported UI create/prepare/test/publish and readiness checks; independent same-repository sessions with scopes, isolated branches, integration owner, delegator work and host concurrency gates; suitable same-unit owners continue; native creation remains unsupported, existing native/UI plans and permanent claims unchanged; no hook dispatch, Work/CLI fallback, model/effort or authentication changes; historical source hashes retained",
     "0.20.0 intentional policy change: add GPT-6.1 Terra/xhigh as active terra61 implementation/fix/test peer to Sol without a performance ranking; retain legacy terra inactive and explicit overrides unchanged; Astra may use Sol/Terra/Luna grandchildren and Sol/Terra may use Luna only, with no peer delegation; Chat stays root/root-direct Sol only; non-overridden candidate/boundary text and override-review diagnostics expose potentially stale custom routing principles; no runtime installation, parent, auth, Cloud/Chat transfer or hook-dispatch changes; historical source hashes retained",
-    "0.21.0 intentional policy change: Terra is the default delegate for ordinary implementation; Sol owns concrete design or capability-gap work with reason recorded, and delegates implementation to Terra only when host and depth allow; model/effort defaults, legacy override and Chat ownership unchanged; no automatic installation or execution"
+    "0.21.0 intentional policy change: Terra is the default delegate for ordinary implementation; Sol owns concrete design or capability-gap work with reason recorded, and delegates implementation to Terra only when host and depth allow; model/effort defaults, legacy override and Chat ownership unchanged; no automatic installation or execution",
+    "0.22.0 intentional policy change: explicitly opened finite observation campaigns with up to six attempts and a goal of three measured records; preserve legacy records, keep missing values and stop without automatic restart; no automatic observation activation or runtime installation; explicit enrolled-thread metadata snapshots only"
   ],
   "source_policy_revision": "2026-09-14",
   "rendered_sha256": {
