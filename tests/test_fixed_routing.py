@@ -339,7 +339,7 @@ class FixedRoutingTests(unittest.TestCase):
             self.assertIn('unresolved contradictions return to root', context)
             if event == 'SessionStart':
                 self.assertIn(custom, context)
-            self.assertLessEqual(len(context), routing.MAX_ADDITIONAL_CONTEXT_CHARS)
+            self.assertLessEqual(len(context.encode("utf-8")), routing.MAX_ADDITIONAL_CONTEXT_BYTES)
         self.assertEqual(before, path.read_bytes())
 
     def test_terra_default_policy_is_consistent_across_rendered_and_hook_contexts(self):
@@ -366,8 +366,8 @@ class FixedRoutingTests(unittest.TestCase):
             hook = routing.hook_payload(event=event, source='startup',
                 codex_home=self.home, cwd=self.home)
             self.assertIn('hookSpecificOutput', hook)
-            self.assertLessEqual(len(hook['hookSpecificOutput']['additionalContext']),
-                                 routing.MAX_ADDITIONAL_CONTEXT_CHARS)
+            self.assertLessEqual(len(hook['hookSpecificOutput']['additionalContext'].encode("utf-8")),
+                                 routing.MAX_ADDITIONAL_CONTEXT_BYTES)
 
     def test_terra_default_roles_do_not_expand_chat_ownership(self):
         policy = routing.load_policy(codex_home=self.home)

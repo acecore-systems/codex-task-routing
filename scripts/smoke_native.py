@@ -143,7 +143,8 @@ def main():
         assert "systemMessage" not in payload, payload.get("systemMessage")
         context = payload["hookSpecificOutput"]["additionalContext"]
         browser_hook_context_chars[event] = len(context)
-        assert len(context) <= 8000
+        # Host limit: additionalContextLimit 8000 tokens, approximated as ceil(UTF-8 bytes / 4).
+        assert len(context.encode("utf-8")) <= 28000
         assert "Opt-in ChatGPT Chat route is enabled" in context
         if event == "SubagentStart":
             assert "Conditional only: root-direct Sol child, depth=1" in context

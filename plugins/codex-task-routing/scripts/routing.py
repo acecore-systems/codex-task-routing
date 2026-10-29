@@ -64,10 +64,19 @@ MAX_HOOK_INPUT_BYTES = 128 * 1024
 MAX_VALUE_CHARS = 100 * 1024
 MAX_RENDERED_BYTES = 1024 * 1024
 MAX_TOKEN_DEPTH = 20
-# hooks.json uses a token-oriented platform limit.  Keep this independent,
-# conservative character ceiling so the runtime never asks the host to truncate
-# an effective policy mid-document.
-MAX_ADDITIONAL_CONTEXT_CHARS = 8000
+# hooks.json sets additionalContextLimit=8000 for SessionStart and SubagentStart.
+# Codex (rust-v0.165.0-alpha.1.2, hooks/src/output_spill.rs) estimates a hook
+# context as ceil(UTF-8 bytes / 4); above the limit it replaces the text with a
+# head/tail preview and a file path instead of failing.  The runtime keeps its
+# own ceiling in the same unit so the host never truncates an effective policy:
+# 8000 tokens * 4 bytes = 32,000 bytes, less a 4,000-byte margin (12.5%) for
+# estimator or wrapper drift between Codex builds.  Tests check hooks.json.
+HOOK_ADDITIONAL_CONTEXT_TOKEN_LIMIT = 8000
+HOOK_BYTES_PER_TOKEN = 4
+HOOK_CONTEXT_MARGIN_BYTES = 4000
+MAX_ADDITIONAL_CONTEXT_BYTES = (
+    HOOK_ADDITIONAL_CONTEXT_TOKEN_LIMIT * HOOK_BYTES_PER_TOKEN - HOOK_CONTEXT_MARGIN_BYTES
+)
 
 # Windows can briefly retain a directory handle immediately after another
 # process creates a fresh cache tree.  Only retry the Windows errors that can
@@ -730,10 +739,10 @@ def _chatgpt_context(home: Path, plugin_root: Path, *, for_child: bool = False) 
     _read_limited_utf8(reference, MAX_TEMPLATE_BYTES, "ChatGPT route instructions")
     transport = settings["transport"]
     transport_note = (
-        "Start a new Temporary Chat and use supported Browser operations to send one actual request and read its "
-        "final answer; never use send_message_to_thread for this Temporary Chat. "
+        "Start a new Temporary Chat, send one actual request with supported Browser operations and read its "
+        "final answer; never use send_message_to_thread for it. "
         if transport == "browser-temporary"
-        else "This legacy direct-thread transport is retained for existing explicit configurations; it cannot start "
+        else "Legacy direct-thread transport, kept for explicit existing configurations, cannot start "
         "or operate a Temporary Chat. "
     )
     legacy_suffix = " (legacy)" if transport == "codex-app-tools" else ""
@@ -757,7 +766,7 @@ def _chatgpt_context(home: Path, plugin_root: Path, *, for_child: bool = False) 
         "Read <plugin-root>/skills/task-routing/references/chatgpt.md and chat-authorization.md before use. "
         "Use chat_plan.py --live: inspect is no-send; dispatch plans one send; receive plans collection without resend. "
         "Reuse valid approvals; transport_evidence is optional. Host checks do not attest authority; unknown authorization blocks dispatch. "
-        "Keep authentication local. Preserve source, freshness, tool, return and stop conditions. "
+        "Preserve source, freshness, tool, return and stop conditions. "
         "Native tools inside current Chat are outside the transfer gate. Use normal Chat only; never Work or a model API. "
         "Verify Chat/Pro before sending and after completion; no backend attestation. "
         + transport_note
@@ -803,11 +812,11 @@ def hook_payload(
         )
         rendered_context = (
             f"Rendered policy directory: {_absolute(cache_dir)} "
-            "(effective.md and detailed policy files)."
+            "(effective.md and detailed files)."
         )
         local_auth_context = (
-            "Private authentication: before cloud model selection inspect local-auth-lfm MCP with "
-            "local_auth_status and local_auth_handoffs. Use only registered presets with "
+            "Private authentication: before cloud model selection, inspect local-auth-lfm with "
+            "local_auth_status and local_auth_handoffs; use only registered presets via "
             "local_auth_request_handoff and local_auth_check_handoff. Tool availability, owner approval, "
             "implemented stages and verified authentication differ. A queued request is not completed "
             "authentication. Keep credentials, OAuth JSON, cookies and private screens local. "
@@ -907,7 +916,7 @@ def hook_payload(
         context += "\nUse this single effective policy set. Standard child agents only; do not change the parent model or effort."
         if route_context:
             context += "\nUser-enabled conditional Chat route; current host instructions still apply:" + route_context
-        if len(context) > MAX_ADDITIONAL_CONTEXT_CHARS:
+        if len(context.encode("utf-8")) > MAX_ADDITIONAL_CONTEXT_BYTES:
             raise RoutingError("hook context exceeds the configured limit")
     except (RoutingError, OSError):
         return _unapplied_hook_response()
