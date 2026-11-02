@@ -1,0 +1,112 @@
+"""Synthetic hook tests; these do not establish live host delivery."""
+import importlib.util
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import unittest
+import uuid
+
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPT = ROOT / 'plugins/codex-task-routing/scripts/parent_guard.py'
+spec = importlib.util.spec_from_file_location('parent_guard_test', SCRIPT)
+guard = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(guard)
+
+class ParentGuardTests(unittest.TestCase):
+    def setUp(self):
+        self.home = ROOT / 'tests/.tmp-runtime-tests' / ('parent-guard-' + uuid.uuid4().hex)
+        self.home.mkdir(parents=True)
+    def tearDown(self):
+        assert self.home.parent == ROOT / 'tests/.tmp-runtime-tests'
+        shutil.rmtree(self.home)
+    def event(self, kind, **kwargs):
+        value = {'hook_event_name': kind, 'session_id': 'session-a', 'turn_id': 'turn-a'}
+        value.update(kwargs)
+        return value
+    def send(self, kind, **kwargs):
+        return guard.handle(self.event(kind, **kwargs), self.home)
+    def work(self, number, **kwargs):
+        return self.send('PreToolUse', tool_name='functions.exec', tool_use_id=str(number), **kwargs)
+    def test_sustained_work_reminds_once_without_content_or_block(self):
+        self.send('UserPromptSubmit', prompt='private-user-prompt')
+        for i in range(guard.THRESHOLD - 1):
+            self.assertIsNone(self.work(i, tool_input={'command': 'private-command'}))
+        out = self.work(guard.THRESHOLD - 1)
+        self.assertEqual(set(out['hookSpecificOutput']), {'hookEventName', 'additionalContext'})
+        text = out['hookSpecificOutput']['additionalContext']
+        for phrase in ('Short or tightly coupled work', 'parent acceptance', 'existing owner', 'user prohibition', 'host restrictions', 'not a requirement'):
+            self.assertIn(phrase, text)
+        self.assertIsNone(self.work(100))
+        content = (self.home / 'codex-task-routing/parent-guard/state.sqlite3').read_bytes()
+        for private in (b'private-user-prompt', b'private-command', b'session-a', b'turn-a'):
+            self.assertNotIn(private, content)
+    def test_duplicate_prompt_and_tool_events_do_not_trigger_early(self):
+        self.send('UserPromptSubmit')
+        for _ in range(20):
+            self.work(1)
+            self.send('UserPromptSubmit')
+        for i in range(2, guard.THRESHOLD):
+            self.assertIsNone(self.work(i))
+        self.assertIsNotNone(self.work(guard.THRESHOLD))
+    def test_child_spawn_and_existing_owner_suppress(self):
+        for index, kind in enumerate(('followup_task', 'send_input', 'wait_agent')):
+            with self.subTest(kind=kind):
+                turn = 'turn-' + str(index)
+                self.send('UserPromptSubmit', turn_id=turn)
+                self.send('PreToolUse', turn_id=turn, tool_name=kind, tool_use_id='owner')
+                for i in range(guard.THRESHOLD + 2):
+                    self.assertIsNone(self.work(i, turn_id=turn))
+    def test_failed_spawn_attempt_and_generic_wait_do_not_suppress(self):
+        self.send('UserPromptSubmit')
+        self.send('PreToolUse', tool_name='spawn_agent', tool_use_id='attempt')
+        self.send('PreToolUse', tool_name='functions.wait', tool_use_id='wait')
+        for i in range(guard.THRESHOLD - 1):
+            self.assertIsNone(self.work(i))
+        self.assertIsNotNone(self.work('last'))
+    def test_lifecycle_active_across_turns_then_stopped(self):
+        self.send('UserPromptSubmit')
+        self.send('SubagentStart', agent_id='child')
+        self.send('UserPromptSubmit', turn_id='other')
+        for i in range(guard.THRESHOLD + 1):
+            self.assertIsNone(self.work(i, turn_id='other'))
+        self.send('SubagentStop', agent_id='child')
+        for i in range(guard.THRESHOLD - 1):
+            self.assertIsNone(self.work('after-' + str(i), turn_id='other'))
+        self.assertIsNotNone(self.work('after-last', turn_id='other'))
+    def test_children_missing_ids_and_unknown_turn_do_not_count(self):
+        self.send('UserPromptSubmit', agent_id='child')
+        for i in range(guard.THRESHOLD + 1):
+            self.assertIsNone(self.work(i))
+        self.send('UserPromptSubmit')
+        for i in range(guard.THRESHOLD + 1):
+            self.assertIsNone(self.work(i, agent_id='child'))
+            self.assertIsNone(self.send('PreToolUse', tool_name='exec'))
+            self.assertIsNone(self.send('PreToolUse', tool_name='exec', tool_use_id=str(i), session_id=''))
+        self.assertIsNone(self.work('first'))
+    def test_corrupt_state_is_reported_not_blocked(self):
+        path = self.home / 'codex-task-routing/parent-guard/state.sqlite3'
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b'invalid')
+        env = dict(os.environ, CODEX_HOME=str(self.home))
+        result = subprocess.run([sys.executable, str(SCRIPT)], input=json.dumps(self.event('UserPromptSubmit')), text=True, capture_output=True, env=env)
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, '')
+        status = subprocess.run([sys.executable, str(SCRIPT), 'status'], text=True, capture_output=True, env=env)
+        self.assertEqual(json.loads(status.stdout)['state'], 'unavailable')
+    def test_status_distinguishes_unobserved_and_zero_reminders(self):
+        env = dict(os.environ, CODEX_HOME=str(self.home))
+        def status():
+            result = subprocess.run([sys.executable, str(SCRIPT), 'status'], text=True, capture_output=True, env=env, check=True)
+            return json.loads(result.stdout)
+        self.assertEqual(status()['state'], 'unobserved')
+        self.send('UserPromptSubmit')
+        result = status()
+        self.assertEqual(result['state'], 'recorded')
+        self.assertEqual(result['reminders'], 0)
+        self.assertIn('unknown', result['note'])
+
+if __name__ == '__main__':
+    unittest.main()

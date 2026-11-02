@@ -85,10 +85,8 @@ class LocalAuthenticationRoutingTests(unittest.TestCase):
                                        codex_home=self.home, cwd=self.home)
         self.assertNotIn('systemMessage', payload)
         context = payload['hookSpecificOutput']['additionalContext']
-        self.assertIn('| ローカル認証 | local-auth-lfmの共有モデル |', context)
         self.assertLess(context.index('Private authentication:'), context.index('Opt-in ChatGPT'))
-        for text in ('local_auth_status', 'local_auth_handoffs', 'local_auth_request_handoff',
-                     'local_auth_check_handoff', 'local-auth.md', 'A queued request is not completed'):
+        for text in ('local_auth_status', 'local_auth_handoffs', 'local-auth.md', 'A queued request is not completed'):
             self.assertIn(text, context)
         self.assertLessEqual(len(context.encode("utf-8")), routing.MAX_ADDITIONAL_CONTEXT_BYTES)
 
@@ -96,7 +94,7 @@ class LocalAuthenticationRoutingTests(unittest.TestCase):
         payload = routing.hook_payload(event='SubagentStart', source='startup',
                                        codex_home=self.home, cwd=self.home)
         context = payload['hookSpecificOutput']['additionalContext']
-        self.assertIn('Return authentication requirements to the parent', context)
+        self.assertIn('Children return authentication requirements to the parent', context)
         self.assertNotIn('Opt-in ChatGPT', context)
         self.assertLessEqual(len(context.encode("utf-8")), routing.MAX_ADDITIONAL_CONTEXT_BYTES)
 

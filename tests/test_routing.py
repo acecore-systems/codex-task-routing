@@ -384,7 +384,8 @@ class RoutingTestCase(unittest.TestCase):
         result = routing.hook_payload(
             event="SessionStart", source="startup", plugin_root=self.plugin, codex_home=self.home, cwd=self.base
         )
-        self.assertIn("custom summary", result["hookSpecificOutput"]["additionalContext"])
+        self.assertNotIn("custom summary", result["hookSpecificOutput"]["additionalContext"])
+        self.assertIn("read effective.md before routing", result["hookSpecificOutput"]["additionalContext"])
         (self.plugin / "defaults" / "config.json").write_text("{", encoding="utf-8")
         failed = routing.hook_payload(
             event="SessionStart", source="startup", plugin_root=self.plugin, codex_home=self.home, cwd=self.base
@@ -581,30 +582,22 @@ class RoutingTestCase(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertNotIn("not_present", json.dumps(result))
 
-    def test_oversized_session_context_is_not_partially_injected(self) -> None:
-        oversized = "x" * (routing.MAX_ADDITIONAL_CONTEXT_BYTES + 100)
-        self.write_override({"schema_version": 1, "principles": {"summary": oversized}})
-        result = routing.hook_payload(
-            event="SessionStart", source="startup", plugin_root=self.plugin, codex_home=self.home, cwd=self.base
-        )
-        self.assertNotIn("hookSpecificOutput", result)
-        self.assertNotIn(oversized, json.dumps(result))
+    def test_custom_summary_is_referenced_without_duplicating_it(self) -> None:
+        summary = "あ" * 6500
+        self.write_override({"schema_version": 1, "principles": {"summary": summary}})
+        result = routing.hook_payload(event="SessionStart", source="startup", plugin_root=self.plugin, codex_home=self.home, cwd=self.base)
+        context = result["hookSpecificOutput"]["additionalContext"]
+        self.assertNotIn(summary, context)
+        self.assertIn("read effective.md before routing", context)
+        self.assertIn(summary, routing.load_policy(plugin_root=self.plugin, codex_home=self.home).rendered_documents()["effective.md"])
 
     def test_session_context_limit_counts_utf8_bytes(self) -> None:
-        # Japanese text is three UTF-8 bytes per character; the host limit counts bytes.
-        self.write_override({"schema_version": 1, "principles": {"summary": "あ" * 6500}})
-        result = routing.hook_payload(
-            event="SessionStart", source="startup", plugin_root=self.plugin, codex_home=self.home, cwd=self.base
-        )
-        context = result["hookSpecificOutput"]["additionalContext"]
-        self.assertGreater(len(context), 8000)
-        self.assertLessEqual(len(context.encode("utf-8")), routing.MAX_ADDITIONAL_CONTEXT_BYTES)
-        self.write_override({"schema_version": 1, "principles": {"summary": "あ" * 9500}})
-        result = routing.hook_payload(
-            event="SessionStart", source="startup", plugin_root=self.plugin, codex_home=self.home, cwd=self.base
-        )
-        self.assertNotIn("hookSpecificOutput", result)
-        self.assertIn("not applied", result["systemMessage"])
+        result = routing.hook_payload(event="SessionStart", source="startup", plugin_root=self.plugin, codex_home=self.home, cwd=self.base)
+        size = len(result["hookSpecificOutput"]["additionalContext"].encode("utf-8"))
+        with patch.object(routing, "MAX_ADDITIONAL_CONTEXT_BYTES", size - 1):
+            limited = routing.hook_payload(event="SessionStart", source="startup", plugin_root=self.plugin, codex_home=self.home, cwd=self.base)
+        self.assertNotIn("hookSpecificOutput", limited)
+        self.assertIn("not applied", limited["systemMessage"])
 
     def test_hook_cli_rejects_invalid_payload_without_echoing_it(self) -> None:
         old_stdin = sys.stdin
