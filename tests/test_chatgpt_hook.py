@@ -46,24 +46,12 @@ class ChatHookTests(unittest.TestCase):
         parent = self.payload()["hookSpecificOutput"]["additionalContext"]
         self.assertIn("Opt-in ChatGPT Chat route is enabled", parent)
         self.assertIn("transport: browser-temporary", parent)
-        self.assertIn("Temporary Chat", parent)
-        self.assertIn("Choose suitable Cloud for new independent repository units before Pro", parent)
-        self.assertIn("For other substantial", parent)
-        self.assertIn("evaluate this Chat route first", parent)
-        self.assertIn("verified tools", parent)
-        self.assertIn("Parallel delegation requires useful independent parent work", parent)
-        self.assertIn("Serial specialist delegation requires explicit host permission", parent)
-        self.assertIn("implementation/testing/PR", parent)
-        self.assertIn("unknown authorization blocks dispatch", parent)
-        self.assertIn("never use send_message_to_thread", parent)
-        self.assertIn("never Work or a model API", parent)
+        for phrase in ("Choose suitable Cloud before Pro", "evaluate enabled Pro first", "unknown authorization blocks dispatch", "chatgpt.md", "chat-authorization.md", "never resend"):
+            self.assertIn(phrase, parent)
         self.assertLessEqual(len(parent.encode("utf-8")), routing.MAX_ADDITIONAL_CONTEXT_BYTES)
         child = self.payload("SubagentStart")["hookSpecificOutput"]["additionalContext"]
-        self.assertIn("Choose suitable Cloud for new independent repository units before Pro", child)
-        self.assertIn("Opt-in ChatGPT Chat route is enabled", child)
-        self.assertIn("Conditional only: root-direct Sol child, depth=1", child)
-        self.assertIn("SubagentStart does not prove role/depth", child)
-        self.assertIn("Astra/Terra/Luna children and all grandchildren must not use Chat", child)
+        self.assertIn("Only a root-direct Sol child with confirmed role/depth", child)
+        self.assertIn("other children and grandchildren cannot", child)
         self.assertLessEqual(len(child.encode("utf-8")), routing.MAX_ADDITIONAL_CONTEXT_BYTES)
 
     def test_installed_long_path_keeps_enabled_chat_within_hook_limit(self):
@@ -88,9 +76,9 @@ class ChatHookTests(unittest.TestCase):
                                      routing.MAX_ADDITIONAL_CONTEXT_BYTES)
                 self.assertEqual('Opt-in ChatGPT' in child['hookSpecificOutput']['additionalContext'],
                                  transport == 'browser-temporary')
-                for phrase in ('Opt-in ChatGPT Chat route is enabled', 'Keep a suitable existing owner',
+                for phrase in ('Opt-in ChatGPT Chat route is enabled', 'retain a suitable owner',
                                'unknown authorization blocks dispatch', 'No active observation campaign',
-                               'local_auth_status', 'never Work or a model API'):
+                               'local_auth_status', 'Work or a model API'):
                     self.assertIn(phrase, context)
 
     def test_active_long_campaign_with_chat_fits_hook_limit(self):
@@ -141,7 +129,8 @@ class ChatHookTests(unittest.TestCase):
                                        codex_home=self.home, cwd=self.home)
         self.assertNotIn('systemMessage', payload)
         context = payload['hookSpecificOutput']['additionalContext']
-        self.assertIn(custom_summary, context)
+        self.assertNotIn(custom_summary, context)
+        self.assertIn('read effective.md before routing', context)
         self.assertIn('Opt-in ChatGPT Chat route is enabled', context)
         self.assertIn('armed=True', context)
         self.assertIn('confirm normal work', context)
@@ -211,7 +200,7 @@ class ChatHookTests(unittest.TestCase):
         self.settings({"schema_version": 1, "enabled": True, "required_model": "6 Pro", "transport": "codex-app-tools"})
         context = self.payload()["hookSpecificOutput"]["additionalContext"]
         self.assertIn("transport: codex-app-tools (legacy)", context)
-        self.assertIn("cannot start or operate a Temporary Chat", context)
+        self.assertIn("legacy transport stays root-only", context)
 
 
 if __name__ == "__main__":

@@ -141,12 +141,12 @@ class FixedRoutingTests(unittest.TestCase):
         self.assertIn('Sol=gpt-6.1-sol (xhigh)', context)
         self.assertNotIn('gpt-5.6', context)
         self.assertNotIn('gpt-6-sol', context)
-        self.assertIn('Do not create a child solely', context)
+        self.assertIn('same-model delegation', context)
 
     def test_generated_owner_policy_has_no_conflicting_parent_defaults(self):
         # Contract checks of generated instructions, not model-behavior tests.
         policy = routing.load_policy(codex_home=self.home)
-        self.assertEqual(policy.config['policy_revision'], '2026-10-29-finite-observation-campaign')
+        self.assertEqual(policy.config['policy_revision'], '2026-11-02-early-owner-selection')
         documents = policy.rendered_documents()
         obsolete = ('GPT-6.1 Sol/xhigh', '参考基準は親Sol/xhigh',
                     '通常作業は親で完結する', '通常工程は親で完結し',
@@ -188,8 +188,7 @@ class FixedRoutingTests(unittest.TestCase):
         self.assertIn('適合する元担当へ差分を返して継続', escalation)
         context = routing.hook_payload(event='SubagentStart', source='resume',
             codex_home=self.home, cwd=self.home)['hookSpecificOutput']['additionalContext']
-        for phrase in ('same owner', 'authorized PR creation', 'agreed review findings',
-                       'parent-specified endpoint', 'important exceptions'):
+        for phrase in ('complete unit', 'authorized PR work', 'important exceptions'):
             self.assertIn(phrase, context)
         self.assertNotIn('hand off ordinary parent work', context)
 
@@ -238,8 +237,7 @@ class FixedRoutingTests(unittest.TestCase):
             context = routing.hook_payload(event=event, source='startup',
                 codex_home=self.home, cwd=self.home)['hookSpecificOutput']['additionalContext']
             if event == 'SessionStart':
-                self.assertIn('| Sol子 | gpt-6.1-sol | high |', context)
-                self.assertIn('Sol/high', context)
+                self.assertIn('Sol=gpt-6.1-sol (high)', context)
                 self.assertNotIn('Luna/max', context)
             else:
                 self.assertIn('Sol=gpt-6.1-sol (high)', context)
@@ -308,8 +306,7 @@ class FixedRoutingTests(unittest.TestCase):
                 codex_home=self.home, cwd=self.home)['hookSpecificOutput']['additionalContext']
             self.assertIn('gpt-6.1-terra', context)
             self.assertNotIn('gpt-5.6-terra', context)
-            self.assertIn('Terra/max' if event == 'SessionStart'
-                          else 'Terra=gpt-6.1-terra (max)', context)
+            self.assertIn('Terra=gpt-6.1-terra (max)', context)
         self.assertEqual(before, path.read_bytes())
         self.assertFalse((self.home / 'config.toml').exists())
 
@@ -338,9 +335,30 @@ class FixedRoutingTests(unittest.TestCase):
             self.assertIn('Custom routing principles preserved: principles.summary', context)
             self.assertIn('unresolved contradictions return to root', context)
             if event == 'SessionStart':
-                self.assertIn(custom, context)
+                self.assertNotIn(custom, context)
+                self.assertIn('read effective.md before routing', context)
+                self.assertIn('A plan is not delegation', context)
+                self.assertIn('call the actual delegation tool', context)
+                self.assertNotIn('Terra is the default for ordinary', context)
             self.assertLessEqual(len(context.encode("utf-8")), routing.MAX_ADDITIONAL_CONTEXT_BYTES)
         self.assertEqual(before, path.read_bytes())
+
+    def test_default_hook_and_skill_are_short_and_preserve_early_action(self):
+        context = routing.hook_payload(event='SessionStart', source='startup',
+            codex_home=self.home, cwd=self.home)['hookSpecificOutput']['additionalContext']
+        self.assertLess(len(context.encode('utf-8')), 3000)
+        for phrase in ('Before substantial investigation', 'call the actual delegation tool',
+                       'A plan is not delegation', 'concrete reason once', 'user prohibitions', 'host restrictions'):
+            self.assertIn(phrase, context)
+        child = routing.hook_payload(event='SubagentStart', source='startup',
+            codex_home=self.home, cwd=self.home)['hookSpecificOutput']['additionalContext']
+        self.assertLess(len(child.encode('utf-8')), 2500)
+        skill = routing.PLUGIN_ROOT / 'skills/task-routing/SKILL.md'
+        self.assertLess(len(skill.read_bytes()), 3500)
+        policy = routing.load_policy(codex_home=self.home)
+        for key in ('summary', 'policy_timing'):
+            self.assertIn('本格的な調査・実装の前', policy.config['principles'][key])
+            self.assertIn('計画や推薦だけを委譲済みとせず', policy.config['principles'][key])
 
     def test_terra_default_policy_is_consistent_across_rendered_and_hook_contexts(self):
         policy = routing.load_policy(codex_home=self.home)
@@ -384,11 +402,12 @@ class FixedRoutingTests(unittest.TestCase):
         self.assertIn('Astra child to Sol/Terra/Luna', context)
         self.assertIn('Sol child to Terra/Luna', context)
         self.assertIn('Terra child to Luna', context)
-        self.assertIn('all grandchildren cannot delegate', context)
-        self.assertIn('Terra is the default delegate', context)
-        self.assertIn('agreed-design elaboration or a Terra capability gap', context)
-        self.assertIn('only when host and depth conditions permit', context)
-        self.assertIn('not a performance ranking', context)
+        self.assertIn('Luna children and all grandchildren cannot delegate', context)
+        self.assertIn('No same-role, higher-role or same-model delegation', context)
+        self.assertIn('Terra is the default for ordinary work', context)
+        self.assertIn('agreed-design elaboration', context)
+        self.assertIn('host restrictions', context)
+        self.assertIn('Check role/depth', context)
 
     def test_old_sol_ceiling_requires_explicit_compatible_default(self):
         path = self.home/'codex-task-routing/overrides.json'

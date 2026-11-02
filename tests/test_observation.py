@@ -317,7 +317,7 @@ class ObservationTestCase(unittest.TestCase):
         )
         context = hook["hookSpecificOutput"]["additionalContext"]
         self.assertIn("Observation sample state is unknown", context)
-        self.assertIn("Effective policy:", context)
+        self.assertIn("Effective child defaults", context)
 
     def test_process_exit_releases_lock_without_manual_cleanup(self) -> None:
         code = (

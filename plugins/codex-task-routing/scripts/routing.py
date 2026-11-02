@@ -738,43 +738,22 @@ def _chatgpt_context(home: Path, plugin_root: Path, *, for_child: bool = False) 
     )
     _read_limited_utf8(reference, MAX_TEMPLATE_BYTES, "ChatGPT route instructions")
     transport = settings["transport"]
-    transport_note = (
-        "Start a new Temporary Chat, send one actual request with supported Browser operations and read its "
-        "final answer; never use send_message_to_thread for it. "
-        if transport == "browser-temporary"
-        else "Legacy direct-thread transport, kept for explicit existing configurations, cannot start "
-        "or operate a Temporary Chat. "
-    )
     legacy_suffix = " (legacy)" if transport == "codex-app-tools" else ""
     eligibility = (
-        "Conditional only: root-direct Sol child, depth=1, may own preparation/send/collection/acceptance "
-        "and authorized fixes. Astra/Terra/Luna children and all grandchildren must not use Chat. "
-        "SubagentStart does not prove role/depth; check actual context and root handoff, not model ID. "
-        "Unknown scope or current host prohibition returns to root. "
-        if for_child else
-        "Root or a root-direct Sol child may own this browser route; legacy transport stays root-only. "
+        "Only a root-direct Sol child with confirmed role/depth may use browser-temporary; "
+        "other children and grandchildren cannot. " if for_child else
+        "Root or a root-direct Sol child may use browser-temporary; legacy transport stays root-only. "
     )
     return (
-        f"\nOpt-in ChatGPT Chat route is enabled (required UI model: Pro (legacy: 6 Pro / GPT-6 Pro); transport: {transport}{legacy_suffix}). "
+        f"Opt-in ChatGPT Chat route is enabled (required UI model: Pro; legacy labels 6 Pro / GPT-6 Pro; transport: {transport}{legacy_suffix}). "
         + eligibility
-        + "Choose suitable Cloud for new independent repository units before Pro. For other substantial "
-        "research/design/review and authorized implementation/testing/PR, evaluate this Chat route first "
-        "with approved materials, verified tools, scope and test environment. Keep a suitable "
-        "existing owner. Short work or repeated Codex-local access stays in Codex. "
-        "Parallel delegation requires useful independent parent work from the delegating owner itself. "
-        "Serial specialist delegation requires explicit host permission and concrete added value; no invented work. "
-        "Read <plugin-root>/skills/task-routing/references/chatgpt.md and chat-authorization.md before use. "
-        "Use chat_plan.py --live: inspect is no-send; dispatch plans one send; receive plans collection without resend. "
-        "Reuse valid approvals; transport_evidence is optional. Host checks do not attest authority; unknown authorization blocks dispatch. "
-        "Preserve source, freshness, tool, return and stop conditions. "
-        "Native tools inside current Chat are outside the transfer gate. Use normal Chat only; never Work or a model API. "
-        "Verify Chat/Pro before sending and after completion; no backend attestation. "
-        + transport_note
-        + "One request owner and same tab/request ID/input hash; handoff records sent/collected state and "
-        "never causes another send. Owner performs semantic acceptance; root handles important exceptions. "
-        "Missing capability, permission or scope returns to root without fallback. Permitted inspection and "
-        "collection remain distinct from send/quota. Hooks never start models; preserve parent settings."
+        + "Host restrictions and authorization apply. Choose suitable Cloud before Pro for independent repo work; "
+        "otherwise evaluate enabled Pro first for suitable substantial work; retain a suitable owner. "
+        "Before use read <plugin-root>/skills/task-routing/references/chatgpt.md and chat-authorization.md; "
+        "unknown authorization blocks dispatch. Reuse valid approvals; transport_evidence is optional. Keep secrets local, one owner and one request; "
+        "never resend on uncertainty, use Work or a model API."
     )
+
 
 
 def hook_payload(
@@ -815,18 +794,10 @@ def hook_payload(
             "(effective.md and detailed files)."
         )
         local_auth_context = (
-            "Private authentication: before cloud model selection, inspect local-auth-lfm with "
-            "local_auth_status and local_auth_handoffs; use only registered presets via "
-            "local_auth_request_handoff and local_auth_check_handoff. Tool availability, owner approval, "
-            "implemented stages and verified authentication differ. A queued request is not completed "
-            "authentication. Keep credentials, OAuth JSON, cookies and private screens local. "
-            "Hooks never start workers or models. Details: <plugin-root>/skills/task-routing/references/local-auth.md."
+            "Private authentication: before cloud model selection inspect local_auth_status and local_auth_handoffs; follow "
+            "<plugin-root>/skills/task-routing/references/local-auth.md; keep secrets local. "
+            "A queued request is not completed authentication. Children return authentication requirements to the parent."
         )
-        if event == "SubagentStart":
-            local_auth_context += (
-                " Return authentication requirements to the parent; do not initiate enrollment, authentication "
-                "or messages to another task from a child."
-            )
         # Observation state is deliberately treated as optional diagnostics.
         # A corrupt or unavailable ledger must never suppress policy delivery.
         observation = observation_status(codex_home=home, policy=policy)
@@ -862,19 +833,31 @@ def hook_payload(
             f"arm-failure={campaign['arm_failure']}, terminal={campaign['terminal']}"
             if campaign is not None else "campaign=None"
         )
+        review = _override_review(policy)
         if event == "SessionStart":
-            # A session receives the compact effective document once.  The
-            # detailed rendered policy remains referenced by path.
-            effective_text = _read_limited_utf8(
-                references["effective.md"], MAX_RENDERED_BYTES, "effective policy"
-            ).rstrip()
+            model_matrix = "; ".join(
+                f"{MODEL_LABELS[role]}={policy.config['models'][role]['id']} "
+                f"({policy.config['models'][role]['default_effort']})"
+                for role in ACTIVE_MODEL_ROLES
+            )
             context = "\n".join(
                 [
                     f"Codex Task Routing manifest {policy.version}; policy hash {policy.content_hash}.",
                     plugin_root_context,
                     rendered_context,
-                    "Effective policy:",
-                    effective_text,
+                    f"Effective child defaults (do not change parent): {model_matrix}.",
+                    "Before substantial investigation or implementation select an owner and, when suitable "
+                    "and allowed, call the actual delegation tool with a complete unit. A plan is not delegation; "
+                    "do not solve the unit first just to classify it. If the parent continues, briefly give a "
+                    "concrete reason once. Respect short work, existing owners, user prohibitions and host restrictions.",
+                    ("Custom principles replace the bundled summary; read effective.md before routing. "
+                     "Return unresolved contradictions to root." if review else
+                     "Delegate with scope, authority, tests, acceptance and return conditions. Parent owns priorities, "
+                     "architecture, acceptance and important exceptions; Terra is the default for ordinary "
+                     "implementation and investigation. Keep the owner through ordinary fixes and tests. "
+                     "Parallel work needs useful independent parent work; serial specialist delegation needs host "
+                     "permission and added value. Never transfer solely to the same model. Read detailed policy "
+                     "before selecting other routes."),
                     (
                         "Observation sample (normal work only): "
                         f"remaining={observation['remaining']}, pending={observation['pending']}, "
@@ -898,13 +881,19 @@ def hook_payload(
                     plugin_root_context,
                     rendered_context,
                     f"Configured child-routing reference only; it does not change the parent: {model_matrix}.",
-                    "Do not create a child solely to transfer work to the same model. Keep the agreed complete work unit with the same owner through ordinary investigation, fixes, tests, authorized PR creation and agreed review findings. Follow the parent-specified endpoint, scope and acceptance criteria; distinguish unverified results. Terra uses terra61; legacy terra stays inactive. Terra is the default delegate for ordinary implementation, fixes, debugging, exploration, multi-file work and research drafts. Use Sol for agreed-design elaboration or a Terra capability gap, recording why; Sol may delegate implementation to Terra and review/integrate only when host and depth conditions permit. Terra handles ordinary implementation choices; architecture selection, agreed-premise changes and capability gaps go to its parent, not directly to Sol. This is not a performance ranking. Standard grandchildren only: Astra child to Sol/Terra/Luna; Sol child to Terra/Luna; Terra child to Luna. Luna children and all grandchildren cannot delegate. No same/up-role or further depth; use effective default efforts. Check assigned role/depth from actual context and handoff, not SubagentStart or a model ID. Unknown scope and important exceptions return to root. Parallel work requires the delegator's own independent work; host restrictions still apply.",
+                    ("Custom principles replace the bundled summary; read effective.md before routing. " if review else
+                     "Keep the agreed complete unit through ordinary fixes, tests and authorized PR work. "
+                     "Terra is the default for ordinary work; Sol handles agreed-design elaboration or a recorded "
+                     "Terra capability gap. Architecture and important exceptions return to the parent. "
+                     "Allowed standard grandchildren: Astra child to Sol/Terra/Luna; Sol child to Terra/Luna; "
+                     "Terra child to Luna; Luna children and all grandchildren cannot delegate. "
+                     "No same-role, higher-role or same-model delegation. "
+                     "Check role/depth from the handoff; host restrictions and delegation conditions apply."),
                     "Do not start a new observation from this child. Return bounded run evidence and missing reasons to the parent task's observation record.",
                 ]
             )
-        review = _override_review(policy)
         if review:
-            context += "\nCustom routing principles preserved: " + ", ".join(review["keys"]) + ". Check Terra/role/Chat and observation campaign consistency; unresolved contradictions return to root, not automatic migration."
+            context += "\nCustom routing principles preserved: " + ", ".join(review["keys"]) + ". Read effective.md before routing; unresolved contradictions return to root, not automatic migration."
         route_diagnostic = None
         route_context = ""
         if event in {"SessionStart", "SubagentStart"}:
@@ -915,7 +904,7 @@ def hook_payload(
         context += "\n" + local_auth_context
         context += "\nUse this single effective policy set. Standard child agents only; do not change the parent model or effort."
         if route_context:
-            context += "\nUser-enabled conditional Chat route; current host instructions still apply:" + route_context
+            context += "\nUser-enabled conditional Chat route; current host instructions still apply: " + route_context
         if len(context.encode("utf-8")) > MAX_ADDITIONAL_CONTEXT_BYTES:
             raise RoutingError("hook context exceeds the configured limit")
     except (RoutingError, OSError):
