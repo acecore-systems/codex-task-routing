@@ -153,7 +153,7 @@ def main():
         result = handle(payload, home)
         if result:
             print(json.dumps(result))
-    except (ValueError, UnicodeError, OSError, sqlite3.Error, TypeError, RoutingError):
+    except (ValueError, UnicodeError, OSError, sqlite3.Error, TypeError, RoutingError, RecursionError):
         # Never spam or block the tool; status reports unavailable state.
         return 0
     return 0

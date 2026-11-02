@@ -96,6 +96,15 @@ class ParentGuardTests(unittest.TestCase):
         self.assertEqual(result.stdout, '')
         status = subprocess.run([sys.executable, str(SCRIPT), 'status'], text=True, capture_output=True, env=env)
         self.assertEqual(json.loads(status.stdout)['state'], 'unavailable')
+    def test_deeply_nested_input_does_not_fail_or_expose_content(self):
+        env = dict(os.environ, CODEX_HOME=str(self.home))
+        payload = '{"hook_event_name":"PreToolUse","tool_input":' + '[' * 5000 + '"private-sentinel"' + ']' * 5000 + '}'
+        result = subprocess.run([sys.executable, str(SCRIPT)], input=payload, text=True, capture_output=True, env=env)
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, '')
+        self.assertEqual(result.stderr, '')
+        self.assertFalse((self.home / 'codex-task-routing/parent-guard/state.sqlite3').exists())
+
     def test_status_distinguishes_unobserved_and_zero_reminders(self):
         env = dict(os.environ, CODEX_HOME=str(self.home))
         def status():
