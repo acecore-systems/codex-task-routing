@@ -54,7 +54,7 @@ def check():
                 assert hook['type'] == 'command'
                 assert hook['timeout'] <= 10
     config = json.loads((PLUGIN / 'defaults/config.json').read_text(encoding='utf-8'))
-    assert config['policy_revision'] == '2026-11-04-haiku-api-route'
+    assert config['policy_revision'] == '2026-11-04-creative-unit-delegation'
     assert 'local_auth_status' in config['principles']['policy_local_auth']
     assert config['models']['luna']['default_effort'] == 'max'
     assert config['models']['terra']['id'] == 'gpt-6.1-sol'  # legacy override key, never routed

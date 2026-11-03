@@ -30,6 +30,35 @@ class ParentGuardTests(unittest.TestCase):
         return guard.handle(self.event(kind, **kwargs), self.home)
     def work(self, number, **kwargs):
         return self.send('PreToolUse', tool_name='functions.exec', tool_use_id=str(number), **kwargs)
+
+    def test_prompt_reminder_once_per_root_turn_without_prompt_content(self):
+        result = self.send('UserPromptSubmit', prompt='private-user-prompt')
+        self.assertEqual(result['hookSpecificOutput']['hookEventName'], 'UserPromptSubmit')
+        context = result['hookSpecificOutput']['additionalContext']
+        for phrase in ('substantial work', 'internal coupling alone', 'Continue a suitable existing owner',
+                       'answer short questions normally', 'host permission', 'custom policy',
+                       'Do not invent work or force delegation'):
+            self.assertIn(phrase, context)
+        self.assertIsNone(self.send('UserPromptSubmit', prompt='different-private-prompt'))
+        self.assertIsNone(self.send('UserPromptSubmit', turn_id='other', agent_id='child'))
+        self.assertIsNone(self.send('UserPromptSubmit', turn_id=''))
+        self.assertIsNotNone(self.send('UserPromptSubmit', turn_id='other'))
+        content = (self.home / 'codex-task-routing/parent-guard/state.sqlite3').read_bytes()
+        self.assertNotIn(b'private-user-prompt', content)
+        self.assertNotIn(b'different-private-prompt', content)
+
+    def test_shipped_prompt_command_outputs_official_context_shape(self):
+        env = dict(os.environ, CODEX_HOME=str(self.home))
+        payload = self.event('UserPromptSubmit', prompt='private-prompt')
+        result = subprocess.run([sys.executable, str(SCRIPT)], input=json.dumps(payload),
+                                text=True, capture_output=True, env=env, check=True)
+        response = json.loads(result.stdout)
+        self.assertEqual(response['hookSpecificOutput']['hookEventName'], 'UserPromptSubmit')
+        self.assertIn('additionalContext', response['hookSpecificOutput'])
+        self.assertNotIn('private-prompt', result.stdout)
+        again = subprocess.run([sys.executable, str(SCRIPT)], input=json.dumps(payload),
+                               text=True, capture_output=True, env=env, check=True)
+        self.assertEqual(again.stdout, '')
     def test_sustained_work_reminds_once_without_content_or_block(self):
         self.send('UserPromptSubmit', prompt='private-user-prompt')
         for i in range(guard.THRESHOLD - 1):

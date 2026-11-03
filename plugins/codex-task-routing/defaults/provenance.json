@@ -1,5 +1,5 @@
 {
-  "policy_revision": "2026-11-04-haiku-api-route",
+  "policy_revision": "2026-11-04-creative-unit-delegation",
   "source_sha256": {
     "AGENTS.md": "bd2584d350c204f1ffbc8c005c084fc34360acddf8812557504350820e34be42",
     "model-routing-policy.md": "9335ccec4516bc71b68d01f9304d6e71d3b5efcd77a210476571cd7d060c476c",
@@ -36,11 +36,12 @@
     "0.23.0 intentional policy change: explicitly opened finite observation campaigns with up to six attempts and a goal of three measured records; preserve legacy records, keep missing values and stop without automatic restart; no automatic observation activation or runtime installation; explicit enrolled-thread metadata snapshots only",
     "0.24.0 intentional policy change: select ownership before substantial investigation or implementation, dispatch when suitable and allowed, and state a concise reason when parent continues; preserve host limits, models, efforts, overrides and existing owners",
     "0.25.0 intentional policy change: distinguish local resource needs from standard-child suitability, avoid reserving ordinary implementation merely to satisfy parallelism, preserve suitable owners, host gates and explicit overrides",
-    "0.26.0 intentional policy change: add opt-in root-owned Haiku API candidate for ordinary or substantial work using an explicitly authorized Claude Code CLI route; existing Cloud/Pro priority, native child models, hooks, parent and overrides preserved"
+    "0.26.0 intentional policy change: add opt-in root-owned Haiku API candidate for ordinary or substantial work using an explicitly authorized Claude Code CLI route; existing Cloud/Pro priority, native child models, hooks, parent and overrides preserved",
+    "0.27.0 intentional policy change: evaluate coupled creative work as a complete delegation unit; advisory prompt context once per root turn without reading prompt content; explicit overrides and host gates preserved"
   ],
   "source_policy_revision": "2026-09-14",
   "rendered_sha256": {
-    "model-routing-policy.md": "277d3a2399d52a8d15425a1768a69986a09c6a0a40d25f4dbd48c8ae196309b1",
+    "model-routing-policy.md": "b81fc8ce0e3072372d1b3f2f666978b5f4c617f3514585e9457835545e2f9f21",
     "model-routing-catalog.md": "4bfa900fd7240e31bfbdee5b5fa3c89caeb1185c193584afc6e5b492b0450f55",
     "model-routing-handoff.md": "a8ce8f6ccc06ca066a825c8648bbf22d1ead862424038beedb6978c6f5b41169"
   }
