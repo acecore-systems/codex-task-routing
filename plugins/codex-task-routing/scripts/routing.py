@@ -851,12 +851,16 @@ def hook_payload(
                     "do not solve the unit first just to classify it. If the parent continues, briefly give a "
                     "concrete reason once. Respect short work, existing owners, user prohibitions and host restrictions.",
                     ("Custom principles replace the bundled summary; read effective.md before routing. "
+                     "Distinguish local-resource needs from a standard child's actual access and suitability; "
+                     "apply the effective principles and host limits when deciding. "
                      "Return unresolved contradictions to root." if review else
                      "Delegate with scope, authority, tests, acceptance and return conditions. Parent owns priorities, "
                      "architecture, acceptance and important exceptions; Terra is the default for ordinary "
                      "implementation and investigation. Keep the owner through ordinary fixes and tests. "
                      "Parallel work needs useful independent parent work; serial specialist delegation needs host "
-                     "permission and added value. Never transfer solely to the same model. Read detailed policy "
+                     "permission and added value. Local-resource needs alone do not rule out a suitable child. "
+                     "Do not retain ordinary implementation merely to create independent parent work. "
+                     "Never transfer solely to the same model. Read detailed policy "
                      "before selecting other routes."),
                     (
                         "Observation sample (normal work only): "

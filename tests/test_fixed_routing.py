@@ -146,7 +146,7 @@ class FixedRoutingTests(unittest.TestCase):
     def test_generated_owner_policy_has_no_conflicting_parent_defaults(self):
         # Contract checks of generated instructions, not model-behavior tests.
         policy = routing.load_policy(codex_home=self.home)
-        self.assertEqual(policy.config['policy_revision'], '2026-11-03-haiku-api-route')
+        self.assertEqual(policy.config['policy_revision'], '2026-11-04-haiku-api-route')
         documents = policy.rendered_documents()
         obsolete = ('GPT-6.1 Sol/xhigh', '参考基準は親Sol/xhigh',
                     '通常作業は親で完結する', '通常工程は親で完結し',
@@ -173,6 +173,18 @@ class FixedRoutingTests(unittest.TestCase):
         self.assertIn('override後のモデルIDやSubagentStartだけから推測しない', hierarchy)
         self.assertIn('秘密値の入力・保管・転送',
                       policy.config['principles']['policy_local_auth'])
+
+    def test_haiku_and_local_child_suitability_coexist_in_effective_policy(self):
+        policy = routing.load_policy(codex_home=self.home)
+        self.assertIn('同じ現物を標準子が扱えるなら', policy.config['principles']['summary'])
+        self.assertIn('明示opt-inのHaiku API', policy.config['principles']['summary'])
+        sessions = policy.config['principles']['policy_sessions']
+        self.assertIn('ローカル現物が必要という理由だけで標準子を除外しない', sessions)
+        self.assertIn('明示opt-inのHaiku API', sessions)
+        context = routing.hook_payload(event='SessionStart', source='startup',
+            codex_home=self.home, cwd=self.home)['hookSpecificOutput']['additionalContext']
+        self.assertIn('Local-resource needs alone do not rule out a suitable child', context)
+        self.assertIn('separately enabled routes require actual host permission', context)
 
     def test_owner_resume_and_endpoint_contract_reaches_the_child_hook(self):
         policy = routing.load_policy(codex_home=self.home)
@@ -340,8 +352,29 @@ class FixedRoutingTests(unittest.TestCase):
                 self.assertIn('A plan is not delegation', context)
                 self.assertIn('call the actual delegation tool', context)
                 self.assertNotIn('Terra is the default for ordinary', context)
+                self.assertIn("a standard child's actual access and suitability", context)
+                self.assertIn('apply the effective principles and host limits', context)
+                self.assertNotIn('Do not retain ordinary implementation merely', context)
             self.assertLessEqual(len(context.encode("utf-8")), routing.MAX_ADDITIONAL_CONTEXT_BYTES)
         self.assertEqual(before, path.read_bytes())
+
+    def test_local_work_and_parallelism_policy_keeps_ownership_and_host_boundaries(self):
+        policy = routing.load_policy(codex_home=self.home)
+        documents = policy.rendered_documents()
+        for name in ('effective.md', 'model-routing-policy.md'):
+            text = documents[name]
+            self.assertIn('同じ現物', text)
+            self.assertIn('標準子', text)
+            self.assertIn('独立した通常実装を親に残すことを既定にしない', text)
+            self.assertIn('無理に並列化せず', text)
+        detailed = documents['model-routing-policy.md']
+        for phrase in ('適任な継続担当', '密結合', 'ホスト許可', '親の実装を一律に禁止しない'):
+            self.assertIn(phrase, detailed)
+        context = routing.hook_payload(event='SessionStart', source='startup',
+            codex_home=self.home, cwd=self.home)['hookSpecificOutput']['additionalContext']
+        self.assertIn('Local-resource needs alone do not rule out a suitable child', context)
+        self.assertIn('Do not retain ordinary implementation merely', context)
+        self.assertIn('serial specialist delegation needs host permission and added value', context)
 
     def test_default_hook_and_skill_are_short_and_preserve_early_action(self):
         context = routing.hook_payload(event='SessionStart', source='startup',
