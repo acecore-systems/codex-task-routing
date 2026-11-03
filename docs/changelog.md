@@ -3,7 +3,7 @@
 ## 0.25.0 — 明示opt-inのHaiku API候補
 
 - 方針の意味変更: 通常以上の適合工程にHaiku/xhighを別経路の候補として追加します。既存担当とCloud/Pro優先、標準子、上位の実行制限を維持します。
-- 配布変更: root向けClaude Code CLIの明示実行、対象・権限・入力照合、claimと結果の記録を追加します。フックは起動せず、通常Chatのfallbackではありません。[検証範囲](validation-0.25.0.md)
+- 配布変更: root向けClaude Code CLIの明示実行、対象・権限・入力照合、claimと結果の記録、通信しない事前診断と合成fixtureを追加します。フックは起動せず、通常Chatのfallbackではありません。[検証範囲](validation-0.25.0.md)
 
 ## 0.24.0 — 早期の担当決定と軽量な親への助言
 

@@ -36,7 +36,7 @@ class HaikuRouteTests(unittest.TestCase):
                     'CLAUDE_CODE_USE_BEDROCK': '1', 'CLAUDE_CODE_OAUTH_TOKEN': 'secret3'}
 
     def execute(self, runner):
-        with patch.object(route, 'verify_repository', return_value=self.repo), patch.object(route, 'verify_version'):
+        with patch.object(route, 'doctor', return_value={'cli': 'version_and_help_checked', 'max_turns_option': 'help_parser_accepted', 'repository': 'matches_clean'}):
             return route.run(self.request, self.prompt, self.state, self.exe, environ=self.env, runner=runner)
 
     def test_success_claim_result_and_environment_boundary(self):
@@ -91,7 +91,7 @@ class HaikuRouteTests(unittest.TestCase):
         self.assertEqual(list(self.state.iterdir()), [])
 
     def test_missing_key_and_state_inside_repository_fail_before_claim(self):
-        with patch.object(route, 'verify_version'), patch.object(route, 'verify_repository', return_value=self.repo):
+        with patch.object(route, 'doctor', return_value={'cli': 'version_and_help_checked', 'max_turns_option': 'help_parser_accepted', 'repository': 'matches_clean'}):
             with self.assertRaises(route.RouteError):
                 route.run(self.request, self.prompt, self.state, self.exe, environ={}, runner=lambda *a, **k: self.fail())
             with self.assertRaises(route.RouteError):
@@ -109,6 +109,16 @@ class HaikuRouteTests(unittest.TestCase):
                 else:
                     with self.assertRaises(route.RouteError):
                         route.verify_version(self.exe, self.env)
+
+    def test_failed_local_preflight_stops_before_claim_or_send(self):
+        checks = {'cli': 'version_and_help_checked', 'max_turns_option': 'help_parser_accepted', 'repository': 'matches_clean'}
+        for field, value in [('cli', 'flags_missing'), ('max_turns_option', 'not_accepted'),
+                             ('repository', 'unavailable_or_mismatch')]:
+            with self.subTest(field=field), patch.object(route, 'doctor', return_value={**checks, field: value}):
+                with self.assertRaises(route.RouteError):
+                    route.run(self.request, self.prompt, self.state, self.exe, environ=self.env,
+                              runner=lambda *args, **kwargs: self.fail('must not send'))
+                self.assertFalse((self.state / 'task-1.claim.json').exists())
 
     def test_timeout_and_malformed_response_preserve_unknown_claim(self):
         for case in ('timeout', 'malformed'):

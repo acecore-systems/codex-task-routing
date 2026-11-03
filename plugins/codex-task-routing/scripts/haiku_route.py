@@ -107,7 +107,7 @@ def child_environment(environ, turns):
     allowed = ("PATH", "SystemRoot", "WINDIR", "COMSPEC", "PATHEXT", "TEMP", "TMP", "TMPDIR", "LANG", "LC_ALL")
     env = {key: environ[key] for key in allowed if key in environ}
     key = environ.get("ANTHROPIC_API_KEY")
-    if not key:
+    if not key or not key.strip():
         raise RouteError("API key unavailable")
     env["ANTHROPIC_API_KEY"] = key
     env["ANTHROPIC_BASE_URL"] = "https://api.anthropic.com"
@@ -135,6 +135,51 @@ def verify_version(executable, environ):
         raise RouteError("unsupported Claude Code version")
 
 
+HELP_FLAGS = ("--bare", "--restricted", "--disable-slash-commands", "--strict-mcp-config",
+              "--no-chrome", "--no-session-persistence", "--permission-mode", "--permission-prompts",
+              "--tools", "--allowedTools", "--model", "--effort", "--max-budget-usd", "--output-format", "--print")
+
+
+def doctor(request, executable, *, environ=None):
+    """Inspect local prerequisites; declarations and key presence are not authorization."""
+    summary = plan(request)
+    source = os.environ if environ is None else environ
+    output = {"schema_version": 1, "route": "haiku_api", "request_id": request["request_id"],
+              "opt_in_declared": request["enabled"], "declared_gaps": summary["gaps"],
+              "host_authorization": "not_verified", "execution_authorized": False,
+              "api_key_environment_variable_present": "ANTHROPIC_API_KEY" in source,
+              "key_validity": "not_verified", "api_connection": "not_verified",
+              "repository": "unknown", "cli": "unknown", "missing_flags": [],
+              "max_turns_option": "unknown"}
+    try:
+        verify_repository(request)
+        output["repository"] = "matches_clean"
+    except (RouteError, RoutingError, OSError, subprocess.SubprocessError):
+        output["repository"] = "unavailable_or_mismatch"
+    if executable is None:
+        output["cli"] = "executable_unspecified"
+        return output
+    try:
+        exe = _assert_safe_ancestors(executable)
+        if not exe.is_file() or (os.name == "nt" and exe.suffix.lower() != ".exe"):
+            output["cli"] = "executable_unavailable"
+            return output
+        verify_version(exe, source)
+        allowed = ("PATH", "SystemRoot", "WINDIR", "COMSPEC", "PATHEXT", "TEMP", "TMP", "TMPDIR")
+        env = {key: source[key] for key in allowed if key in source}
+        help_result = subprocess.run([str(exe), "--help"], env=env, shell=False, capture_output=True,
+                                     text=True, encoding="utf-8", timeout=15, check=True)
+        output["missing_flags"] = [flag for flag in HELP_FLAGS if flag not in help_result.stdout]
+        output["cli"] = "flags_missing" if output["missing_flags"] else "version_and_help_checked"
+        # --max-turns may be hidden from help. A help-only parser check is not a live limit test.
+        turns = subprocess.run([str(exe), "--max-turns", "1", "--help"], env=env, shell=False,
+                               capture_output=True, text=True, encoding="utf-8", timeout=15, check=False)
+        output["max_turns_option"] = "help_parser_accepted" if turns.returncode == 0 else "not_accepted"
+    except (RouteError, RoutingError, OSError, subprocess.SubprocessError, UnicodeError):
+        output["cli"] = "unavailable_or_unsupported"
+    return output
+
+
 def record_failure(state, request_id, category, returncode=None):
     """Record fixed non-secret metadata, never overwrite an existing result."""
     try:
@@ -157,8 +202,11 @@ def run(request, prompt, state_dir, executable, *, environ=None, runner=subproce
         raise RouteError("explicit executable unavailable")
     source_env = os.environ if environ is None else environ
     env = child_environment(source_env, request["max_turns"])
-    verify_version(executable, source_env)
-    cwd = verify_repository(request)
+    checked = doctor(request, executable, environ=source_env)
+    if (checked["cli"] != "version_and_help_checked" or checked["max_turns_option"] != "help_parser_accepted"
+            or checked["repository"] != "matches_clean"):
+        raise RouteError("local preflight incomplete")
+    cwd = _assert_safe_ancestors(request["cwd"])
     state = _assert_safe_ancestors(state_dir)
     try:
         inside_repo = os.path.normcase(os.path.commonpath([str(cwd), str(state)])) == os.path.normcase(str(cwd))
@@ -219,7 +267,7 @@ def run(request, prompt, state_dir, executable, *, environ=None, runner=subproce
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("phase", choices=("inspect", "plan", "run"))
+    parser.add_argument("phase", choices=("inspect", "plan", "doctor", "run"))
     parser.add_argument("--request", required=True, type=Path)
     parser.add_argument("--input", type=Path)
     parser.add_argument("--state-dir", type=Path)
@@ -233,6 +281,8 @@ def main(argv=None):
             _read_limited_utf8(args.input, 128 * 1024, "input")  # validate path and size
             prompt = args.input.read_bytes().decode("utf-8")  # preserve CRLF in the hashed bytes
             output = run(request, prompt, args.state_dir, args.claude_executable)
+        elif args.phase == "doctor":
+            output = doctor(request, args.claude_executable)
         else:
             output = plan(request)
         print(json.dumps(output, ensure_ascii=False))
