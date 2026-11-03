@@ -1,11 +1,11 @@
 ---
 name: task-routing
-description: Apply Codex Task Routing for substantial independent tasks, including opt-in normal ChatGPT Chat routing, or inspect and customize delegation policy, model and effort settings. Covers research, documents, images, data, operations, and development.
+description: Apply Codex Task Routing for substantial independent tasks, including opt-in normal ChatGPT Chat routing, or inspect and customize delegation policy, model and effort settings.
 ---
 
 # Task routing
 
-Use the effective policy from the start hook, preserving the user's parent model, effort and overrides. Higher-priority instructions, actual host capability and authorization govern every route. Hooks do not dispatch work.
+Use the start hook's effective policy. Preserve the parent model, effort and overrides; honor higher-priority instructions, host capabilities and authorization. Hooks do not dispatch work.
 
 Before substantial investigation or implementation, select an owner and call an allowed, suitable delegation tool; a plan alone is not delegation. Do not solve the unit just to classify it. If the parent continues, briefly state a concrete reason once. Select a suitable existing owner or delegate a complete unit, including investigation, implementation, ordinary fixes, tests and the agreed endpoint. Give scope, allowed actions, acceptance criteria and return conditions. The parent owns priorities, architecture, acceptance and important exceptions. Short or tightly coupled work, parent acceptance, explicit delegation prohibitions and host restrictions may stay with the current owner. Parallel delegation requires useful independent work by the delegator; serial specialist delegation requires host permission and concrete added value. Do not transfer solely to the same model or interrupt a suitable owner.
 
@@ -13,4 +13,6 @@ For local Codex work use Terra as the default for ordinary implementation and in
 
 Local-resource needs can rule out Cloud or Chat without ruling out a standard child with the same access. A parent having begun or inspected work alone does not permanently preclude handoff; retain a suitable ongoing owner when warranted. Do not keep independent ordinary implementation merely to manufacture parent work for parallelism. Parent work must be genuinely independent and useful; without it, do not force parallelism, and require host permission and added value for serial delegation. Apply custom principles and higher-priority constraints.
 
-Before cloud model selection involving credentials, follow [local authentication](references/local-auth.md); children return authentication needs to their parent. Never move secrets or assume a queued handoff is authenticated. Read only the relevant reference: [delegation](references/operating-guide.md#standard-delegation) and [handoff](references/operating-guide.md#handoff), [Cloud and session choice](references/session-routing.md), [Chat routing](references/chatgpt.md) and [authorization](references/chat-authorization.md), [observation](references/observation.md), or [configuration](references/configuration.md). Preserve custom principles and resolve contradictions with the root; never silently rewrite user configuration or trust settings.
+Before cloud model selection involving credentials, follow [local authentication](references/local-auth.md); children return authentication needs to their parent. Never move secrets or assume a queued handoff is authenticated. Read relevant references: [delegation](references/operating-guide.md#standard-delegation) and [handoff](references/operating-guide.md#handoff), [Cloud and session choice](references/session-routing.md), [Chat routing](references/chatgpt.md) and [authorization](references/chat-authorization.md), [observation](references/observation.md), or [configuration](references/configuration.md). Preserve custom principles, return contradictions to root, and never rewrite user configuration or trust settings.
+
+The opt-in [Haiku API route](references/haiku-api.md) is a root-owned candidate for ordinary or substantial work, subject to host and target permission. It is separate from Chat and native child models; hooks never start it.

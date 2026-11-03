@@ -906,7 +906,9 @@ def hook_payload(
             except (RoutingError, OSError, ImportError, ValueError):
                 route_diagnostic = "ChatGPT route not applied: invalid configuration or unavailable helper. Run chatgpt_route.py status."
         context += "\n" + local_auth_context
-        context += "\nUse this single effective policy set. Standard child agents only; do not change the parent model or effort."
+        context += ("\nUse this single effective policy set. Use standard Codex agents for child delegation; "
+                    "separately enabled routes require actual host permission and higher-priority instructions. "
+                    "Hooks do not dispatch work; do not change the parent model or effort.")
         if route_context:
             context += "\nUser-enabled conditional Chat route; current host instructions still apply: " + route_context
         if len(context.encode("utf-8")) > MAX_ADDITIONAL_CONTEXT_BYTES:

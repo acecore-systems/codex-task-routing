@@ -146,7 +146,7 @@ class FixedRoutingTests(unittest.TestCase):
     def test_generated_owner_policy_has_no_conflicting_parent_defaults(self):
         # Contract checks of generated instructions, not model-behavior tests.
         policy = routing.load_policy(codex_home=self.home)
-        self.assertEqual(policy.config['policy_revision'], '2026-11-03-local-delegation')
+        self.assertEqual(policy.config['policy_revision'], '2026-11-04-haiku-api-route')
         documents = policy.rendered_documents()
         obsolete = ('GPT-6.1 Sol/xhigh', '参考基準は親Sol/xhigh',
                     '通常作業は親で完結する', '通常工程は親で完結し',
@@ -173,6 +173,18 @@ class FixedRoutingTests(unittest.TestCase):
         self.assertIn('override後のモデルIDやSubagentStartだけから推測しない', hierarchy)
         self.assertIn('秘密値の入力・保管・転送',
                       policy.config['principles']['policy_local_auth'])
+
+    def test_haiku_and_local_child_suitability_coexist_in_effective_policy(self):
+        policy = routing.load_policy(codex_home=self.home)
+        self.assertIn('同じ現物を標準子が扱えるなら', policy.config['principles']['summary'])
+        self.assertIn('明示opt-inのHaiku API', policy.config['principles']['summary'])
+        sessions = policy.config['principles']['policy_sessions']
+        self.assertIn('ローカル現物が必要という理由だけで標準子を除外しない', sessions)
+        self.assertIn('明示opt-inのHaiku API', sessions)
+        context = routing.hook_payload(event='SessionStart', source='startup',
+            codex_home=self.home, cwd=self.home)['hookSpecificOutput']['additionalContext']
+        self.assertIn('Local-resource needs alone do not rule out a suitable child', context)
+        self.assertIn('separately enabled routes require actual host permission', context)
 
     def test_owner_resume_and_endpoint_contract_reaches_the_child_hook(self):
         policy = routing.load_policy(codex_home=self.home)
