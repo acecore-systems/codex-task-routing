@@ -32,6 +32,15 @@ REMINDER = (
     'Short or tightly coupled work, parent acceptance, an existing owner, user prohibition and '
     'host restrictions are valid reasons to continue; this is not a requirement to delegate.'
 )
+PROMPT_REMINDER = (
+    'Task Routing: for substantial work, choose an owner before substantial investigation or '
+    'implementation. A creative unit can include tightly coupled edits, materials and checks; '
+    'internal coupling alone does not require the parent to own it. Check actual access, a useful '
+    'independent parent task for parallel work or host permission and added value for serial work. '
+    'Use the allowed delegation tool when suitable; if the parent continues, give a concrete reason. '
+    'Continue a suitable existing owner, answer short questions normally, and respect the effective '
+    'custom policy, user prohibitions and host restrictions. Do not invent work or force delegation.'
+)
 
 
 def _identifier(value):
@@ -88,8 +97,11 @@ def handle(payload, home):
             db.execute('DELETE FROM active WHERE rowid IN (SELECT rowid FROM active ORDER BY created DESC, rowid DESC LIMIT -1 OFFSET ?)', (MAX_ROWS,))
             db.execute('DELETE FROM tools WHERE NOT EXISTS (SELECT 1 FROM turns WHERE turns.session=tools.session AND turns.turn=tools.turn)')
             # Duplicate prompt deliveries must not reset counts or a reminder.
-            db.execute('INSERT OR IGNORE INTO turns(session,turn,created) VALUES(?,?,?)', (session, turn, now))
+            created = db.execute('INSERT OR IGNORE INTO turns(session,turn,created) VALUES(?,?,?)', (session, turn, now)).rowcount == 1
             db.execute('DELETE FROM turns WHERE rowid IN (SELECT rowid FROM turns ORDER BY created DESC, rowid DESC LIMIT -1 OFFSET ?)', (MAX_ROWS,))
+            if created:
+                db.execute('COMMIT')
+                return {'hookSpecificOutput': {'hookEventName': 'UserPromptSubmit', 'additionalContext': PROMPT_REMINDER}}
         elif event == 'SubagentStart':
             db.execute('INSERT OR REPLACE INTO active VALUES(?,?,?)', (session, _identifier(agent), now))
             db.execute('UPDATE turns SET delegated=1 WHERE session=? AND turn=?', (session, turn))
