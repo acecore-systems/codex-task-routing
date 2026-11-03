@@ -13,12 +13,12 @@ import sys
 from routing_core.common import RoutingError, _canonical_json, _load_json
 
 ROUTES = {"continue_current", "subagent", "existing_local_session", "new_local_session",
-          "codex_cloud", "chat_pro"}
+          "codex_cloud", "chat_pro", "haiku_api"}
 SEPARATION_REASONS = {"separate_goal", "independent_deliverable", "separate_repo_or_pr",
                       "ongoing_management"}
 REASONS = SEPARATION_REASONS | {"long_context", "quota_avoidance", "same_model_transfer"}
 DECISION_REASONS = REASONS | {"long_running"}
-HOST_FACTS = {"subagent", "new_session", "codex_cloud", "chat_pro", "materials_transfer"}
+HOST_FACTS = {"subagent", "new_session", "codex_cloud", "chat_pro", "haiku_api", "materials_transfer"}
 CHECK_STATES = {"unknown", "verified", "permission_checked", "blocked", "unavailable",
                 "confirmation_required"}
 CONFIRMED = {"verified", "permission_checked"}
@@ -200,9 +200,13 @@ def recommend_session(facts):
         _truth(owner["suitable"])
     elif set(owner) != {"status"}:
         raise SessionPlanError("only continuing owners have identity and suitability")
-    _object(execution, set(), {"local_required", "cloud", "chat_can_complete"})
+    _object(execution, set(), {"local_required", "cloud", "chat_can_complete", "haiku"})
     for key in ("local_required", "chat_can_complete"):
         _truth(execution.get(key))
+    haiku = execution.get("haiku", {})
+    _object(haiku, set(), {"enabled", "can_complete"})
+    for key in ("enabled", "can_complete"):
+        _truth(haiku.get(key))
     cloud = execution.get("cloud", {})
     _object(cloud, set(), {"available", "materials_ready", "tests_ready", "environment", "parallel"})
     for key in ("available", "materials_ready", "tests_ready"):
@@ -269,6 +273,11 @@ def recommend_session(facts):
          ("host.chat_pro", host.get("chat_pro")),
          ("host.materials_transfer", host.get("materials_transfer"))],
         split_exclusions + [("local_execution_required", local_only)])
+    haiku_option = assess("haiku_api", "explicit_opt_in_local_cli_route",
+        [("execution.haiku.enabled", haiku.get("enabled", False)),
+         ("execution.haiku.can_complete", haiku.get("can_complete")),
+         ("host.haiku_api", host.get("haiku_api")),
+         ("host.materials_transfer", host.get("materials_transfer"))], split_exclusions)
     local_option = assess("new_local_session", "independent_local_ownership",
                          [("host.new_session", host.get("new_session"))], split_exclusions)
     child_option = assess("subagent", "bounded_support_for_same_goal",
@@ -294,6 +303,10 @@ def recommend_session(facts):
         if route == "chat_pro":
             required += ["existing_chat_policy_actor_capabilities_and_authorization",
                          "request_id_input_hash_and_original_tab"]
+        if route == "haiku_api":
+            required += ["root_actor_and_host_execution_permission", "target_and_materials_authorization",
+                         "repository_branch_revision", "request_id_input_hash", "budget_turns_and_tool_scope",
+                         "durable_claim_and_result_acceptance"]
         result = {**output, "route": route, "why": why, "gaps": combined,
                   "alternatives": [item for item in assessments if item["route"] != route],
                   "proposal": {"purpose": work["purpose"], "route": route,
@@ -338,6 +351,8 @@ def recommend_session(facts):
         choice, why, action = chat_option, "chat_can_finish_complete_unit", "evaluate_existing_chat_policy"
     elif work["kind"] == "analysis" and chat_option["suitability"] in usable:
         choice, why, action = chat_option, "assess_chat_for_complete_analysis", "evaluate_existing_chat_policy"
+    elif haiku_option["suitability"] == "eligible":
+        choice, why, action = haiku_option, "opt_in_haiku_for_complete_unit", "evaluate_haiku_route"
     elif local_option["suitability"] in usable:
         choice, why, action = local_option, "independent_unit_needs_local_context", "review_new_session_contract"
     else:
