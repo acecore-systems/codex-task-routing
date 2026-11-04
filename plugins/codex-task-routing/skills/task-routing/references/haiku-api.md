@@ -43,6 +43,8 @@ python <plugin-root>/scripts/haiku_route.py doctor --request request.json --clau
 python <plugin-root>/scripts/haiku_route.py run --request request.json --input task.txt --state-dir <共通の既存ディレクトリ> --claude-executable <Claude-Code実行ファイルの絶対パス>
 ```
 
+出力本文を保存しない連携では `run` に `--metadata-only` を付ける。既存のclaim、入力hash、リポジトリ、承認宣言、モデル・権限拒否の検査は同じで、結果ファイルには固定metadataだけを保存する。APIキーの直文字列が入力またはCLIの標準出力・標準エラーに現れた場合は拒否し、発行済みclaimを保持する。変形・分割された秘密やCLIが直接作成したファイルまで検知・隔離する保証ではない。省略時の従来の結果保存動作は変わらない。
+
 inspect/planは接続・認証確認・プロセス起動を行いません。runは実行直前にCLI版とhelp、入力hash、repo root・branch・HEAD・clean状態を確認し、状態ディレクトリに排他的なclaimを書いてから一度だけ起動します。全依頼は同じ保護された共通state rootを使い、別ディレクトリでのclaim重複は検知できないため切り替えて再送しません。途中失敗やtimeoutは結果不明として保持し、元のrequestと対象の状態を照合してrootが判断します。成功応答を保存しても自動受入せず、モデル利用情報が指定modelのみと確認できない場合や権限拒否があれば部分／未確認です。`xhigh`は要求値で実effortは未観測です。結果JSONは依頼の内容や機密を含み得るため、state rootへのアクセスを本人が制限します。鍵とstderrはアダプターが保存・表示しません。
 
 失敗時は固定の分類と終了コードだけを別ファイルに残すよう試みます。記録失敗時もclaimは保持します。timeout時にPythonが停止するのはCLIプロセスで、Bashなどの子プロセスの停止・後処理までは保証しません。再開や後片付けの前に、対象のプロセスと作業状態を確認してください。

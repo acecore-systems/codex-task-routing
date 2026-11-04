@@ -189,7 +189,7 @@ def record_failure(state, request_id, category, returncode=None):
         pass  # The permanent claim still blocks a second submission.
 
 
-def run(request, prompt, state_dir, executable, *, environ=None, runner=subprocess.run):
+def run(request, prompt, state_dir, executable, *, environ=None, runner=subprocess.run, metadata_only=False):
     result = plan(request)
     if result["gaps"]:
         raise RouteError("route or authorization declarations incomplete")
@@ -202,6 +202,9 @@ def run(request, prompt, state_dir, executable, *, environ=None, runner=subproce
         raise RouteError("explicit executable unavailable")
     source_env = os.environ if environ is None else environ
     env = child_environment(source_env, request["max_turns"])
+    if metadata_only and (env["ANTHROPIC_API_KEY"] in prompt or
+                          env["ANTHROPIC_API_KEY"] in json.dumps(request, ensure_ascii=False)):
+        raise RouteError("sensitive input rejected")
     checked = doctor(request, executable, environ=source_env)
     if (checked["cli"] != "version_and_help_checked" or checked["max_turns_option"] != "help_parser_accepted"
             or checked["repository"] != "matches_clean"):
@@ -230,6 +233,9 @@ def run(request, prompt, state_dir, executable, *, environ=None, runner=subproce
         completed = runner(command(executable, request), input=prompt, cwd=str(cwd), env=env,
                            shell=False, capture_output=True, text=True, encoding="utf-8", timeout=900, check=False)
         returncode = completed.returncode
+        if metadata_only and (env["ANTHROPIC_API_KEY"] in completed.stdout or env["ANTHROPIC_API_KEY"] in completed.stderr):
+            category = "sensitive_output_rejected"
+            raise RouteError("sensitive output rejected; reconcile claim")
         if completed.returncode != 0:
             category = "nonzero_exit"
             raise RouteError("execution failed; reconcile claim")
@@ -247,10 +253,15 @@ def run(request, prompt, state_dir, executable, *, environ=None, runner=subproce
         category = "result_storage_failed"
         output = state / (request["request_id"] + ".result.json")
         with output.open("x", encoding="utf-8") as handle:
-            json.dump({"schema_version": 1, "request_id": request["request_id"],
+            record = {"schema_version": 1, "request_id": request["request_id"],
                        "input_sha256": request["input_sha256"], "requested_effort": "xhigh",
                        "observed_effort": None, "model_verified": model_verified,
-                       "completion": "reported" if complete else "partial_or_unverified", "result": value}, handle, ensure_ascii=False)
+                       "completion": "reported" if complete else "partial_or_unverified"}
+            if metadata_only:
+                record["output_policy"] = "metadata_only"
+            else:
+                record["result"] = value
+            json.dump(record, handle, ensure_ascii=False)
             handle.flush()
             os.fsync(handle.fileno())
     except subprocess.TimeoutExpired as exc:
@@ -272,15 +283,18 @@ def main(argv=None):
     parser.add_argument("--input", type=Path)
     parser.add_argument("--state-dir", type=Path)
     parser.add_argument("--claude-executable", type=Path)
+    parser.add_argument("--metadata-only", action="store_true")
     args = parser.parse_args(argv)
     try:
         request = _load_json(args.request, "request")
+        if args.metadata_only and args.phase != "run":
+            raise RouteError("metadata-only requires run")
         if args.phase == "run":
             if not all((args.input, args.state_dir, args.claude_executable)):
                 raise RouteError("run requires input, state directory and executable")
             _read_limited_utf8(args.input, 128 * 1024, "input")  # validate path and size
             prompt = args.input.read_bytes().decode("utf-8")  # preserve CRLF in the hashed bytes
-            output = run(request, prompt, args.state_dir, args.claude_executable)
+            output = run(request, prompt, args.state_dir, args.claude_executable, metadata_only=args.metadata_only)
         elif args.phase == "doctor":
             output = doctor(request, args.claude_executable)
         else:
