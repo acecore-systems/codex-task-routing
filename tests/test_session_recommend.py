@@ -62,6 +62,84 @@ class SessionRecommendationTests(unittest.TestCase):
                 self.assertFalse(result['gaps'])
                 self.assertFalse(result['execution_authorized'])
 
+    def test_explicit_parent_can_handoff_same_goal_to_separate_future_context(self):
+        self.facts['owner'] = dict(status='continuing', owner_id='root', route='continue_current',
+                                   suitable=True, kind='parent')
+        self.facts['work'].update(independent=False, reasons=[], parent_only=False,
+                                  context_separation_benefit=True)
+        result = self.recommend()
+        self.assertEqual(result['route'], 'subagent')
+        self.assertEqual(result['next_action'], 'review_subagent_contract')
+        self.assertIn('separate_future_work_context_from_parent', result['why'])
+        self.assertFalse(result['execution_authorized'])
+
+    def test_explicit_delegated_owner_continues_same_unit(self):
+        self.facts['owner'] = dict(status='continuing', owner_id='worker', route='subagent',
+                                   suitable=True, kind='delegated')
+        self.facts['work'].update(parent_only=False, context_separation_benefit=True)
+        self.facts['host']['subagent'] = False
+        result = self.recommend()
+        self.assertEqual(result['route'], 'subagent')
+        self.assertEqual(result['next_action'], 'reuse_existing_owner')
+        self.assertEqual(result['owner_id'], 'worker')
+
+    def test_parent_handoff_keeps_parent_only_coupling_host_and_benefit_gates(self):
+        self.facts['owner'] = dict(status='continuing', owner_id='root', route='continue_current',
+                                   suitable=True, kind='parent')
+        self.facts['work'].update(independent=False, reasons=[], parent_only=False, context_separation_benefit=True)
+        for area, key, value in (('work', 'parent_only', True), ('work', 'tightly_coupled', True),
+                                 ('work', 'handoff_benefit', False),
+                                 ('host', 'subagent', False)):
+            with self.subTest(key=key):
+                facts = copy.deepcopy(self.facts)
+                facts[area][key] = value
+                result = sp.recommend_session(facts)
+                self.assertEqual(result['route'], 'continue_current')
+                self.assertFalse(result['execution_authorized'])
+
+    def test_unknown_parent_handoff_facts_are_gaps_not_inferred_permission(self):
+        self.facts['owner'] = dict(status='continuing', owner_id='root', route='continue_current',
+                                   suitable=True, kind='parent')
+        self.facts['work'].update(independent=False, reasons=[], parent_only=False, context_separation_benefit=True)
+        for key in ('parent_only', 'context_separation_benefit', 'handoff_benefit', 'tightly_coupled'):
+            with self.subTest(key=key):
+                facts = copy.deepcopy(self.facts)
+                facts['work'][key] = None
+                result = sp.recommend_session(facts)
+                self.assertEqual(result['route'], 'continue_current')
+                self.assertEqual(result['next_action'], 'assess_work_unit')
+                self.assertIn('work.' + key + ':unknown', result['gaps'])
+        self.facts['host']['subagent'] = None
+        result = self.recommend()
+        self.assertEqual(result['route'], 'subagent')
+        self.assertEqual(result['next_action'], 'resolve_candidate_gaps')
+        self.assertIn('host.subagent:unknown', result['gaps'])
+        self.assertFalse(result['execution_authorized'])
+
+    def test_parent_handoff_can_have_other_benefit_without_context_benefit(self):
+        self.facts['owner'] = dict(status='continuing', owner_id='root', route='continue_current',
+                                   suitable=True, kind='parent')
+        self.facts['work'].update(independent=False, reasons=[], parent_only=False,
+                                  context_separation_benefit=False, handoff_benefit=True)
+        result = self.recommend()
+        self.assertEqual(result['route'], 'subagent')
+        self.assertIn('other_parent_handoff_benefit', result['why'])
+
+    def test_explicit_parent_does_not_override_cloud_first_for_independent_repository(self):
+        self.facts['owner'] = dict(status='continuing', owner_id='root', route='continue_current',
+                                   suitable=True, kind='parent')
+        self.facts['work'].update(parent_only=False, context_separation_benefit=True)
+        result = self.recommend()
+        self.assertEqual(result['route'], 'codex_cloud')
+        self.assertEqual(result['next_action'], 'prepare_cloud_handoff')
+
+    def test_owner_kind_must_be_explicit_and_consistent_with_route(self):
+        for kind, route in (('parent', 'subagent'), ('delegated', 'continue_current')):
+            self.facts['owner'] = dict(status='continuing', owner_id='opaque', route=route,
+                                       suitable=True, kind=kind)
+            with self.subTest(kind=kind), self.assertRaises(sp.SessionPlanError):
+                self.recommend()
+
     def test_unknown_owner_requires_reuse_check_before_acting_on_cloud_proposal(self):
         for owner in (dict(status='unknown'), dict(status='continuing', owner_id='current',
                       route='continue_current', suitable=None)):

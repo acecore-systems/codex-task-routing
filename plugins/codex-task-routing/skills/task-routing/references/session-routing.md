@@ -1,6 +1,6 @@
 # セッションとCodexクラウドの計画
 
-model・effortと、仕事を置く実行環境は別に選びます。同じ完了単位を進行中の適任担当は、通常修正・検証・合意済み指摘対応・受入まで継続します。親にも新規の仕事を実行する能力があるだけなら、その仕事の継続担当がいるとは扱いません。短い仕事・密結合・引継ぎ便益が小さい仕事は現在担当、同一目的の限定補助は標準子、別目的・独立成果物・別repo/PR・独立継続管理は別セッションを比較します。長時間、長文脈、利用枠回避、同モデルへの移管だけでは分割しません。
+model・effortと、仕事を置く実行環境は別に選びます。同じ完了単位を進行中の適任な委譲先は、通常修正・検証・合意済み指摘対応・受入まで継続します。親が詳しい・着手しただけで親担当に固定せず、将来の編集・試行・検証の文脈分離と短い引継ぎの負担を比較し、適合し許可される完了単位を標準子へ渡します。短い仕事・親子間で実際に密結合な仕事・具体的な親専用操作は別です。別目的・独立成果物・別repo/PR・独立継続管理では別セッションを比較し、長時間や長文脈だけを理由に新しいトップレベルセッションを作りません。
 
 この版の`session_plan.py`はPython標準ライブラリによるローカル計画だけです。ネットワーク、モデル、CLI、ブラウザー、タスクを起動せず、認証・会話履歴・個人メモリ・稼働Codexホームも読みません。入力JSON以外を探索せず、状態ファイルを更新しません。`execution_authorized`は常にfalse、クラウド出力は`planning_only:true`、`runtime_implemented:false`です。`preflight_complete:true`も、供給された観測の機械照合が通ったという意味です。実接続・送信・テスト・ホストの許可の証明ではありません。この節の既存`cloud`契約は現行Cloud UIの`codex_cloud_ui`と明示handoffです。0.18.0の既存Codexタスクへのnative継続・回収は別の[固定契約](native-cloud.md)で扱い、新規native作成は行いません。`runtime_implemented:false`はplanner自身が非実行という既存契約で、UIの利用不能を意味しません。旧Cloud CLIの実行コード・入力受付・専用資料は配布しません。実UIと実テストの確認範囲は、リポジトリの版別検証記録を参照します。
 
@@ -52,11 +52,12 @@ python <plugin-root>/scripts/session_plan.py recommend --facts <work-unit.json>
 | --- | --- |
 | work.purpose / kind | 目的と工程。kindはrepository（repo実装・検証等）、analysis（分析等）、support（同一目的の限定補助） |
 | independent | 独立した成果・受入を持つ単位か。true/false/null |
-| tightly_coupled | 現在担当と細かな往復・共有状態の更新が必要か。trueなら別成果物があっても継続 |
-| handoff_benefit | 引継ぎ・待機・検収・手戻り込みで分担の便益があるか。true/false/null |
+| tightly_coupled | 引継ぎ後も親子間で細かな往復・共有状態の更新が不可欠か。工程内部の結合だけではtrueにしない |
+| handoff_benefit | 引継ぎ・待機・検収・手戻りと将来の文脈分離を含めた総便益。true/false/null |
+| work.parent_only / context_separation_benefit | 任意。具体的に親専用か、将来の作業履歴の分離に便益があるか。各true/false/null。unknownを推測しない |
 | reasons | separate_goal / independent_deliverable / separate_repo_or_pr / ongoing_managementが別セッションの根拠。long_running / long_context / quota_avoidance / same_model_transferだけでは根拠にならない |
 | owner.status | newは同じ完了単位の既存担当を確認した未着手単位。unknownは担当の有無を未確認。continuingは同じ完了単位の担当を確認済みで、owner_id / route / suitableを必須にする |
-| owner.suitable | continuingの場合の適合性。trueなら同じ担当を再利用、nullなら再利用確認。親が一般に作業可能という意味にはしない |
+| owner.suitable / kind | continuingの場合の適合性と任意の明示kind（parent / delegated）。delegatedかつ適任なら継続。parentは親の把握済みを引継ぎ不能と混同しない。kind省略は旧動作を維持し、識別子やモデルからkindを推測しない |
 | work.repository | 対象repoの正規ID。任意だがenvironmentの対応照合に必要。環境名から推測しない |
 | execution.cloud.environment | 任意の環境状態。省略はunknown。契約は次節 |
 | execution.cloud.parallel | 同一repoで並列taskを使う時の範囲・branch・統合担当・ホスト条件。次節を参照 |
@@ -66,7 +67,9 @@ python <plugin-root>/scripts/session_plan.py recommend --facts <work-unit.json>
 | execution.chat_can_complete | 必要材料・実ツール・検証環境で完了単位をChatが終えられるか。trueでも適合する独立repo Cloud工程が先。それ以外は既存Chat方針で先に検討 |
 | host | subagent / new_session / codex_cloud / chat_pro / materials_transferの現在のホスト制約と同一範囲の既存承認。各true/false/null。未入力はnull。trueの宣言だけで権限を発行しない |
 
-`work`の全項目と`owner.status`は必須です。`execution`と`host`自体は必須で、その内部項目は省略可能・省略時はunknownです。workの真偽もnullを受理します。`owner.status:continuing`の例は`{"status":"continuing","owner_id":"existing-owner","route":"codex_cloud","suitable":true}`です。new/unknownには他のowner項目を付けません。新規所有者をまだ確認していない時はnewを使いません。
+従来の`work`項目と`owner.status`は必須です。新しい3項目は任意で、省略した旧入力の動作は変わりません。`execution`と`host`自体は必須で、その内部項目の省略はunknownです。`owner.status:continuing`にはowner_id / route / suitableを指定し、kind=parentはroute=continue_current、kind=delegatedはそれ以外のrouteと一致させます。new/unknownには他のowner項目を付けません。
+
+親から同じ目的の完了単位を移す場合は、例えば`owner={"status":"continuing","owner_id":"root","route":"continue_current","suitable":true,"kind":"parent"}`、`work.independent=false`、`work.parent_only=false`、`work.context_separation_benefit=true`、`work.handoff_benefit=true`、`work.tightly_coupled=false`と、確認済みの`host.subagent=true`を指定します。標準子を推薦し、実行許可は発行しません。親専用や親子間の密結合は継続、便益やアクセスがunknownなら未確認を返します。context便益がfalseでも、別の具体的便益を含む総便益がtrueなら委譲候補です。別目的の独立repo工程では既存のCloud優先比較を維持します。旧`select`契約は変更しません。
 
 host.subagentは標準階層・役割・depth・並列なら委譲者自身の独立作業・直列なら追加価値とホスト許可を確認した範囲です。host.new_sessionは本人の新規トップレベルタスクの明示依頼と現ホスト条件、host.chat_proは既存opt-in・actor条件等を含みます。host.materials_transferのtrueは今回の対象・材料・操作に有効な元承認を再利用できます。unknownを勝手にtrueへせず、上位の実承認要求を維持します。
 

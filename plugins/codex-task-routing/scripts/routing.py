@@ -849,7 +849,9 @@ def hook_payload(
                     "Before substantial investigation or implementation select an owner and, when suitable "
                     "and allowed, call the actual delegation tool with a complete unit. A plan is not delegation; "
                     "do not solve the unit first just to classify it. If the parent continues, briefly give a "
-                    "concrete reason once. Respect short work, existing owners, user prohibitions and host restrictions.",
+                    "concrete reason once. Parent familiarity is not continuing ownership: hand off scope, materials, "
+                    "decisions, constraints, acceptance and authority; count separation of future work as a benefit. "
+                    "Respect short work, existing delegated owners, user prohibitions and host restrictions.",
                     ("Custom principles replace the bundled summary; read effective.md before routing. "
                      "Distinguish local-resource needs from a standard child's actual access and suitability; "
                      "apply the effective principles and host limits when deciding. "

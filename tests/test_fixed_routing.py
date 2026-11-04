@@ -146,7 +146,7 @@ class FixedRoutingTests(unittest.TestCase):
     def test_generated_owner_policy_has_no_conflicting_parent_defaults(self):
         # Contract checks of generated instructions, not model-behavior tests.
         policy = routing.load_policy(codex_home=self.home)
-        self.assertEqual(policy.config['policy_revision'], '2026-11-04-creative-unit-delegation')
+        self.assertEqual(policy.config['policy_revision'], '2026-11-04-context-separated-handoff')
         documents = policy.rendered_documents()
         obsolete = ('GPT-6.1 Sol/xhigh', '参考基準は親Sol/xhigh',
                     '通常作業は親で完結する', '通常工程は親で完結し',
@@ -368,7 +368,7 @@ class FixedRoutingTests(unittest.TestCase):
             self.assertIn('独立した通常実装を親に残すことを既定にしない', text)
             self.assertIn('無理に並列化せず', text)
         detailed = documents['model-routing-policy.md']
-        for phrase in ('適任な継続担当', '密結合', 'ホスト許可', '親の実装を一律に禁止しない'):
+        for phrase in ('適任な既存委譲先', '密結合', 'ホスト許可', '親の実装を一律に禁止しない'):
             self.assertIn(phrase, detailed)
         context = routing.hook_payload(event='SessionStart', source='startup',
             codex_home=self.home, cwd=self.home)['hookSpecificOutput']['additionalContext']
@@ -384,6 +384,17 @@ class FixedRoutingTests(unittest.TestCase):
                            '単位内部が密結合なだけでは親担当の理由にならない',
                            '素材・ツールへの実アクセス', 'ホスト条件'):
                 self.assertIn(phrase, text)
+
+    def test_parent_familiarity_does_not_override_context_handoff_policy(self):
+        policy = routing.load_policy(codex_home=self.home)
+        for name in ('effective.md', 'model-routing-policy.md'):
+            text = policy.rendered_documents()[name]
+            for phrase in ('親の把握', '素材・決定・制約・受入・権限', '文脈分離', '既存委譲先'):
+                self.assertIn(phrase, text)
+        context = routing.hook_payload(event='SessionStart', source='startup',
+            codex_home=self.home, cwd=self.home)['hookSpecificOutput']['additionalContext']
+        self.assertIn('Parent familiarity is not continuing ownership', context)
+        self.assertIn('separation of future work as a benefit', context)
 
     def test_default_hook_and_skill_are_short_and_preserve_early_action(self):
         context = routing.hook_payload(event='SessionStart', source='startup',

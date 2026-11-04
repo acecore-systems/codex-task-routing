@@ -35,7 +35,7 @@ class ParentGuardTests(unittest.TestCase):
         result = self.send('UserPromptSubmit', prompt='private-user-prompt')
         self.assertEqual(result['hookSpecificOutput']['hookEventName'], 'UserPromptSubmit')
         context = result['hookSpecificOutput']['additionalContext']
-        for phrase in ('substantial work', 'internal coupling alone', 'Continue a suitable existing owner',
+        for phrase in ('substantial work', 'internal coupling and parent familiarity', 'Continue a suitable delegated owner',
                        'answer short questions normally', 'host permission', 'custom policy',
                        'Do not invent work or force delegation'):
             self.assertIn(phrase, context)
@@ -66,7 +66,7 @@ class ParentGuardTests(unittest.TestCase):
         out = self.work(guard.THRESHOLD - 1)
         self.assertEqual(set(out['hookSpecificOutput']), {'hookEventName', 'additionalContext'})
         text = out['hookSpecificOutput']['additionalContext']
-        for phrase in ('Short or tightly coupled work', 'parent acceptance', 'existing owner', 'user prohibition', 'host restrictions', 'not a requirement'):
+        for phrase in ('Short work', 'parent-only operations', 'parent acceptance', 'existing delegated owner', 'user prohibition', 'host restrictions', 'not a requirement'):
             self.assertIn(phrase, text)
         self.assertIsNone(self.work(100))
         content = (self.home / 'codex-task-routing/parent-guard/state.sqlite3').read_bytes()
