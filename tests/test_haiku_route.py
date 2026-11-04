@@ -35,9 +35,43 @@ class HaikuRouteTests(unittest.TestCase):
                     'ANTHROPIC_BASE_URL': 'https://evil.invalid', 'AWS_SECRET_ACCESS_KEY': 'secret2',
                     'CLAUDE_CODE_USE_BEDROCK': '1', 'CLAUDE_CODE_OAUTH_TOKEN': 'secret3'}
 
-    def execute(self, runner):
+    def execute(self, runner, *, metadata_only=False):
         with patch.object(route, 'doctor', return_value={'cli': 'version_and_help_checked', 'max_turns_option': 'help_parser_accepted', 'repository': 'matches_clean'}):
-            return route.run(self.request, self.prompt, self.state, self.exe, environ=self.env, runner=runner)
+            return route.run(self.request, self.prompt, self.state, self.exe, environ=self.env, runner=runner, metadata_only=metadata_only)
+
+    def test_metadata_only_discards_all_model_output_and_keeps_claim(self):
+        def fake(argv, **kwargs):
+            return subprocess.CompletedProcess(argv, 0, json.dumps({'subtype': 'success', 'is_error': False,
+                'result': 'private model text', 'modelUsage': {route.MODEL: {}}, 'permission_denials': []}), 'private stderr')
+        self.assertEqual(self.execute(fake, metadata_only=True)['status'], 'result_recorded')
+        stored = json.loads((self.state / 'task-1.result.json').read_text(encoding='utf-8'))
+        self.assertEqual(stored['output_policy'], 'metadata_only')
+        self.assertEqual(stored['completion'], 'reported')
+        self.assertNotIn('result', stored)
+        self.assertNotIn('private', json.dumps(stored))
+        with self.assertRaises(route.RouteError):
+            self.execute(fake, metadata_only=True)
+
+    def test_metadata_only_rejects_literal_key_in_either_stream_and_never_resends(self):
+        for stream in ('stdout', 'stderr'):
+            self.request['request_id'] = stream
+            calls = []
+            def fake(argv, **kwargs):
+                calls.append(1)
+                response = json.dumps({'subtype':'success','is_error':False,'modelUsage':{route.MODEL:{}},'permission_denials':[]})
+                return subprocess.CompletedProcess(argv, 0, response + ('secret' if stream=='stdout' else ''), 'secret' if stream=='stderr' else '')
+            with self.subTest(stream=stream), self.assertRaises(route.RouteError):
+                self.execute(fake, metadata_only=True)
+            self.assertTrue((self.state / (stream+'.claim.json')).exists())
+            self.assertFalse((self.state / (stream+'.result.json')).exists())
+            self.assertEqual(json.loads((self.state / (stream+'.failure.json')).read_text())['category'], 'sensitive_output_rejected')
+            with self.assertRaises(route.RouteError): self.execute(fake, metadata_only=True)
+            self.assertEqual(len(calls), 1)
+
+    def test_metadata_only_rejects_key_in_prompt_before_claim(self):
+        self.prompt = 'secret'; self.request['input_sha256'] = hashlib.sha256(self.prompt.encode()).hexdigest()
+        with self.assertRaises(route.RouteError): self.execute(lambda *a, **k: self.fail('must not send'), metadata_only=True)
+        self.assertEqual(list(self.state.iterdir()), [])
 
     def test_success_claim_result_and_environment_boundary(self):
         calls = []
