@@ -183,21 +183,28 @@ def recommend_session(facts):
     _schema(facts["schema_version"])
     work, owner, execution, host = (facts[key] for key in ("work", "owner", "execution", "host"))
     _object(work, {"purpose", "kind", "independent", "tightly_coupled", "handoff_benefit", "reasons"},
-            {"repository"})
+            {"repository", "parent_only", "context_separation_benefit"})
     _text(work["purpose"])
     if "repository" in work:
         _text(work["repository"])
     _enum(work["kind"], {"repository", "analysis", "support"})
     for key in ("independent", "tightly_coupled", "handoff_benefit"):
         _truth(work[key])
+    for key in ("parent_only", "context_separation_benefit"):
+        if key in work:
+            _truth(work[key])
     _list(work["reasons"], choices=DECISION_REASONS, allow_empty=True)
-    _object(owner, {"status"}, {"owner_id", "route", "suitable"})
+    _object(owner, {"status"}, {"owner_id", "route", "suitable", "kind"})
     _enum(owner["status"], {"new", "continuing", "unknown"})
     if owner["status"] == "continuing":
-        _object(owner, {"status", "owner_id", "route", "suitable"})
+        _object(owner, {"status", "owner_id", "route", "suitable"}, {"kind"})
         _identifier(owner["owner_id"])
         _enum(owner["route"], ROUTES)
         _truth(owner["suitable"])
+        if "kind" in owner:
+            _enum(owner["kind"], {"parent", "delegated"})
+            if (owner["kind"] == "parent") != (owner["route"] == "continue_current"):
+                raise SessionPlanError("owner kind and route conflict")
     elif set(owner) != {"status"}:
         raise SessionPlanError("only continuing owners have identity and suitability")
     _object(execution, set(), {"local_required", "cloud", "chat_can_complete", "haiku"})
@@ -280,11 +287,14 @@ def recommend_session(facts):
          ("host.materials_transfer", host.get("materials_transfer"))], split_exclusions)
     local_option = assess("new_local_session", "independent_local_ownership",
                          [("host.new_session", host.get("new_session"))], split_exclusions)
+    parent_handoff = owner.get("kind") == "parent" and owner["status"] == "continuing"
     child_option = assess("subagent", "bounded_support_for_same_goal",
                          [("host.subagent", host.get("subagent"))],
-                         [("not_same_goal_support", work["kind"] != "support" or work["independent"] is True),
+                         [("not_same_goal_support", not parent_handoff and
+                           (work["kind"] != "support" or work["independent"] is True)),
                           ("tight_coupling", work["tightly_coupled"]),
-                          ("handoff_cost_exceeds_benefit", work["handoff_benefit"] is False)])
+                          ("handoff_cost_exceeds_benefit", work["handoff_benefit"] is False),
+                          ("parent_only", parent_handoff and work.get("parent_only") is True)])
     current_option = assess("continue_current", "current_context_available")
     output = {"schema_version": 1, "decision_kind": "recommendation", "proposal_only": True,
               "execution_authorized": False, "gaps": []}
@@ -318,11 +328,34 @@ def recommend_session(facts):
 
     # Preserve an active, suitable owner through fixes, tests, acceptance and
     # collection. Status requests or a timeout never make a new work unit.
-    if owner["status"] == "continuing" and owner["suitable"] is True:
+    if owner["status"] == "continuing" and owner["suitable"] is True and not parent_handoff:
         # New-dispatch capability facts are not gates on resuming the original.
         return finish({"route": owner["route"], "gaps": []}, ["keep_suitable_owner_of_same_work_unit"],
                       "continue_current" if owner["route"] == "continue_current" else "reuse_existing_owner",
                       owner_id=owner["owner_id"])
+    if parent_handoff:
+        # Explicit parent ownership is not evidence that the remaining work
+        # must stay with the parent. Older inputs without kind keep their
+        # original behavior; never infer kind from owner_id or model names.
+        if work.get("parent_only") is True or work["tightly_coupled"] is True:
+            why = "parent_only" if work.get("parent_only") is True else "tight_parent_boundary_coupling"
+            return finish(current_option, [why], "continue_current", owner_id=owner["owner_id"])
+        if work["handoff_benefit"] is False:
+            return finish(current_option, ["handoff_not_worthwhile"], "continue_current", owner_id=owner["owner_id"])
+        unknown = ["work." + key + ":unknown" for key in
+                   ("parent_only", "context_separation_benefit", "handoff_benefit", "tightly_coupled")
+                   if work.get(key) is None]
+        if unknown:
+            return finish(current_option, ["assess_parent_handoff"], "assess_work_unit", unknown,
+                          owner_id=owner["owner_id"])
+        if work["independent"] is False:
+            if host.get("subagent") is False:
+                return finish(current_option, ["host.subagent:false"], "report_context_limitations",
+                              owner_id=owner["owner_id"])
+            why = ("separate_future_work_context_from_parent" if work["context_separation_benefit"]
+                   else "other_parent_handoff_benefit")
+            return finish(child_option, [why],
+                          "resolve_candidate_gaps" if child_option["gaps"] else "review_subagent_contract")
     if work["tightly_coupled"] is True or work["handoff_benefit"] is False:
         return finish(current_option, ["tight_coupling" if work["tightly_coupled"] is True
                                       else "handoff_cost_exceeds_benefit"], "continue_current")

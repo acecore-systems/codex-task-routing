@@ -28,17 +28,21 @@ WORK_TOOLS = frozenset({'exec', 'exec_command', 'apply_patch', 'write_stdin'})
 OWNER_TOOLS = frozenset({'send_input', 'followup_task', 'wait_agent'})
 REMINDER = (
     'Task Routing: sustained local work without an observed delegate. Consider handing a complete '
-    'unit to a suitable existing owner or standard child when allowed and worthwhile. '
-    'Short or tightly coupled work, parent acceptance, an existing owner, user prohibition and '
-    'host restrictions are valid reasons to continue; this is not a requirement to delegate.'
+    'unit to an existing delegated owner or an allowed suitable child. Parent familiarity alone '
+    'is not a reason to retain future work: give a concise handoff and consider separation of '
+    'future editing, trials and tests. Short work, genuine parent-only operations, parent acceptance, '
+    'an existing delegated owner, user prohibition and host restrictions can justify continuing; '
+    'this is not a requirement to delegate.'
 )
 PROMPT_REMINDER = (
     'Task Routing: for substantial work, choose an owner before substantial investigation or '
     'implementation. A creative unit can include tightly coupled edits, materials and checks; '
-    'internal coupling alone does not require the parent to own it. Check actual access, a useful '
+    'internal coupling and parent familiarity alone do not require parent ownership. Consider '
+    'separating future edits, trials and tests in a child context, with a concise handoff of scope, '
+    'materials, decisions, constraints, acceptance and authority. Check actual access, a useful '
     'independent parent task for parallel work or host permission and added value for serial work. '
     'Use the allowed delegation tool when suitable; if the parent continues, give a concrete reason. '
-    'Continue a suitable existing owner, answer short questions normally, and respect the effective '
+    'Continue a suitable delegated owner, answer short questions normally, and respect the effective '
     'custom policy, user prohibitions and host restrictions. Do not invent work or force delegation.'
 )
 
