@@ -34,6 +34,7 @@ from routing_core.common import (
     _assert_safe_ancestors, _read_limited_utf8, _load_json,
     _is_schema_version_one, _canonical_json, _safe_mkdir, _write_atomic,
 )
+from haiku_config import load_config as load_haiku_config
 from routing_core.observation_capture import export_capture, record_baseline, verify_capture, certify_capture
 from routing_core.observation import (
     OBSERVATIONS_RELATIVE, OBSERVATION_LOCK_NAME,
@@ -907,6 +908,19 @@ def hook_payload(
                 route_context = _chatgpt_context(home, plugin_root, for_child=event == "SubagentStart")
             except (RoutingError, OSError, ImportError, ValueError):
                 route_diagnostic = "ChatGPT route not applied: invalid configuration or unavailable helper. Run chatgpt_route.py status."
+        if event == "SessionStart":
+            try:
+                haiku_config = load_haiku_config(home)
+                if haiku_config["enabled"]:
+                    context += ("\nOpt-in Haiku text-only proposal candidate enabled for root. "
+                                "Follow effective policy and overrides; keep suitable owners and existing Cloud/Pro priority. "
+                                "Verify local-auth adapter, "
+                                "host/delegation, target and per-request material authorization. "
+                                "Parent applies edits and tests. Read <plugin-root>/skills/task-routing/references/haiku-api.md; "
+                                "no automatic execution or resend.")
+            except (RoutingError, OSError, ValueError):
+                route_diagnostic = ((route_diagnostic + " ") if route_diagnostic else "") + (
+                    "Haiku route not applied: invalid configuration. Run haiku_config.py status.")
         context += "\n" + local_auth_context
         context += ("\nUse this single effective policy set. Use standard Codex agents for child delegation; "
                     "separately enabled routes require actual host permission and higher-priority instructions. "

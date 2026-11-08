@@ -209,7 +209,8 @@ class HaikuRouteTests(unittest.TestCase):
         facts = repository_unit()
         facts['execution']['cloud']['available'] = False
         self.assertEqual(session_plan.recommend_session(facts)['route'], 'new_local_session')
-        facts['execution']['haiku'] = dict(enabled=True, can_complete=True)
+        facts['work']['parent_only'] = False
+        facts['execution']['haiku'] = dict(enabled=True, can_complete=True, root_actor=True, text_only_suitable=True, adapter_ready=True, target_authorized=True, materials_authorized=True, delegation_conditions_met=True)
         facts['host']['haiku_api'] = True
         self.assertEqual(session_plan.recommend_session(facts)['route'], 'haiku_api')
         facts['host']['haiku_api'] = None

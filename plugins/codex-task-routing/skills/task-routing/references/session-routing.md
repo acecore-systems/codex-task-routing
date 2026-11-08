@@ -65,7 +65,8 @@ python <plugin-root>/scripts/session_plan.py recommend --facts <work-unit.json>
 | execution.cloud.available | 現在のCloudサービス/UIが利用できるか。未接続・offline・利用不能をfalse、未確認をnullにする。対象repo環境の不存在はfalseの理由にせずenvironmentで別に扱う |
 | execution.cloud.materials_ready / tests_ready | 承認範囲の必要材料・対象revisionがCloudへ渡せる形で揃い、必須テストを実施できるか。テスト不要と確認した工程はtests_ready:true、未確認ならnull |
 | execution.chat_can_complete | 必要材料・実ツール・検証環境で完了単位をChatが終えられるか。trueでも適合する独立repo Cloud工程が先。それ以外は既存Chat方針で先に検討 |
-| host | subagent / new_session / codex_cloud / chat_pro / materials_transferの現在のホスト制約と同一範囲の既存承認。各true/false/null。未入力はnull。trueの宣言だけで権限を発行しない |
+| execution.haiku | 任意。enabled / can_complete / root_actor / text_only_suitable / adapter_ready / target_authorized / materials_authorized / delegation_conditions_met の各true/false/null。enabled省略はfalse、他の省略はunknown。can_completeは引き渡すテキスト提案単位に対する適合であり、モデルによる編集・テストの完了ではない |
+| host | subagent / new_session / codex_cloud / chat_pro / haiku_api / materials_transferの現在のホスト制約と同一範囲の既存承認。各true/false/null。未入力はnull。trueの宣言だけで権限を発行しない |
 
 従来の`work`項目と`owner.status`は必須です。新しい3項目は任意で、省略した旧入力の動作は変わりません。`execution`と`host`自体は必須で、その内部項目の省略はunknownです。`owner.status:continuing`にはowner_id / route / suitableを指定し、kind=parentはroute=continue_current、kind=delegatedはそれ以外のrouteと一致させます。new/unknownには他のowner項目を付けません。
 
@@ -73,9 +74,9 @@ python <plugin-root>/scripts/session_plan.py recommend --facts <work-unit.json>
 
 host.subagentは標準階層・役割・depth・並列なら委譲者自身の独立作業・直列なら追加価値とホスト許可を確認した範囲です。host.new_sessionは本人の新規トップレベルタスクの明示依頼と現ホスト条件、host.chat_proは既存opt-in・actor条件等を含みます。host.materials_transferのtrueは今回の対象・材料・操作に有効な元承認を再利用できます。unknownを勝手にtrueへせず、上位の実承認要求を維持します。
 
-出力の`route`は推薦、`why`は判断理由、`alternatives`は他候補の適合状態・理由・不足、`gaps`は採用候補と目的単位の未確認事項です。alternativesのsuitabilityはeligible / conditional / unavailable / not_suitable / blockedで、eligibleも送信承認ではありません。`proposal`は目的と候補・条件付きか、`handoff_required`は目的・範囲・合格条件・許可操作・終端・必要証拠・元依頼同一性等の準備項目を返します。`execution_authorized`は常にfalseで、model/effortを出力せず、状態も変更しません。
+出力の`route`は推薦、`why`は判断理由、`alternatives`は他候補の適合状態・理由・不足、`gaps`は採用候補と目的単位の未確認事項です。alternativesのsuitabilityはeligible / conditional / unavailable / not_suitable / blockedで、eligibleも送信承認ではありません。`proposal`は目的と候補・条件付きか、Haiku候補の場合は要求model/effort・text-only・親による編集/テストの継続も示します。`handoff_required`は目的・範囲・合格条件・許可操作・終端・必要証拠・元依頼同一性等の準備項目を返します。`execution_authorized`は常にfalseで、Haiku以外のmodel/effortや親設定を変更せず、状態も変更しません。
 
-`next_action`は継続ならcontinue_current / reuse_existing_owner、所有者未確認ならcheck_owner_reuse、分割条件未確認ならassess_work_unit、候補能力・承認未確認ならresolve_candidate_gapsです。確認済みCloud候補はprepare_cloud_handoff、Chatはevaluate_existing_chat_policy、ローカル別セッションはreview_new_session_contract、標準子はreview_subagent_contractへ進みます。実行可能な別環境がなければreport_context_limitationsです。Cloud推薦は後述の既存inspect / dispatch-planへ渡し、実際の許可・環境・revision・検証を確認します。
+`next_action`は継続ならcontinue_current / reuse_existing_owner、所有者未確認ならcheck_owner_reuse、分割条件未確認ならassess_work_unit、候補能力・承認未確認ならresolve_candidate_gapsです。確認済みCloud候補はprepare_cloud_handoff、Chatはevaluate_existing_chat_policy、ローカル別セッションはreview_new_session_contract、標準子はreview_subagent_contractへ進みます。Haikuはprepare_haiku_handoff、実行可能な別環境がなければreport_context_limitationsです。Cloud推薦は後述の既存inspect / dispatch-planへ渡し、実際の許可・環境・revision・検証を確認します。
 
 | 場面 | 判断と短い提案 |
 | --- | --- |
@@ -89,6 +90,33 @@ host.subagentは標準階層・役割・depth・並列なら委譲者自身の�
 | 既存Cloud担当の通常修正・status要求・受入待ち | 元担当・元taskを継続。新しい別タスクや再送にせず、同一依頼の回収と内容受入へ |
 | 長時間だけ / 長文脈だけ | 独立目的や分担便益がなければ現在担当で継続 |
 | hostや材料転送がunknown / false | unknownは不足を残す。falseは候補をblockedにし、推薦を実行許可へ変えない |
+
+## 同一目的のHaikuテキスト提案
+
+親が進める通常以上の分析・レビュー・実装案も、明示opt-inのHaiku候補と標準子を比較できます。独立repoのCloud、適合するPro、同一単位の適任な既存委譲先の優先は維持し、親専用・親子間の密結合・便益不足は移管しません。Haikuはroot専用で、Windows初期版の対象は承認済みの資料だけを使うtoolなしテキスト提案です。親は元の担当として差分確認、必要な編集、独立テストと受入を続けます。対象や作業に現物の直接操作が不可欠ならtext_only_suitable:falseです。
+
+親から同じ目的の工程を評価するには、上記のparent owner例と `execution.haiku` の8項目、`host.haiku_api` と `host.materials_transfer` をそれぞれ確認します。root_actorは本人による確認済みのroot役割、adapter_readyは固定inbox・登録済みlocal-auth提案入口が対象に対応するという実観測、delegation_conditions_metは並列なら親の独立作業、直列なら具体的な追加価値と現ホストの許可です。target_authorized / materials_authorizedは今回の対象操作と資料送信の有効な承認、can_completeは提案単位の完了可能性です。これらは自動推測せず、unknown/falseをtrueへ変えません。選ばれない場合もalternativesの候補状態・不足を確認できます。Haikuを提案しても `execution_authorized:false` のままであり、候補やbooleanは承認・接続・送信成功を意味しません。
+
+次は合成factsの例です。trueは実績や権限の証明ではなく、呼出し元がそれぞれ確認した場合の入力です。
+
+```json
+{
+  "schema_version": 1,
+  "work": {"purpose": "承認済み資料の変更案を検討", "kind": "repository", "independent": false,
+    "tightly_coupled": false, "handoff_benefit": true, "reasons": [],
+    "parent_only": false, "context_separation_benefit": true},
+  "owner": {"status": "continuing", "owner_id": "root", "route": "continue_current",
+    "suitable": true, "kind": "parent"},
+  "execution": {"local_required": true, "haiku": {"enabled": true, "can_complete": true,
+    "root_actor": true, "text_only_suitable": true, "adapter_ready": true,
+    "target_authorized": true, "materials_authorized": true, "delegation_conditions_met": true}},
+  "host": {"haiku_api": true, "materials_transfer": true, "subagent": true}
+}
+```
+
+この入力では`haiku_api`と元のowner IDを返し、親の編集・テストと`execution_authorized:false`を保持します。対象repoの直接操作まで求める場合や、資料送信・adapter・ホストが未確認の場合は該当項目をfalse/nullにします。
+
+入力ファイルを推薦器へ渡さず、[Haiku API経路](haiku-api.md#通常推薦からの提案実行と回収)の固定inboxとrequest hashでrootが準備・送信・回収を同じ依頼に対応付けます。データ送信や対象操作の既存承認は同じ範囲で再利用し、新たな包括承認として扱いません。実行できないhost、未導入adapter、結果不明では不足を返し、フックや別CLIで迂回・再送しません。
 
 ## repo環境の再利用と新規task
 

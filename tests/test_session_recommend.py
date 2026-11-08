@@ -47,6 +47,110 @@ class SessionRecommendationTests(unittest.TestCase):
         self.assertIn('required_tests_and_evidence', result['handoff_required'])
         self.assertIn('durable_claim_and_submission_state', result['handoff_required'])
 
+    def test_haiku_text_proposal_for_parent_owned_normal_work(self):
+        self.facts['owner'] = dict(status='continuing', owner_id='root', route='continue_current',
+                                   suitable=True, kind='parent')
+        self.facts['work'].update(independent=False, reasons=[], parent_only=False,
+                                  context_separation_benefit=True, handoff_benefit=True, tightly_coupled=False)
+        self.facts['execution']['haiku'] = dict(enabled=True, can_complete=True, root_actor=True,
+            text_only_suitable=True, adapter_ready=True, target_authorized=True,
+            materials_authorized=True, delegation_conditions_met=True)
+        self.facts['host'].update(haiku_api=True, materials_transfer=True)
+        result = self.recommend()
+        self.assertEqual(result['route'], 'haiku_api')
+        self.assertEqual(result['next_action'], 'prepare_haiku_handoff')
+        self.assertEqual(result['owner_id'], 'root')
+        self.assertEqual(result['proposal']['execution_mode'], 'text_only_proposal')
+        self.assertEqual(result['proposal']['model'], 'claude-haiku-5-5')
+        self.assertTrue(result['proposal']['parent_retains_edit_and_test'])
+        self.assertFalse(result['execution_authorized'])
+        self.assertIn('approved_task_id_input_and_manifest_hash', result['handoff_required'])
+
+    def test_haiku_requires_each_explicit_condition_without_inventing_permission(self):
+        self.facts['owner'] = dict(status='continuing', owner_id='root', route='continue_current',
+                                   suitable=True, kind='parent')
+        self.facts['work'].update(independent=False, reasons=[], parent_only=False,
+                                  context_separation_benefit=True, handoff_benefit=True, tightly_coupled=False)
+        self.facts['execution']['haiku'] = dict(enabled=True, can_complete=True, root_actor=True,
+            text_only_suitable=True, adapter_ready=True, target_authorized=True,
+            materials_authorized=True, delegation_conditions_met=True)
+        self.facts['host'].update(haiku_api=True, materials_transfer=True)
+        for key in self.facts['execution']['haiku']:
+            for value in (False, None):
+                with self.subTest(field=key, value=value):
+                    facts = copy.deepcopy(self.facts)
+                    facts['execution']['haiku'][key] = value
+                    result = sp.recommend_session(facts)
+                    self.assertNotEqual(result['route'], 'haiku_api')
+                    candidate = next(x for x in result['alternatives'] if x['route'] == 'haiku_api')
+                    self.assertTrue(candidate['gaps'] or candidate['suitability'] != 'eligible')
+                    self.assertFalse(result['execution_authorized'])
+        for key in ('haiku_api', 'materials_transfer'):
+            for value in (False, None):
+                with self.subTest(host=key, value=value):
+                    facts = copy.deepcopy(self.facts)
+                    facts['host'][key] = value
+                    self.assertNotEqual(sp.recommend_session(facts)['route'], 'haiku_api')
+
+    def test_haiku_preserves_owner_cloud_and_pro_precedence(self):
+        self.facts['work']['parent_only'] = False
+        self.facts['execution']['haiku'] = dict(enabled=True, can_complete=True, root_actor=True,
+            text_only_suitable=True, adapter_ready=True, target_authorized=True,
+            materials_authorized=True, delegation_conditions_met=True)
+        self.facts['host'].update(haiku_api=True, materials_transfer=True, chat_pro=True)
+        self.facts['execution']['chat_can_complete'] = True
+        self.assertEqual(self.recommend()['route'], 'codex_cloud')
+        self.facts['execution']['cloud']['available'] = False
+        self.assertEqual(self.recommend()['route'], 'chat_pro')
+        self.facts['owner'] = dict(status='continuing', owner_id='already-delegated',
+                                   route='subagent', suitable=True, kind='delegated')
+        self.assertEqual(self.recommend()['route'], 'subagent')
+        self.assertEqual(self.recommend()['next_action'], 'reuse_existing_owner')
+
+    def test_haiku_is_not_eligible_when_work_boundaries_are_unknown(self):
+        self.facts['execution']['cloud']['available'] = False
+        self.facts['work']['parent_only'] = False
+        self.facts['execution']['haiku'] = dict(enabled=True, can_complete=True, root_actor=True,
+            text_only_suitable=True, adapter_ready=True, target_authorized=True,
+            materials_authorized=True, delegation_conditions_met=True)
+        self.facts['host'].update(haiku_api=True, materials_transfer=True)
+        for key in ('parent_only', 'tightly_coupled', 'handoff_benefit', 'independent'):
+            with self.subTest(key=key):
+                facts = copy.deepcopy(self.facts)
+                facts['work'][key] = None
+                result = sp.recommend_session(facts)
+                self.assertNotEqual(result['route'], 'haiku_api')
+                candidate = next(item for item in result['alternatives'] if item['route'] == 'haiku_api')
+                self.assertNotEqual(candidate['suitability'], 'eligible')
+
+    def test_haiku_local_requirement_unknown_never_marks_candidate_eligible(self):
+        self.facts['execution']['cloud']['available'] = False
+        self.facts['execution']['local_required'] = None
+        self.facts['work']['parent_only'] = False
+        self.facts['execution']['haiku'] = dict(enabled=True, can_complete=True, root_actor=True,
+            text_only_suitable=True, adapter_ready=True, target_authorized=True,
+            materials_authorized=True, delegation_conditions_met=True)
+        self.facts['host'].update(haiku_api=True, materials_transfer=True)
+        result = self.recommend()
+        self.assertNotEqual(result['route'], 'haiku_api')
+        candidate = next(item for item in result['alternatives'] if item['route'] == 'haiku_api')
+        self.assertIn('execution.local_requirement_known:unknown', candidate['gaps'])
+
+    def test_haiku_cannot_override_parent_only_or_coupling(self):
+        self.facts['owner'] = dict(status='continuing', owner_id='root', route='continue_current',
+                                   suitable=True, kind='parent')
+        self.facts['work'].update(independent=False, reasons=[], parent_only=False,
+                                  context_separation_benefit=True, handoff_benefit=True, tightly_coupled=False)
+        self.facts['execution']['haiku'] = dict(enabled=True, can_complete=True, root_actor=True,
+            text_only_suitable=True, adapter_ready=True, target_authorized=True,
+            materials_authorized=True, delegation_conditions_met=True)
+        self.facts['host'].update(haiku_api=True, materials_transfer=True)
+        for key, value in [('parent_only', True), ('parent_only', None), ('tightly_coupled', True), ('handoff_benefit', False)]:
+            with self.subTest(key=key, value=value):
+                facts = copy.deepcopy(self.facts)
+                facts['work'][key] = value
+                self.assertNotEqual(sp.recommend_session(facts)['route'], 'haiku_api')
+
     def test_continuing_owner_is_reused_even_when_new_dispatch_capability_is_missing(self):
         for route in sp.ROUTES:
             with self.subTest(route=route):

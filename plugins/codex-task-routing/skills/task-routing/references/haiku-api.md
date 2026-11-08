@@ -6,6 +6,33 @@
 
 実行時の環境は最小限にし、API keyと公式 `https://api.anthropic.com` を指定し、OAuth・他provider・proxy等は引き継ぎません。ただし `--restricted` でも管理者のmanaged settingsは適用されます。管理設定が第三者providerや別endpointへ変更していないことを、秘密を閲覧せず呼出し元が別途確認し、確認不能なら `official_endpoint_verified` をfalseにして実行しません。環境変数の指定だけでは実際の接続先の証明にはなりません。CLIは `--bare --restricted --disable-slash-commands --strict-mcp-config`、セッション非永続化、`dontAsk` と制限されたツールで起動します。CLI permission はOS sandboxではありません。ホスト側のsandbox・権限を維持し、その境界を超える能力を与えません。
 
+## 任意の継続設定
+
+通常の新規セッションでも候補として案内する場合、利用者がCodexホームの `codex-task-routing/haiku.json` を次の内容で明示的に設定します。ファイルがない場合と `enabled:false` はオフです。設定は自動作成・変更しません。
+
+```json
+{"schema_version": 1, "enabled": true}
+```
+
+`python <plugin-root>/scripts/haiku_config.py status` はenabled・設定状態だけを読み、実行許可は返しません。不正な設定は無効と診断し、他の既定・overrideを変えません。オンの場合、rootのSessionStartだけにtext-only候補と条件を短く案内します。子の起動・ネットワーク・モデル呼出しは行いません。読み込み済みの上位指示は変わらず、反映を確認するには新しいセッションで有効方針とホストの許可を確認します。推薦入力の `execution.haiku.enabled` はこの設定の現在の確認結果を使い、他の能力・承認やroot役割は各々確認します。設定オンだけで資料送信や実行を許可しません。
+
+## 通常推薦からの提案実行と回収
+
+通常の `session_plan.py recommend` は、rootの同一目的の通常以上の作業にもHaikuを候補にします。[推薦の入力と不足条件](session-routing.md#同一目的のhaikuテキスト提案)を確認してください。Windowsでの初期対応は、個別送信が承認された資料だけを使う **toolなしのテキスト提案** です。ファイル読取り・編集・コマンド実行はモデルに与えず、親が出力の検査、必要な編集と独立テストを続けます。適任の既存担当とCloud/Pro優先を維持し、選定やJSONの宣言を実行権限にしません。
+
+対応するlocal-authの提案adapterが現在のホストに導入され、`ANTHROPIC_PROPOSAL_PLAN` が登録済みの固定inbox・vault rootと各canonical pathのSHA-256を指定している場合のみ、同じroot担当が以下を実施します。adapterは固定planを照合し、ユーザー入力の任意pathを作業先として受け付けません。未導入・対応未確認は不足として扱い、このプラグインだけで登録や実行を完了したとは扱いません。認証値の探索や表示はせず、既存のローカル認証経路を使います。
+
+1. 依頼IDを固定し、承認済みの送信資料だけを固定inboxの `<task_id>.input.txt` に準備します。task_idは小文字の英数字で始まり、小文字英数字・`_`・`-`のみの最大64文字です。Windows予約名 `con` / `prn` / `aux` / `nul` / `com1`〜`com9` / `lpt1`〜`lpt9` は使えません。秘密や未承認資料を含めず、送信対象と操作の既存承認を確認します。
+2. 同じinboxに `<task_id>.manifest.json` を用意し、schemaは `schema_version: 1`、`task_id`、入力バイト列の `input_sha256` のみです。完成したmanifestのバイト列をSHA-256で照合し、依頼ID・入力hash・manifest hashを固定します。これらの一致は送信承認の代わりにはなりません。
+3. 実ホストが明示操作と送信を許す場合に限り、登録済みnative CLIの `--anthropic-proposal <task_id> <manifest_sha256> --vault-root <登録済み固定vault root>` を一度だけ実行します。フック・推薦器・通常Chatのfallbackからは起動せず、キーをCLI引数にしません。経路指定は登録済みinboxとvault rootの範囲に限ります。
+4. 固定inboxの `<task_id>.result.json` と `<task_id>.proposal.txt` を元依頼に対応付けて回収し、task_id、input_sha256、output_sha256、モデル、終了理由と受入状態を確認します。要求effortはxhigh、実effortは未観測です。出力は未受入の提案で、rootが意味・対象・差分を確認してから承認済みの編集とテストを行います。
+
+adapterのstdoutは状態・トークン件数・`valuesReturned:false`等のメタデータに限定し、提案本文は固定inboxで管理します。statusの `not_started` / `intent` / `recorded` / `failed` は実行状態であり、意味確認や受入結果ではありません。APIリクエストはtoolなし、入力128KiB、最大出力4096トークン、timeout 120秒です。
+
+待機・失敗・結果不明は同じ依頼を保持し、別IDや別inboxで再送しません。実行結果が不明なときは、同じ登録済みCLIの `--anthropic-proposal-status <task_id> <manifest_sha256> --vault-root <登録済み固定vault root>` で照合します。proposal本文には資料や機密が含まれる可能性があるため、固定inboxの権限・保存先・取扱いを現在のホストで確認します。接続成功、モデル応答、内容受入、親による編集・テストは別の証拠です。
+
+以下のClaude Code CLIによる固定対象の編集実験は別の経路です。Windowsの一般的な無人編集に使える隔離が確認されたことにはならず、通常推薦のtext-only能力として扱いません。
+
 ## 利用前の確認
 
 この版のマージやプラグインの配布だけでは、実行中のセッションに読み込まれた上位指示や旧版フックは変わりません。利用するホストで、ユーザーの明示opt-inに加え、ホスト自身がこの別経路の実行を許すことを確認します。必要な方針変更・プラグイン更新・フックの確認は利用者または管理者が通常手順で行い、新しい方針が読み込まれたセッションで確認してください。現在のホストが標準子のみと定める場合は、旧方針を迂回せず実行しません。
