@@ -11,6 +11,18 @@ function isProTemporaryDestination(url) {
   }
 }
 
+function isProConversationDestination(url) {
+  try {
+    const parsed = new URL(url);
+    const modes = parsed.searchParams.getAll("temporary-chat");
+    return parsed.origin === "https://chatgpt.com" && /^\/c\/[a-z0-9-]+$/i.test(parsed.pathname) &&
+      !parsed.username && !parsed.password &&
+      (modes.length === 0 || (modes.length === 1 && modes[0] === "true"));
+  } catch {
+    return false;
+  }
+}
+
 const proHandoff = (() => {
   const attempted = new Set();
   const visible = locator => locator.filter({ visible: true });
@@ -31,11 +43,17 @@ const proHandoff = (() => {
     }
     const signal = event => ({ event, request_id, input_sha256 });
     const form = transferTab.playwright;
+    let conversationUrl;
 
     async function checkChat() {
-      if (new URL(await chatTab.url()).origin !== "https://chatgpt.com") {
-        throw new Error("The original Chat tab is unavailable.");
+      const current = await chatTab.url();
+      const conversation = isProConversationDestination(current);
+      if ((!isProTemporaryDestination(current) && !conversation) ||
+          (conversationUrl && current !== conversationUrl)) {
+        throw new Error("The original Chat destination is unavailable or changed.");
       }
+      // Bind the first conversation reached from the temporary composer.
+      if (conversation) conversationUrl = current;
     }
 
     async function checkTransfer() {
@@ -132,8 +150,10 @@ const proHandoff = (() => {
         if (identity?.request_id !== request_id || identity.input_sha256 !== input_sha256) {
           return signal("reply_mismatch");
         }
+        await checkChat();
         await checkTransfer();
         await form.getByLabel("Response JSON", { exact: true }).fill(response);
+        await checkChat();
         await checkTransfer();
         await form.getByRole("button", { name: "Save verified response", exact: true }).click();
         // The CLI emits the authoritative saved event after validation and write.
@@ -191,9 +211,11 @@ const runProHandoff = (() => {
       await work.getAttribute("aria-pressed") === "false";
   }
 
-  async function temporaryChatContext(tab) {
+  async function temporaryChatContext(tab, { phase = "dispatch" } = {}) {
     const pw = tab.playwright;
-    if (!isProTemporaryDestination(await tab.url()) ||
+    const current = await tab.url();
+    if (!(isProTemporaryDestination(current) ||
+          (phase === "receive" && isProConversationDestination(current))) ||
         await visible(button(pw, temporaryOn)).count() !== 1) return false;
     if (await ordinaryChat(pw)) return true;
     return await button(pw, "Chat").count() === 0 && await button(pw, "Work").count() === 0;
@@ -265,9 +287,7 @@ const runProHandoff = (() => {
 
   async function observePro(tab, { select = false, phase = "dispatch" } = {}) {
     const pw = tab.playwright;
-    if (new URL(await tab.url()).origin !== new URL(chatUrl).origin ||
-        !(phase === "dispatch" ? await temporaryChatContext(tab) : await ordinaryChat(pw)) ||
-        await visible(button(pw, temporaryOn)).count() !== 1) {
+    if (!await temporaryChatContext(tab, { phase })) {
       return { reason: "temporary_chat_unconfirmed" };
     }
     const picker = button(pw, pickerName);

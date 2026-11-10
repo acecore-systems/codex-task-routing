@@ -60,7 +60,8 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
   quotaAfterReply = false, quotaBeforeReply = false, runningAtQuota = false, changedModel = false,
   timeoutMs = 1_000, waitTimeouts = 0, stopWaitTimeouts = 0, waitDenied = false,
   github = false, otherTool = false, legacy = false, mode = "personalized", selectionFails = false, revert = false,
-  ambiguousMode = false, nav = "normal" } = {}) {
+  ambiguousMode = false, nav = "normal", receiveNav = nav, hideTemporaryAfterSend = false,
+  sentUrl = "https://chatgpt.com/c/fixture", changedDestination = false } = {}) {
   let now = 0;
   class FixtureDate extends Date {
     static now() { return now; }
@@ -74,13 +75,14 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
   };
   const model = () => state.power === 4 && !(changedModel && state.sent) ? "Pro" : "Extra High";
   const quotaVisible = () => (quotaAfterReply && state.ready) || (quotaBeforeReply && state.sent > 0);
+  const navigation = () => state.sent ? receiveNav : nav;
   const chatButtons = {
-    Chat: control({ present: () => !state.temporary || nav !== "hidden",
-      attribute: () => state.temporary && nav === "work" ? "false" : "true" }),
-    Work: control({ present: () => !state.temporary || !["hidden", "partial"].includes(nav),
-      attribute: () => state.temporary && nav === "work" ? "true" : "false" }),
+    Chat: control({ present: () => !state.temporary || navigation() !== "hidden",
+      attribute: () => state.temporary && navigation() === "work" ? "false" : "true" }),
+    Work: control({ present: () => !state.temporary || !["hidden", "partial"].includes(navigation()),
+      attribute: () => state.temporary && navigation() === "work" ? "true" : "false" }),
     "一時チャット": control({ present: () => !state.temporary, click: () => { state.temporary = true; } }),
-    "一時チャットをオフにする": control({ present: () => state.temporary }),
+    "一時チャットをオフにする": control({ present: () => state.temporary && !(state.sent && hideTemporaryAfterSend) }),
     "パーソナライズ": control({ present: () => state.mode === "personalized" || ambiguousMode }),
     "パーソナライズなし": control({ present: () => state.mode === "unpersonalized", click: () => { state.modeMenu = true; } }),
     "ChatGPT モデルを選択": control({
@@ -205,7 +207,8 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
       return {
         id, playwright: id === "1" ? chat : local,
         url: async () => id === "1" && state.temporary
-          ? (state.sent ? "https://chatgpt.com/c/fixture" : "https://chatgpt.com/?temporary-chat=true")
+          ? (state.sent ? (changedDestination && state.ready ? "https://chatgpt.com/c/other" : sentUrl)
+            : "https://chatgpt.com/?temporary-chat=true")
           : url,
         goto: async next => { url = next; },
         async pressKey(_, key) {
@@ -273,7 +276,9 @@ test("new temporary Chat accepts both navigation buttons hidden but rejects part
   const result = await hidden.run();
   assert.equal(hidden.state.modeClicks, 1);
   assert.equal(hidden.state.sent, 1);
-  assert.equal(result.event, "pending"); // receive keeps its existing navigation check
+  assert.equal(result.event, "saved");
+  assert.equal(result.reply.result, reply.result);
+  assert.equal(hidden.state.modeObservedAfterDispatch, false);
   for (const nav of ["partial", "work"]) {
     const run = fixture({ github: true, nav });
     assert.equal((await run.run()).event, "blocked");
@@ -389,4 +394,39 @@ test("a mismatched save acknowledgement does not return the answer body", async 
   assert.equal(result.event, "pending");
   assert.equal(result.reason, "save_unconfirmed");
   assert.equal(result.reply, undefined);
+});
+
+test("receive accepts hidden navigation without rechecking Personalized, including old metadata", async () => {
+  for (const sentUrl of ["https://chatgpt.com/c/fixture", "https://chatgpt.com/?temporary-chat=true"]) {
+    for (const options of [{}, { github: true }, { github: true, legacy: true }]) {
+      const { run, state } = fixture({ ...options, receiveNav: "hidden", sentUrl, quotaAfterReply: true });
+      const result = await run();
+      assert.equal(result.event, "saved");
+      assert.equal(result.quota_state, "exhausted");
+      assert.equal(state.sent, 1);
+      assert.equal(state.modeClicks, 0);
+      assert.equal(state.modeObservedAfterDispatch, Boolean(options.legacy));
+    }
+  }
+});
+
+test("receive retains the original request when its context or destination changes", async () => {
+  for (const options of [
+    { receiveNav: "partial" }, { receiveNav: "work" }, { hideTemporaryAfterSend: true },
+    { changedModel: true }, { changedDestination: true },
+    { sentUrl: "https://chatgpt.com/" }, { sentUrl: "https://chatgpt.com/work/fixture" },
+    { sentUrl: "https://other.example/c/fixture" },
+    { sentUrl: "https://chatgpt.com/c/fixture?temporary-chat=false" },
+    { sentUrl: "https://chatgpt.com/c/fixture?temporary-chat=true&temporary-chat=true" },
+  ]) {
+    const { run, state } = fixture({ github: true, receiveNav: "hidden", ...options });
+    const result = await run();
+    assert.equal(result.event, "pending", JSON.stringify(options));
+    assert.equal(result.tab_id, "1");
+    assert.equal(result.reply, undefined);
+    assert.equal(state.saved, null);
+    assert.equal(state.sent, 1);
+    assert.equal(state.modeObservedAfterDispatch, false);
+    assert.equal((await run()).reason, "already_started");
+  }
 });
