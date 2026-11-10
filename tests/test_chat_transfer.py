@@ -188,7 +188,8 @@ class ChatTransferTestCase(unittest.TestCase):
         self.assertIsNone(chat_transfer.TransferState.from_paths(self.bundle_path, other_reply).workflow)
 
     def test_workflow_listening_metadata_has_only_tool_presence(self) -> None:
-        workflow = {**self.workflow(), "facts": {"needs": [{"tool": "private-name"}]}}
+        workflow = self.workflow()
+        workflow["facts"]["needs"] = [{"tool": "private-name", "operation": "read", "scope": "example"}]
         state = chat_transfer.TransferState(bundle=self.bundle, reply_path=self.reply_path, workflow=workflow)
         state.token = "test-capability-token"
         server = SimpleNamespace(origin="http://127.0.0.1:32123", completed=False,
@@ -200,8 +201,25 @@ class ChatTransferTestCase(unittest.TestCase):
         events = [json.loads(line) for line in stdout.getvalue().splitlines()]
         self.assertIs(events[0]["workflow"], True)
         self.assertIs(events[0]["needs_tools"], True)
+        self.assertIs(events[0]["needs_github"], False)
         self.assertNotIn("private-name", stdout.getvalue())
         self.assertNotIn(self.bundle["prompt"], stdout.getvalue())
+
+    def test_workflow_github_metadata_uses_planner_matching_and_validates_facts(self) -> None:
+        workflow = self.workflow()
+        workflow["facts"]["needs"] = [{"tool": "GITHUB", "operation": "read", "scope": "example"}]
+        state = chat_transfer.TransferState(bundle=self.bundle, reply_path=self.reply_path, workflow=workflow)
+        state.token = "test-capability-token"
+        server = SimpleNamespace(origin="http://127.0.0.1:32123", completed=False,
+                                 handle_request=Mock(), server_close=Mock())
+        with (patch.object(chat_transfer, "create_server", return_value=server),
+              patch.object(chat_transfer.time, "monotonic", side_effect=[0.0, 1.01]),
+              redirect_stdout(io.StringIO()) as stdout):
+            self.assertEqual(chat_transfer.serve_transfer(state, timeout_seconds=1), 3)
+        self.assertIs(json.loads(stdout.getvalue().splitlines()[0])["needs_github"], True)
+        workflow["facts"]["needs"] = [{"tool": "GitHub"}]
+        with self.assertRaisesRegex(chat_transfer.ChatTransferError, "invalid workflow facts"):
+            chat_transfer.TransferState(bundle=self.bundle, reply_path=self.reply_path, workflow=workflow)
 
     def test_workflow_requires_inspection_before_server_start(self) -> None:
         for checks in ({}, {"inspect": "blocked"}, {"inspect": "unknown"}):

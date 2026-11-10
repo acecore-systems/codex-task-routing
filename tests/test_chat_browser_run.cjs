@@ -58,7 +58,10 @@ function control({ present = () => true, text = () => "", attribute = () => null
 
 function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = false,
   quotaAfterReply = false, quotaBeforeReply = false, runningAtQuota = false, changedModel = false,
-  timeoutMs = 1_000, waitTimeouts = 0, stopWaitTimeouts = 0, waitDenied = false } = {}) {
+  timeoutMs = 1_000, waitTimeouts = 0, stopWaitTimeouts = 0, waitDenied = false,
+  github = false, otherTool = false, legacy = false, mode = "personalized", selectionFails = false, revert = false,
+  ambiguousMode = false, nav = "normal", receiveNav = nav, hideTemporaryAfterSend = false,
+  sentUrl = "https://chatgpt.com/c/fixture", changedDestination = false } = {}) {
   let now = 0;
   class FixtureDate extends Date {
     static now() { return now; }
@@ -68,14 +71,20 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
     temporary: false, menu: false, power: 3, composer: "", sent: 0, ready: false,
     waits: 0, saved: null, handoff: false, phases: [], quotas: [], opened: [], closed: [],
     replyWaits: [], stopWaits: [], generationEnded: false,
+    mode, modeMenu: false, modeClicks: 0, prepared: 0, modeObservedAfterDispatch: false,
   };
   const model = () => state.power === 4 && !(changedModel && state.sent) ? "Pro" : "Extra High";
   const quotaVisible = () => (quotaAfterReply && state.ready) || (quotaBeforeReply && state.sent > 0);
+  const navigation = () => state.sent ? receiveNav : nav;
   const chatButtons = {
-    Chat: control({ attribute: () => "true" }),
-    Work: control({ attribute: () => "false" }),
+    Chat: control({ present: () => !state.temporary || navigation() !== "hidden",
+      attribute: () => state.temporary && navigation() === "work" ? "false" : "true" }),
+    Work: control({ present: () => !state.temporary || !["hidden", "partial"].includes(navigation()),
+      attribute: () => state.temporary && navigation() === "work" ? "true" : "false" }),
     "一時チャット": control({ present: () => !state.temporary, click: () => { state.temporary = true; } }),
-    "一時チャットをオフにする": control({ present: () => state.temporary }),
+    "一時チャットをオフにする": control({ present: () => state.temporary && !(state.sent && hideTemporaryAfterSend) }),
+    "パーソナライズ": control({ present: () => state.mode === "personalized" || ambiguousMode }),
+    "パーソナライズなし": control({ present: () => state.mode === "unpersonalized", click: () => { state.modeMenu = true; } }),
     "ChatGPT モデルを選択": control({
       text: model, attribute: () => String(state.menu), click: () => { state.menu = true; },
     }),
@@ -126,6 +135,15 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
     }),
     locator: selector => selector === "main article" ? article : control({ present: () => false }),
     getByRole(role, { name } = {}) {
+      if (role === "menu" && name) {
+        const menu = control({ present: () => state.modeMenu && name.test("パーソナライズなし") });
+        menu.getByRole = (_role, opts) => control({
+          present: () => state.modeMenu && opts.name.test("パーソナライズ このチャット"),
+          attribute: () => "false",
+          click: () => { state.modeClicks++; state.modeMenu = false; if (!selectionFails) state.mode = "personalized"; },
+        });
+        return menu;
+      }
       if (role === "menu") return control({ present: () => state.menu });
       if (role === "alert") return { filter: ({ hasText }) => control({
         present: () => quotaVisible() && hasText.test("Pro usage limit reached"),
@@ -134,6 +152,9 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
         text: () => state.composer, fill: text => { state.composer = text; },
       });
       const label = Object.keys(chatButtons).find(key => typeof name === "string" ? name === key : name?.test(key));
+      if (state.phases.includes("dispatch") && ["パーソナライズ", "パーソナライズなし"].includes(label)) {
+        state.modeObservedAfterDispatch = true;
+      }
       if (label) chatButtons[label].name = label;
       return chatButtons[label] ?? control({ present: () => false });
     },
@@ -170,6 +191,7 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
         next_action: dispatch ? "send_once" : "collect_reply",
         live_checked: true, preflight_complete: true, transport: "browser-temporary",
         request_id: reply.request_id, input_sha256: reply.input_sha256,
+        ...(dispatch && github ? { checks: [{ tool: "GitHub" }], temporary_chat_mode: live.temporary_chat_mode } : {}),
       };
       envelope = { phase, request_id: reply.request_id, input_sha256: reply.input_sha256, plan };
     } }),
@@ -185,7 +207,8 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
       return {
         id, playwright: id === "1" ? chat : local,
         url: async () => id === "1" && state.temporary
-          ? (state.sent ? "https://chatgpt.com/c/fixture" : "https://chatgpt.com/?temporary-chat=true")
+          ? (state.sent ? (changedDestination && state.ready ? "https://chatgpt.com/c/other" : sentUrl)
+            : "https://chatgpt.com/?temporary-chat=true")
           : url,
         goto: async next => { url = next; },
         async pressKey(_, key) {
@@ -199,8 +222,70 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
     },
     listTabs: async () => state.opened.filter(id => !state.closed.includes(id)).map(id => ({ id })),
   };
-  return { run: () => run({ cua, listening, timeoutMs }), state };
+  const input = { ...listening, needs_tools: github || otherTool };
+  if (!legacy) input.needs_github = github;
+  const prepareTools = github ? async () => {
+    state.prepared++;
+    if (revert) state.mode = "unpersonalized";
+    return { temporaryChatMode: "personalized", verifyGitHubSelection: async () => true };
+  } : otherTool ? async () => { state.prepared++; return {}; } : undefined;
+  return { run: () => run({ cua, listening: input, timeoutMs, prepareTools }), state };
 }
+
+test("GitHub run selects Personalized only when needed and uses the prepared mode for send", async () => {
+  for (const mode of ["personalized", "unpersonalized"]) {
+    const { run, state } = fixture({ github: true, mode });
+    assert.equal((await run()).event, "saved");
+    assert.equal(state.modeClicks, Number(mode === "unpersonalized"));
+    assert.equal(state.prepared, 1);
+    assert.equal(state.modeObservedAfterDispatch, false);
+    assert.equal(state.sent, 1);
+  }
+});
+
+test("GitHub run stops for failed, ambiguous or reverted mode", async () => {
+  for (const options of [
+    { mode: "unpersonalized", selectionFails: true },
+    { mode: "unpersonalized", ambiguousMode: true },
+    { mode: "personalized", revert: true },
+  ]) {
+    const { run, state } = fixture({ github: true, ...options });
+    assert.equal((await run()).event, "blocked");
+    assert.equal(state.sent, 0);
+  }
+});
+
+test("non-GitHub and old metadata do not automatically change mode", async () => {
+  const noTools = fixture({ mode: "unpersonalized" });
+  assert.equal((await noTools.run()).event, "saved");
+  assert.equal(noTools.state.modeClicks, 0);
+  const other = fixture({ otherTool: true, mode: "unpersonalized" });
+  assert.equal((await other.run()).event, "saved");
+  assert.equal(other.state.modeClicks, 0);
+  const old = fixture({ github: true, legacy: true, mode: "unpersonalized" });
+  assert.equal((await old.run()).event, "blocked");
+  assert.equal(old.state.modeClicks, 0);
+  assert.equal(old.state.sent, 0);
+  const oldReady = fixture({ github: true, legacy: true, mode: "personalized" });
+  assert.equal((await oldReady.run()).event, "saved");
+  assert.equal(oldReady.state.modeClicks, 0);
+});
+
+test("new temporary Chat accepts both navigation buttons hidden but rejects partial or Work selection", async () => {
+  const hidden = fixture({ github: true, mode: "unpersonalized", nav: "hidden" });
+  const result = await hidden.run();
+  assert.equal(hidden.state.modeClicks, 1);
+  assert.equal(hidden.state.sent, 1);
+  assert.equal(result.event, "saved");
+  assert.equal(result.reply.result, reply.result);
+  assert.equal(hidden.state.modeObservedAfterDispatch, false);
+  for (const nav of ["partial", "work"]) {
+    const run = fixture({ github: true, nav });
+    assert.equal((await run.run()).event, "blocked");
+    assert.equal(run.state.sent, 0);
+    assert.equal(run.state.modeClicks, 0);
+  }
+});
 
 test("one run opens hidden tabs, sends once, waits, and returns the saved reply", async () => {
   const { run, state } = fixture();
@@ -309,4 +394,39 @@ test("a mismatched save acknowledgement does not return the answer body", async 
   assert.equal(result.event, "pending");
   assert.equal(result.reason, "save_unconfirmed");
   assert.equal(result.reply, undefined);
+});
+
+test("receive accepts hidden navigation without rechecking Personalized, including old metadata", async () => {
+  for (const sentUrl of ["https://chatgpt.com/c/fixture", "https://chatgpt.com/?temporary-chat=true"]) {
+    for (const options of [{}, { github: true }, { github: true, legacy: true }]) {
+      const { run, state } = fixture({ ...options, receiveNav: "hidden", sentUrl, quotaAfterReply: true });
+      const result = await run();
+      assert.equal(result.event, "saved");
+      assert.equal(result.quota_state, "exhausted");
+      assert.equal(state.sent, 1);
+      assert.equal(state.modeClicks, 0);
+      assert.equal(state.modeObservedAfterDispatch, Boolean(options.legacy));
+    }
+  }
+});
+
+test("receive retains the original request when its context or destination changes", async () => {
+  for (const options of [
+    { receiveNav: "partial" }, { receiveNav: "work" }, { hideTemporaryAfterSend: true },
+    { changedModel: true }, { changedDestination: true },
+    { sentUrl: "https://chatgpt.com/" }, { sentUrl: "https://chatgpt.com/work/fixture" },
+    { sentUrl: "https://other.example/c/fixture" },
+    { sentUrl: "https://chatgpt.com/c/fixture?temporary-chat=false" },
+    { sentUrl: "https://chatgpt.com/c/fixture?temporary-chat=true&temporary-chat=true" },
+  ]) {
+    const { run, state } = fixture({ github: true, receiveNav: "hidden", ...options });
+    const result = await run();
+    assert.equal(result.event, "pending", JSON.stringify(options));
+    assert.equal(result.tab_id, "1");
+    assert.equal(result.reply, undefined);
+    assert.equal(state.saved, null);
+    assert.equal(state.sent, 1);
+    assert.equal(state.modeObservedAfterDispatch, false);
+    assert.equal((await run()).reason, "already_started");
+  }
 });
