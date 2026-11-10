@@ -170,8 +170,8 @@ def _atomic_create_reply(path: Path, content: bytes) -> bool:
     """Create *path* atomically without replacing an independently made file.
 
     ``os.replace`` would make the write atomic but could overwrite a different
-    reply created after the initial check.  Linking a fully-fsynced temporary
-    file creates the final name only when it did not already exist.
+    reply created after the initial check. Publish the fully-fsynced file
+    with Windows' no-replace rename or a hard link on POSIX.
     """
 
     temporary_name: str | None = None
@@ -187,7 +187,10 @@ def _atomic_create_reply(path: Path, content: bytes) -> bool:
         if chatgpt_route._is_link_or_reparse(temporary):
             raise ChatTransferError("temporary reply path is unsafe")
         try:
-            os.link(temporary, path)
+            if os.name == "nt":
+                os.rename(temporary, path)
+            else:
+                os.link(temporary, path)
         except FileExistsError:
             return False
         return True

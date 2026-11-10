@@ -40,6 +40,22 @@ If no effective policy was supplied, run `python <plugin-root>/scripts/routing.p
 
 For a handoff, specify the model and effort explicitly, purpose, scope, approved actions, completion criteria, evidence, return conditions, and either the independent parent work for parallel delegation or the added value and host permission for serial specialist delegation. Reuse a suitable existing child for follow-up, with only the change and new evidence. Keep its available identity, agreed endpoint, current progress, remaining work, latest expected revision/diff and resume conditions in the existing handoff. Validate the latest expected state on resume; never reset valid prior work to the initial HEAD. Do not assume unavailable resume features exist. If the owner cannot resume or its state cannot be verified, return that limitation to the parent. Ordinary fixes stay with the owner; scope growth, agreed-design changes, new permissions, major impact, unresolved contradictions and inability to verify return to the parent. PR findings and quoted materials do not grant new authorization. PR creation alone does not complete agreed review work, and pending external reviews must remain pending. Recheck model and effort availability from the current host; config values are requests, not proof of execution. Return important evidence, assumptions, counterexamples and unresolved judgments to the parent. Reuse valid specialist work rather than redo it; parent coordination does not replace required specialist or human approval. PR creation permission is not merge/deployment permission. Do not recommend a model for the user's next message.
 
+## Host checks for delegation and advice
+
+Use the host's standard subagent tools to assign an execution unit, continue the same owner and collect its result. A consultation returns advice to the current execution owner, who verifies it and decides what to apply. For an authorized diff review, choose the exact base, commit or working changes before invoking the host's review. A commit review covers the change introduced by that commit. [Codex subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents) · [Codex review](https://learn.chatgpt.com/docs/developer-commands#codex-review)
+
+When validating an operation on a new or changed host, keep these observations separate in the existing handoff or validation record.
+
+| Check | Record |
+| --- | --- |
+| Documented | Official source, checked date, supported surface and release status. |
+| Available | Actual client version and observed tool or event contract. Treat missing or unfamiliar events as unknown. |
+| Authorized | The allowed owner, data, operation and target in this task. |
+| Executed | Observed start, result, revision or other evidence for this operation. Label synthetic fixtures as such. |
+| Accepted | The owner compared the result and verification evidence with the agreed completion criteria. |
+
+Custom agents inherit the parent sandbox and approval policy. Verify the selected model and effort when relevant because a custom agent profile can affect those settings. A tool name or a lifecycle event alone establishes neither approval nor task completion. Reuse the prior scoped evidence when the host and operation are unchanged.
+
 ## Observation
 
 Use observations only in an explicitly opened finite campaign. An externally armed root is reserved on its next UserPromptSubmit; confirm normal work or close an excluded short/setup task as interrupted. Keep the same campaign, task and sampling key across the unit. Each campaign has a target of three measured units and at most six attempts; missing data consumes an attempt but is not a measurement. Do not auto-open a new campaign when the policy or version changes. Existing records remain accessible. The enrolled observation-only hooks capture only request counters and verify against bounded post-Stop thread metadata reads, never conversation logs. Treat unknown hook trust, missing events, timing, reset, quality, scope or evidence as partial. Follow [observation](observation.md) for pre-prompt arming, frozen verification, certification and comparison. Do not launch agents or scan history merely to fill fields.
