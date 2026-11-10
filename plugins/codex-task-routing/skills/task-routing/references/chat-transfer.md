@@ -95,6 +95,17 @@ const handoff = proHandoff({ chatTab, transferTab, listening });
 nodeRepl.write(await handoff.send({ plan: dispatchPlan, composer, sendButton }));
 ```
 
+For a GitHub-required dispatch, `dispatchPlan` must include the freshly observed
+`temporary_chat_mode: "personalized"`. Supply `verifyGitHubSelection`, an async
+callback that returns exactly `true` only when the GitHub selection is visible
+in this same Chat. It is checked before and after filling; a missing or lost
+selection stops the click. Where the editor's accessible value includes the
+GitHub chip, supply observed UI-specific `readComposer` and `fillPrompt`
+callbacks that preserve and separately verify the chip while comparing the
+exact prompt body. Do not remove or trim text to make a comparison pass. These
+callbacks and the mode observation do not establish GitHub operation or scope
+permissions; those remain separate preflight checks.
+
 `listening` is the CLI's startup event for the approved bundle. Pass the
 observed empty editor and the send button from `chatTab`. If the default
 multiline fill or text reading differs from the observed editor behavior,

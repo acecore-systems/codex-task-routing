@@ -79,6 +79,33 @@ test("requires preflight and exact input, and does not retry an ambiguous click"
   assert.equal(clicks, 1);
 });
 
+test("GitHub dispatch rejects missing or non-Personalized mode before touching the composer", async () => {
+  const { newHandoff, composer, state } = fixture();
+  const handoff = newHandoff();
+  let clicks = 0;
+  let selected = true;
+  const args = { composer, sendButton: { click: async () => { clicks++; } },
+    verifyGitHubSelection: async () => selected };
+  const githubPlan = { ...dispatch, checks: [{ tool: "GitHub" }] };
+  for (const mode of [undefined, "unknown", "unpersonalized"]) {
+    await assert.rejects(handoff.send({ ...args, plan: { ...githubPlan, temporary_chat_mode: mode } }), /Personalized/);
+  }
+  assert.equal(state.composer, "");
+  assert.equal(clicks, 0);
+  assert.equal((await handoff.send({ ...args, plan: { ...githubPlan, temporary_chat_mode: "personalized" },
+    readComposer: async () => state.composer,
+    fillPrompt: async text => { state.composer = text; selected = false; } })).event, "github_selection_unconfirmed");
+  assert.equal(clicks, 0);
+  state.composer = "";
+  selected = true;
+  // The UI may expose the chip alongside the body; the caller reads the body
+  // separately and preserves the selected chip while filling.
+  assert.equal((await handoff.send({ ...args, plan: { ...githubPlan, temporary_chat_mode: "personalized" },
+    readComposer: async () => state.composer,
+    fillPrompt: async text => { state.composer = text; } })).event, "send_clicked");
+  assert.equal(clicks, 1);
+});
+
 test("one locator wait signals the observed completion", async () => {
   const { newHandoff } = fixture();
   let finish;

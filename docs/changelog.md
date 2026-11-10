@@ -3,6 +3,7 @@
 ## 0.30.4
 
 - 通常Chat Proの承認済み依頼をBrowserスクリプトで送り、同じ回答の終了表示を1回の待機で受け取れます。ローカル保存後のシグナルには依頼IDと入力ハッシュ、回答の状態が含まれます。[Browser手順](../plugins/codex-task-routing/skills/task-routing/references/chat-transfer.md#browser-script-and-completion-signal) · [検証範囲](validation-0.30.4.md)
+- GitHubが必要な新規Pro一時チャットでは、送信前にパーソナライズとGitHubの選択を確認します。スクリプトは本文入力後にもGitHubの選択を照合します。対象操作の権限と依頼の承認は接続台帳と送信前チェックで確認します。[Proの実行手順](../plugins/codex-task-routing/skills/task-routing/references/chatgpt.md#browser-temporary-の実行手順)
 
 ## 0.30.2
 

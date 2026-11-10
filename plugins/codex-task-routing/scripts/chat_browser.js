@@ -34,12 +34,20 @@ const proHandoff = (() => {
     }
 
     return {
-      async send({ plan, composer, sendButton, readComposer = readEditor, fillPrompt }) {
+      async send({ plan, composer, sendButton, readComposer = readEditor, fillPrompt, verifyGitHubSelection }) {
         requirePlan(plan, "chat_candidate", "send_once");
         if (plan.live_checked !== true || attempted.has(request_id)) {
           throw new Error("Send requires fresh live checks and a request never attempted.");
         }
+        const needsGitHub = plan.checks?.some(check => check.tool?.toLowerCase() === "github");
+        if (needsGitHub &&
+            plan.temporary_chat_mode !== "personalized") {
+          throw new Error("GitHub requires a Personalized observation in this new Temporary Chat.");
+        }
         await checkChat();
+        if (needsGitHub && (typeof verifyGitHubSelection !== "function" || await verifyGitHubSelection() !== true)) {
+          return signal("github_selection_unconfirmed");
+        }
         await checkTransfer();
         const prompt = await readEditor(form.getByLabel("Request prompt", { exact: true }));
         if (!prompt || await readComposer(composer) !== "") {
@@ -54,6 +62,9 @@ const proHandoff = (() => {
           return signal("prompt_mismatch");
         }
         await checkChat();
+        if (needsGitHub && await verifyGitHubSelection() !== true) {
+          return signal("github_selection_unconfirmed");
+        }
         if (attempted.has(request_id)) {
           throw new Error("This request has already been attempted.");
         }
