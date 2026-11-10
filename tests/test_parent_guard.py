@@ -35,7 +35,9 @@ class ParentGuardTests(unittest.TestCase):
         result = self.send('UserPromptSubmit', prompt='private-user-prompt')
         self.assertEqual(result['hookSpecificOutput']['hookEventName'], 'UserPromptSubmit')
         context = result['hookSpecificOutput']['additionalContext']
-        for phrase in ('substantial work', 'internal coupling and parent familiarity', 'Continue a suitable delegated owner',
+        for phrase in ('substantial work', 'acceptance criteria', 'not the request label', 'one suitable execution owner',
+                       'failure diagnosis', 'separate pure evidence', 'effective policy',
+                       'internal coupling and parent familiarity', 'Continue a suitable delegated owner',
                        'answer short questions normally', 'host permission', 'custom policy',
                        'same suitable resumable owner', 'Do not invent work or force delegation'):
             self.assertIn(phrase, context)
@@ -55,6 +57,7 @@ class ParentGuardTests(unittest.TestCase):
         response = json.loads(result.stdout)
         self.assertEqual(response['hookSpecificOutput']['hookEventName'], 'UserPromptSubmit')
         self.assertIn('additionalContext', response['hookSpecificOutput'])
+        self.assertIn('acceptance criteria', response['hookSpecificOutput']['additionalContext'])
         self.assertNotIn('private-prompt', result.stdout)
         again = subprocess.run([sys.executable, str(SCRIPT)], input=json.dumps(payload),
                                text=True, capture_output=True, env=env, check=True)

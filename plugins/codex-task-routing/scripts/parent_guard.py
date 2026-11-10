@@ -45,7 +45,10 @@ REMINDER = (
 )
 PROMPT_REMINDER = (
     'Task Routing: for substantial work, choose an owner before substantial investigation or '
-    'implementation. A creative unit can include tightly coupled edits, materials and checks; '
+    'implementation. Use acceptance criteria and the steps needed to finish, not the request label, '
+    'to choose the overall owner under the effective policy. Keep testing, failure diagnosis, ordinary '
+    'fixes and retesting together with one suitable execution owner; consider separate pure evidence '
+    'collection only when separable and delegation conditions allow. A creative unit can include tightly coupled edits, materials and checks; '
     'internal coupling and parent familiarity alone do not require parent ownership. Consider '
     'separating future edits, trials and tests in a child context, with a concise handoff of scope, '
     'materials, decisions, constraints, acceptance and authority. Check actual access, a useful '
