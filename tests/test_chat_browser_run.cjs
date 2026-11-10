@@ -58,6 +58,7 @@ function control({ present = () => true, text = () => "", attribute = () => null
 
 function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = false,
   quotaAfterReply = false, quotaBeforeReply = false, runningAtQuota = false, changedModel = false,
+  menuNotice = null,
   timeoutMs = 1_000, waitTimeouts = 0, stopWaitTimeouts = 0, waitDenied = false } = {}) {
   let now = 0;
   class FixtureDate extends Date {
@@ -119,7 +120,7 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
   article.getByRole = () => final;
   article.locator = () => message;
   const chat = {
-    evaluate: async () => ({
+    evaluate: async read => menuNotice ? evaluateMenu(read, state, model(), menuNotice) : ({
       model: model(), current: state.power, maximum: 4,
       powerFocused: state.menu, limited: (limited || quotaVisible()) && model() === "Pro",
       locked: quotaVisible() && model() === "Pro",
@@ -200,6 +201,62 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
     listTabs: async () => state.opened.filter(id => !state.closed.includes(id)).map(id => ({ id })),
   };
   return { run: () => run({ cua, listening, timeoutMs }), state };
+}
+
+// Execute the actual browser callback against a small DOM with the same
+// rendered and screen-reader-only geometry as the observed model menu.
+function evaluateMenu(read, state, model, notice) {
+  const normalStyle = { display: "block", visibility: "visible", opacity: "1", clip: "auto", clipPath: "none" };
+  const element = (parent, hidden = false) => ({
+    parentElement: parent, style: { ...normalStyle, clip: hidden ? "rect(0px, 0px, 0px, 0px)" : "auto" },
+    getBoundingClientRect: () => hidden ? { width: 1, height: 1 } : { width: 100, height: 20 },
+    getClientRects: () => [1], getAttribute: () => null,
+  });
+  const menu = element(null);
+  const power = element(menu);
+  const slider = element(power);
+  slider.closest = () => power;
+  slider.getAttribute = name => ({ "aria-valuenow": String(state.power), "aria-valuemax": "4",
+    "aria-describedby": notice.referenced ? "current-notice" : null })[name] ?? null;
+  const label = element(menu);
+  const message = element(menu, notice.hidden);
+  message.textContent = notice.text;
+  menu.innerText = `${model}\n${notice.text}`;
+  menu.querySelector = () => slider;
+  menu.contains = target => target === message;
+  label.nodeType = message.nodeType = 1;
+  label.childNodes = [{ nodeType: 3, parentElement: label, textContent: model }];
+  message.childNodes = [{ nodeType: 3, parentElement: message, textContent: notice.text }];
+  menu.childNodes = [label, message];
+  const document = {
+    activeElement: power,
+    querySelectorAll: () => [menu],
+    getElementById: id => id === "current-notice" ? message : null,
+  };
+  return vm.runInNewContext(`(${read.toString()})()`, {
+    document, getComputedStyle: node => node.style,
+  });
+}
+
+test("unreferenced visually hidden quota and lock text does not block Pro", async () => {
+  const { run, state } = fixture({ menuNotice: { hidden: true,
+    text: "ロック中、アクセスオプションを開きます 利用上限に達しました" } });
+  assert.equal((await run()).event, "saved");
+  assert.equal(state.sent, 1);
+  assert.deepEqual(state.quotas, ["no_limit_notice", "no_limit_notice"]);
+});
+
+for (const [label, notice, reason] of [
+  ["visible quota", { text: "利用上限に達しました" }, "quota_exhausted"],
+  ["visible lock", { text: "ロック中、アクセスオプションを開きます" }, "pro_locked"],
+  ["current control description", { hidden: true, referenced: true, text: "利用上限に達しました" }, "quota_exhausted"],
+]) {
+  test(`${label} blocks dispatch without sending`, async () => {
+    const { run, state } = fixture({ menuNotice: notice });
+    const result = await run();
+    assert.equal(result.reason, reason);
+    assert.equal(state.sent, 0);
+  });
 }
 
 test("one run opens hidden tabs, sends once, waits, and returns the saved reply", async () => {

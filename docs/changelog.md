@@ -1,5 +1,9 @@
 # 変更履歴
 
+## 0.30.7
+
+- 通常Chatの思考量メニューにある非表示の補助文言を、Proの利用上限やロックの通知と誤認する問題を修正しました。[検証範囲](validation-0.30.7.md)
+
 ## 0.30.6
 
 - 承認済みの通常Chat Pro依頼を、一回の内蔵Browser呼び出しで送信、待機、回収、保存できます。保存完了シグナルと照合済みの回答を同じ結果で返します。同じ作業フォルダの送信予約で依頼IDの再送を防ぎます。[実行手順](../plugins/codex-task-routing/skills/task-routing/references/chat-transfer.md#one-browser-call) · [検証範囲](validation-0.30.6.md)

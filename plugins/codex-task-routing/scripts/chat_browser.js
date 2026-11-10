@@ -221,13 +221,52 @@ const runProHandoff = (() => {
       const now = slider?.getAttribute("aria-valuenow");
       const max = slider?.getAttribute("aria-valuemax");
       const power = slider?.closest('[role="menuitem"]');
+      // innerText includes visually hidden screen-reader text. Only count rendered
+      // text, or descriptions explicitly attached to the current control.
+      const referenced = new Set();
+      for (const control of [slider, power]) {
+        for (const attribute of ["aria-describedby", "aria-labelledby"]) {
+          for (const id of (control?.getAttribute(attribute) ?? "").split(/\s+/).filter(Boolean)) {
+            const target = document.getElementById(id);
+            if (target) referenced.add(target);
+          }
+        }
+      }
+      const relevant = node => {
+        for (let element = node.parentElement; element; element = element.parentElement) {
+          if (referenced.has(element)) return true;
+          if (element === menu) break;
+        }
+        for (let element = node.parentElement; element; element = element.parentElement) {
+          const style = getComputedStyle(element);
+          const rect = element.getBoundingClientRect();
+          if (style.display === "none" || style.visibility !== "visible" || Number(style.opacity) === 0 ||
+              (rect.width <= 1 && rect.height <= 1) ||
+              /^rect\(0(?:px)?[,\s]+0(?:px)?[,\s]+0(?:px)?[,\s]+0(?:px)?\)$/.test(style.clip) ||
+              /^inset\(50%(?:\s+50%){0,3}\)$/.test(style.clipPath)) return false;
+          if (element === menu) break;
+        }
+        return true;
+      };
+      const stateText = [];
+      const collect = element => {
+        for (const node of element.childNodes) {
+          if (node.nodeType === 3 && relevant(node)) stateText.push(node.textContent);
+          else if (node.nodeType === 1) collect(node);
+        }
+      };
+      collect(menu);
+      for (const target of referenced) {
+        if (!menu.contains(target)) stateText.push(target.textContent);
+      }
+      const state = stateText.join(" ");
       return {
         model: lines[0],
         current: now == null ? null : Number(now),
         maximum: max == null ? null : Number(max),
         powerFocused: Boolean(power && document.activeElement === power),
-        limited: lines.some(line => /利用上限|usage limit|limit reached|reached (?:your|the) limit/i.test(line)),
-        locked: lines.some(line => /ロック中|\blocked\b/i.test(line)),
+        limited: /利用上限|usage limit|limit reached|reached (?:your|the) limit/i.test(state),
+        locked: /ロック中|\blocked\b/i.test(state),
       };
     });
   }
