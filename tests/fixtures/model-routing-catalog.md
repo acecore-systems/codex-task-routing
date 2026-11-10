@@ -24,6 +24,7 @@ Terra（terra61）は通常の実装・修正・デバッグ・探索・複数�
 | new_local_session | 別目的・独立成果物等の利益がある場合の提案。本人の明示的な新タスク依頼が実行条件。model/thinkingは新規トップレベルセッションの既定を維持 |
 | codex_cloud | 新規の独立repo実装・テスト・長時間完了単位では適合すればProより先に選ぶ。実環境・材料・期待revision・検証能力を確認しrootが実行範囲を評価。現行codex_cloud_ui、または確認済み既存Codex durableのnative継続を使う。native新規作成は未対応、実績は版・環境・操作ごとに限定 |
 | chat_pro | 既存のopt-in、役割・depth、Browser能力・承認・UIモデル確認を満たす通常Chat Pro |
+| haiku_api | 明示opt-inのroot候補。local-auth提案adapter・ホスト/委譲・対象と資料送信の承認がそろい、承認済み資料へのtoolなし提案が適合する通常以上の工程。親が編集とテストを継続。既存担当とCloud/Pro優先を維持 |
 
 session_plan.py recommendはcandidateを事前指定せず目的単位から理由・代案・不足と次の操作を返す。通常会話での短い提案でもよく、helperの毎回実行は不要。独立repo工程は適合するCloudを先に選び、それ以外で分析等が承認済みChatの実ツールで完結すればProを優先する。repo環境は再利用し、unknownは調査、確認済み不存在は対応UIで作成・準備・公開へ進む。独立目的は既存環境から新task、同じ完了単位は元担当へ継続。同一repoも独立範囲・branch分離・統合担当と委譲者の独立作業・ホスト許可がそろえば複数セッションを並列利用できる。衝突は先に調整する。Cloud未接続や材料・テスト不足は代案の理由に残す。現版のローカル試験を実Cloud成功とせず、過去実績と版別検証記録を分ける。
 

@@ -211,8 +211,10 @@ def recommend_session(facts):
     for key in ("local_required", "chat_can_complete"):
         _truth(execution.get(key))
     haiku = execution.get("haiku", {})
-    _object(haiku, set(), {"enabled", "can_complete"})
-    for key in ("enabled", "can_complete"):
+    haiku_fields = {"enabled", "can_complete", "root_actor", "text_only_suitable", "adapter_ready",
+                    "target_authorized", "materials_authorized", "delegation_conditions_met"}
+    _object(haiku, set(), haiku_fields)
+    for key in haiku_fields:
         _truth(haiku.get(key))
     cloud = execution.get("cloud", {})
     _object(cloud, set(), {"available", "materials_ready", "tests_ready", "environment", "parallel"})
@@ -280,11 +282,25 @@ def recommend_session(facts):
          ("host.chat_pro", host.get("chat_pro")),
          ("host.materials_transfer", host.get("materials_transfer"))],
         split_exclusions + [("local_execution_required", local_only)])
-    haiku_option = assess("haiku_api", "explicit_opt_in_local_cli_route",
-        [("execution.haiku.enabled", haiku.get("enabled", False)),
-         ("execution.haiku.can_complete", haiku.get("can_complete")),
-         ("host.haiku_api", host.get("haiku_api")),
-         ("host.materials_transfer", host.get("materials_transfer"))], split_exclusions)
+    # A text-only proposal can support a parent's same-goal unit. It is not
+    # a new session and does not transfer the parent's edit/test ownership.
+    same_goal_haiku = work["independent"] is False and (
+        owner["status"] == "new" or (owner["status"] == "continuing" and owner.get("kind") == "parent"))
+    haiku_exclusions = ([("tight_coupling", work["tightly_coupled"]),
+                         ("handoff_cost_exceeds_benefit", work["handoff_benefit"] is False)]
+                        if same_goal_haiku else split_exclusions)
+    haiku_exclusions = haiku_exclusions + [("parent_only", work.get("parent_only") is True)]
+    haiku_option = assess("haiku_api", "opt_in_text_only_proposal_via_local_auth",
+        [("execution.haiku." + key, haiku.get(key, False if key == "enabled" else None))
+         for key in ("enabled", "can_complete", "root_actor", "text_only_suitable", "adapter_ready",
+                     "target_authorized", "materials_authorized", "delegation_conditions_met")]
+        + [("work.not_parent_only", None if work.get("parent_only") is None else not work["parent_only"]),
+           ("work.not_tightly_coupled", None if work["tightly_coupled"] is None else not work["tightly_coupled"]),
+           ("work.handoff_benefit", work["handoff_benefit"]),
+           ("work.independent_known", True if work["independent"] is not None else None),
+           ("execution.local_requirement_known", True if local_only is not None else None),
+           ("host.haiku_api", host.get("haiku_api")),
+           ("host.materials_transfer", host.get("materials_transfer"))], haiku_exclusions)
     local_option = assess("new_local_session", "independent_local_ownership",
                          [("host.new_session", host.get("new_session"))], split_exclusions)
     parent_handoff = owner.get("kind") == "parent" and owner["status"] == "continuing"
@@ -315,13 +331,17 @@ def recommend_session(facts):
                          "request_id_input_hash_and_original_tab"]
         if route == "haiku_api":
             required += ["root_actor_and_host_execution_permission", "target_and_materials_authorization",
-                         "repository_branch_revision", "request_id_input_hash", "budget_turns_and_tool_scope",
-                         "durable_claim_and_result_acceptance"]
+                         "registered_local_auth_proposal_adapter_and_fixed_inbox",
+                         "approved_task_id_input_and_manifest_hash", "budget_and_scope",
+                         "durable_claim_and_result_acceptance", "parent_applies_and_tests_approved_changes"]
         result = {**output, "route": route, "why": why, "gaps": combined,
                   "alternatives": [item for item in assessments if item["route"] != route],
                   "proposal": {"purpose": work["purpose"], "route": route,
                                "conditional": bool(combined)},
                   "handoff_required": required, "next_action": action}
+        if route == "haiku_api":
+            result["proposal"].update(model="claude-haiku-5-5", requested_effort="xhigh",
+                                      execution_mode="text_only_proposal", parent_retains_edit_and_test=True)
         if owner_id is not None:
             result["owner_id"] = owner_id
         return result
@@ -349,6 +369,8 @@ def recommend_session(facts):
             return finish(current_option, ["assess_parent_handoff"], "assess_work_unit", unknown,
                           owner_id=owner["owner_id"])
         if work["independent"] is False:
+            if haiku_option["suitability"] == "eligible":
+                return finish(haiku_option, ["parent_handoff_text_only_proposal"], "prepare_haiku_handoff", owner_id=owner["owner_id"])
             if host.get("subagent") is False:
                 return finish(current_option, ["host.subagent:false"], "report_context_limitations",
                               owner_id=owner["owner_id"])
@@ -368,6 +390,9 @@ def recommend_session(facts):
     if local_only is None:
         common_gaps.append("execution.local_required:unknown")
     if work["independent"] is False or not separate:
+        if same_goal_haiku and haiku_option["suitability"] == "eligible":
+            return finish(haiku_option, ["same_goal_text_only_proposal"],
+                          "assess_work_unit" if common_gaps else "prepare_haiku_handoff", common_gaps)
         if work["kind"] == "support" and work["independent"] is False and child_option["suitability"] in {"eligible", "conditional"}:
             action = ("check_owner_reuse" if "owner_reuse:unknown" in common_gaps
                       else "assess_work_unit" if common_gaps else "resolve_candidate_gaps"
@@ -385,7 +410,7 @@ def recommend_session(facts):
     elif work["kind"] == "analysis" and chat_option["suitability"] in usable:
         choice, why, action = chat_option, "assess_chat_for_complete_analysis", "evaluate_existing_chat_policy"
     elif haiku_option["suitability"] == "eligible":
-        choice, why, action = haiku_option, "opt_in_haiku_for_complete_unit", "evaluate_haiku_route"
+        choice, why, action = haiku_option, "opt_in_haiku_text_only_proposal", "prepare_haiku_handoff"
     elif local_option["suitability"] in usable:
         choice, why, action = local_option, "independent_unit_needs_local_context", "review_new_session_contract"
     else:
