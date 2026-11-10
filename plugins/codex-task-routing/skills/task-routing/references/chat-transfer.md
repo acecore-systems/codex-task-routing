@@ -81,6 +81,61 @@ acceptance. If collection must be retried, restore only this local form with
 the same bundle and reply target; never resend the model task for a local
 display failure.
 
+## Browser script and completion signal
+
+With a Browser REPL that supports Playwright locators, load the definition in
+`<plugin-root>/scripts/chat_browser.js` once into that REPL. Run it explicitly
+as the route owner after observing the new temporary Chat, selected Pro, and
+the supported controls. Use the actual dispatch and receive planner outputs.
+The script uses the open Chat and loopback tabs and keeps both bodies in
+Browser variables.
+
+```js
+const handoff = proHandoff({ chatTab, transferTab, listening });
+nodeRepl.write(await handoff.send({ plan: dispatchPlan, composer, sendButton }));
+```
+
+`listening` is the CLI's startup event for the approved bundle. Pass the
+observed empty editor and the send button from `chatTab`. If the default
+multiline fill or text reading differs from the observed editor behavior,
+use supported `fillPrompt(prompt)` and `readComposer(composer)` callbacks for
+the exact body comparison. `send_clicked` records the click. Confirm that the
+same tab contains the sent turn. If the click result is uncertain, recover
+that turn in the same tab. The script guards against a second attempt in the
+same REPL. Across REPL restarts carry forward the original submission state
+and use only wait and receive for an already attempted request.
+
+Bind `finished` to a control for the current assistant turn that becomes
+visible only when generation ends. Optionally bind `attention` to an observed
+terminal notice in the same Chat, such as a generation error. Wait in one
+tool call, with the REPL call timeout longer than the locator wait and within
+the host's supported duration.
+
+```js
+nodeRepl.write(await handoff.wait({ finished, attention, timeoutMs: 600000 }));
+```
+
+`reply_ready` signals that the scoped completion control is visible.
+`attention_required` and `completion_unconfirmed` require inspection of the
+same tab. A timeout leaves the request unresolved. Keep the tab and resume
+waiting for the original turn. The wait returns metadata only, without
+repeated model turns, and lasts only while the host runs the tool call.
+
+After `reply_ready`, confirm the fresh UI observations for receive and bind
+`answer` to the visible final JSON of that same turn. Pass both locators from
+the same Chat tab.
+
+```js
+nodeRepl.write(await handoff.collect({ plan: receivePlan, finished, answer }));
+```
+
+`save_clicked` signals a form submission attempt. Wait for the local helper
+process to exit and consume its `saved` event, which carries `request_id`,
+`input_sha256`, and `status`. The helper emits it after validation and saving,
+including for `blocked` and `missing_input`. Only `completed` proceeds to the
+owner's content review. If a click or local save is unconfirmed, inspect the
+existing reply target before recovering the form for the same request.
+
 ## Dispatch permission and longer work
 
 Before a new Chat send, follow [usage and authorization gates](chat-limits.md)

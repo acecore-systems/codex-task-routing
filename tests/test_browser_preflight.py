@@ -44,6 +44,7 @@ class BrowserPreflightTests(unittest.TestCase):
         before = copy.deepcopy(self.live)
         result = self.evaluate()
         self.assertEqual(result['next_action'], 'send_once')
+        self.assertEqual(result['transport'], 'browser-temporary')
         self.assertTrue(result['preflight_complete'])
         self.assertFalse(result['dispatch_performed'])
         self.assertFalse(result['authorization_attested'])
@@ -179,6 +180,7 @@ class BrowserPreflightTests(unittest.TestCase):
                                   browser_checks={'inspect': 'permission_checked', 'send': 'blocked',
                                                   'receive': 'permission_checked'})
             self.assertEqual(result['next_action'], 'collect_reply')
+            self.assertEqual(result['transport'], 'browser-temporary')
             self.assertFalse(result['dispatch_authorized'])
             self.assertFalse(result['dispatch_performed'])
             self.assertEqual(result['request_id'], self.bundle['request_id'])

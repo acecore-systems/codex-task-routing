@@ -261,9 +261,37 @@ class ChatTransferTestCase(unittest.TestCase):
         metadata = stdout.getvalue()
         self.assertIn('"event": "listening"', metadata)
         self.assertIn('"event": "timeout"', metadata)
+        self.assertNotIn('"event": "saved"', metadata)
         self.assertNotIn(self.bundle["prompt"], metadata)
         self.assertNotIn("bounded finding", metadata)
         self.assertFalse(self.reply_path.exists())
+
+    def test_saved_event_identifies_input_and_preserves_exit_status(self) -> None:
+        for status, exit_code in (("completed", 0), ("blocked", 3), ("missing_input", 3)):
+            with self.subTest(status=status):
+                state = chat_transfer.TransferState.from_paths(self.bundle_path, self.reply_path)
+                state.token = "test-capability-token"
+                response = self.response()
+                response["status"] = status
+                server = SimpleNamespace(origin="http://127.0.0.1:32123", completed=False,
+                                         server_close=Mock())
+
+                def save():
+                    state.save_response(response)
+                    server.completed = True
+
+                server.handle_request = Mock(side_effect=save)
+                with (patch.object(chat_transfer, "create_server", return_value=server),
+                      redirect_stdout(io.StringIO()) as stdout):
+                    self.assertEqual(chat_transfer.serve_transfer(state, timeout_seconds=1), exit_code)
+                events = [json.loads(line) for line in stdout.getvalue().splitlines()]
+                self.assertEqual(events[-1], {
+                    "event": "saved", "request_id": self.bundle["request_id"],
+                    "input_sha256": self.bundle["input_sha256"], "status": status,
+                })
+                self.assertEqual(json.loads(self.reply_path.read_text(encoding="utf-8")), response)
+                server.server_close.assert_called_once_with()
+                self.reply_path.unlink()
 
     def test_absolute_deadline_interrupts_continuous_partial_request(self) -> None:
         class PendingInput(io.RawIOBase):

@@ -52,13 +52,15 @@ MCPが必要な仕事では、この依頼に必要な対応だけを整理し�
 
 ## `browser-temporary` の実行手順
 
+対応するBrowser REPLでは、[Browserスクリプト](chat-transfer.md#browser-script-and-completion-signal) を一度読み込み、手順5の送信、6の待機、7のフォーム転送に使います。
+
 1. [Browserの実条件と解消手順](chat-authorization.md)に従い、補助CLIの `status` で経路が有効でtransportが`browser-temporary`であることを確認します。具体的な操作と既存承認を整理します。転送が未確認でも、許可された契約読取り・新規空ChatのUI確認を先に行えます。`--phase inspect`は送信を行わず、不足する確認の担当・場所・内容を返します。スコープ、材料、合格条件、許可操作は実送信前にそろえます。非公開資料はデータと送信先の承認を確認し、秘密や無関係な履歴を含めません。
 2. サポートされたBrowser操作で `https://chatgpt.com/` を開き、通常Chatから新しい一時Chatを作成します。既存の下書きがある入力欄を使わず、ログイン入力は利用者に任せます。送信直前に、Chatが選択されWorkが未選択であること、一時Chatであること、UIのモデル表示が `Pro` であることを確認します。選択・確認できなければ送信しません。
 3. 必要なら一時Chatのプラスメニューで、既存の承認済みプラグインまたはMCPを選択します。新しい接続・権限・独自MCPサーバーの追加はこの設定では承認されません。接続は材料の受け渡し方法の選択肢であり、一時Chatの起動やモデル指定の手段ではありません。
 4. `python <plugin-root>/scripts/chatgpt_route.py prepare --input request.json` で依頼を1回だけ準備します。出力された `prompt` を初回の実依頼として送ります。接続確認だけのハンドシェイクは送りません。
 5. 現在のUIと承認を確認した新しいlive.jsonを使い、`chat_plan.py --facts facts.json --inventory capabilities.json --live live.json`を実行します。ツール不要ならinventoryを省略できます。`chat_candidate`/`live_checked:true`/`preflight_complete:true`/`next_action:send_once`なら、親が既に確認した承認を再要求せず、以下の一度の送信へ進みます。CLIが許可を発行する意味ではなく、実際のホスト確認は維持します。不足があれば担当・場所・具体的条件を解消し、未確認の値をtrueにしません。`prompt` が複数行なら、`typeText` で打ち込まず、サポートされた `paste({format:'text'})` または対応した `fill` で入力します。送信前に入力欄の本文が `prompt` と一致し、既存の文面が混ざっていないことを確認してから、送信ボタンを1回だけ使います。選択したプラグインのチップが入力欄に含まれるUIでは、観測済みのチップだけを本文とは別に確認し、本文を任意に削除・trimして照合しません。確認できない場合は送信しません。
-6. `chat_plan.py --phase receive --live receive-live.json --request bundle.json`で、既存依頼の回収だけを照合します。`collect_reply`は新規送信や生成ではなく、sendの拒否や新規生成枠の不足だけでは、別途許可された回収を止めません。回収の許可・新しいUIモデル確認は維持します。経路所有者が同じ依頼の実完了を確認し、サポートされたBrowser操作で同じ一時Chatの最終回答を取得します。`send_message_to_thread` と `read_thread` は一時Chatに使いません。前者は内部で `isTemporaryChat: false` を固定するためです。30秒程度から間隔を広げて完了を待ち、経過を利用者へ伝えます。10分は進捗を確認する目安で、中止・失敗判定の期限ではありません。まだ処理中なら未完了の状態を伝え、実行環境と依頼の時間制約内で待機またはサポートされたhandoff機能でタブを保持します。回答待ちや取得失敗で同じ依頼を再送したり、処理中のタブを勝手に閉じたりしません。
-7. 最終回答だけを明示したローカル作業場所へ `reply.json` として保存し、`python <plugin-root>/scripts/chatgpt_route.py validate --request bundle.json --response reply.json` で `request_id` と `input_sha256` を照合します。`blocked` と `missing_input` は成功ではありません。経路所有者は合格条件、出典と対象範囲、重要な反例を確認し、有効な根拠を再利用して必要な成果物だけを保存します。同じ分析を全面的にやり直す検収を常態化させません。
+6. 対応するBrowserでは [Browserスクリプト](chat-transfer.md#browser-script-and-completion-signal) を使い、同じ一時Chatの現在の回答が終了したことを示すUIを1回のツール呼出しで待ちます。完了シグナル後、`chat_plan.py --phase receive --live receive-live.json --request bundle.json`で、新しいUIモデル観測と既存依頼の回収条件を照合します。別途許可された回収はsendの拒否や新規生成枠の不足だけでは止まりません。経路所有者が同じ回答を取得します。`send_message_to_thread` と `read_thread` は一時Chatに使いません。前者は内部で `isTemporaryChat: false` を固定するためです。待機が時間切れになった場合は、元の依頼を未確定のまま保持し、同じタブで待機またはサポートされたhandoffを続けます。回答待ちや取得失敗で同じ依頼を再送したり、処理中のタブを勝手に閉じたりしません。
+7. [Browserスクリプト](chat-transfer.md#browser-script-and-completion-signal) の `collect` でローカルフォームに回答を渡した場合は、`saved` イベントで保存結果を受け取ります。明示した作業場所の `reply.json` を `python <plugin-root>/scripts/chatgpt_route.py validate --request bundle.json --response reply.json` で検証し、`request_id` と `input_sha256` を照合します。`completed` なら経路所有者が合格条件、出典と対象範囲、重要な反例を確認します。`blocked` と `missing_input` は不足や停止理由を確認します。有効な根拠を再利用して必要な成果物だけを保存します。
 8. UIの `Pro` 表示を回答取得後にも確認します。モデル表示が不明・変化した場合や上限通知が出た場合は受入を止め、モデル未確認の結果として扱います。別モデルを観測した時だけその事実を記録します。バックエンドのモデルIDは不明のままにし、自己申告で補完しません。
 9. 修正が必要なら、閉じる前の同じ一時Chatで、新しい依頼IDと材料hashを使って修正を依頼できます。結果の受入と保存が完了したら、一時Chatを保存せず閉じます。会話URL、会話ID、認証情報、入力全文、実会話ログを公開repoに保存しません。閉じた後に追加作業が必要なら、必要最小限の材料を新しい一時Chatへ渡し、新しい `request_id` で依頼します。
 

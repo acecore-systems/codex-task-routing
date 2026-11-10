@@ -1,5 +1,9 @@
 # 変更履歴
 
+## 0.30.4
+
+- 通常Chat Proの承認済み依頼をBrowserスクリプトで送り、同じ回答の終了表示を1回の待機で受け取れます。ローカル保存後のシグナルには依頼IDと入力ハッシュ、回答の状態が含まれます。[Browser手順](../plugins/codex-task-routing/skills/task-routing/references/chat-transfer.md#browser-script-and-completion-signal) · [検証範囲](validation-0.30.4.md)
+
 ## 0.30.2
 
 - 配布修正。壊れた観測台帳を方針の適用から切り離し、親の要求値と実行時の観測値に low / ultra を記録できるようにしました。観測の根拠確認と子の分担既定を維持します。

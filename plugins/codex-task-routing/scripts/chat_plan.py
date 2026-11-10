@@ -349,6 +349,7 @@ def collection_plan(live, request, *, now=None):
             "next_action": "collect_reply", "preflight_complete": True,
             "dispatch_authorized": False, "dispatch_performed": False,
             "request_id": request_id, "input_sha256": input_sha256,
+            "transport": live["transport"],
             "observation_source": "caller_supplied", "backend_model": "unknown",
             "authorization_attested": False}
 
@@ -417,6 +418,7 @@ def plan(facts, inventory=None, *, now=None, live=None):
             "reason": "supplied_dispatch_checks_passed" if live is not None else "inspect_live_surface_model_and_permissions",
             "next_action": "send_once" if live is not None else "inspect_browser",
             "preflight_complete": live is not None, "dispatch_performed": False,
+            "transport": live["transport"] if live is not None else None,
             "checks": checks, "live_checked": live is not None, "delegation_mode": delegation,
             "observation_source": "caller_supplied", "backend_model": "unknown",
             "authorization_attested": False}
