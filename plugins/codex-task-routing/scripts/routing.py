@@ -15,6 +15,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 import sys
 import time
 from dataclasses import dataclass
@@ -111,6 +112,10 @@ def _require_exact_keys(value: Mapping[str, Any], allowed: set[str], purpose: st
 def _validate_string(value: Any, purpose: str) -> str:
     if not isinstance(value, str) or not value.strip() or len(value) > MAX_VALUE_CHARS:
         raise RoutingError(f"{purpose} must be a non-empty string")
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise RoutingError(f"{purpose} must contain valid Unicode text") from exc
     return value
 
 
@@ -461,14 +466,17 @@ def _cache_directory(codex_home: Path, policy: Policy) -> Path:
     if _verified_existing_cache(destination, policy):
         return destination
     staging = cache_root / f".routing-staging-{policy.content_hash}-{secrets.token_hex(8)}"
+    staging_created = False
     try:
         # ``exist_ok=False`` makes every write occur in a new directory.
         staging.mkdir()
+        staging_created = True
         render_policy(policy, staging)
         # os.rename does not overwrite an existing destination on Windows.
         for attempt in range(CACHE_RENAME_MAX_ATTEMPTS):
             try:
                 os.rename(staging, destination)
+                staging_created = False
                 return destination
             except OSError as exc:
                 # Windows uses EEXIST and Linux may use ENOTEMPTY when a
@@ -494,6 +502,9 @@ def _cache_directory(codex_home: Path, policy: Policy) -> Path:
                 raise RoutingError("cannot create the policy cache entry") from exc
     except OSError as exc:
         raise RoutingError("cannot create the policy cache entry") from exc
+    finally:
+        if staging_created:
+            shutil.rmtree(staging, ignore_errors=True)
 
 
 def _guidance_directories(cwd: Path, codex_home: Path | None) -> list[Path]:
