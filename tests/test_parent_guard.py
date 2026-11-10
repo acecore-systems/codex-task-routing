@@ -35,9 +35,11 @@ class ParentGuardTests(unittest.TestCase):
         result = self.send('UserPromptSubmit', prompt='private-user-prompt')
         self.assertEqual(result['hookSpecificOutput']['hookEventName'], 'UserPromptSubmit')
         context = result['hookSpecificOutput']['additionalContext']
-        for phrase in ('substantial work', 'internal coupling and parent familiarity', 'Continue a suitable delegated owner',
+        for phrase in ('substantial work', 'acceptance criteria', 'not the request label', 'one suitable execution owner',
+                       'failure diagnosis', 'separate pure evidence', 'effective policy',
+                       'internal coupling and parent familiarity', 'Continue a suitable delegated owner',
                        'answer short questions normally', 'host permission', 'custom policy',
-                       'Do not invent work or force delegation'):
+                       'same suitable resumable owner', 'Do not invent work or force delegation'):
             self.assertIn(phrase, context)
         self.assertIsNone(self.send('UserPromptSubmit', prompt='different-private-prompt'))
         self.assertIsNone(self.send('UserPromptSubmit', turn_id='other', agent_id='child'))
@@ -55,6 +57,7 @@ class ParentGuardTests(unittest.TestCase):
         response = json.loads(result.stdout)
         self.assertEqual(response['hookSpecificOutput']['hookEventName'], 'UserPromptSubmit')
         self.assertIn('additionalContext', response['hookSpecificOutput'])
+        self.assertIn('acceptance criteria', response['hookSpecificOutput']['additionalContext'])
         self.assertNotIn('private-prompt', result.stdout)
         again = subprocess.run([sys.executable, str(SCRIPT)], input=json.dumps(payload),
                                text=True, capture_output=True, env=env, check=True)
@@ -102,9 +105,51 @@ class ParentGuardTests(unittest.TestCase):
         for i in range(guard.THRESHOLD + 1):
             self.assertIsNone(self.work(i, turn_id='other'))
         self.send('SubagentStop', agent_id='child')
+        self.assertIn('same suitable, resumable owner', self.work('resume')['hookSpecificOutput']['additionalContext'])
         for i in range(guard.THRESHOLD - 1):
             self.assertIsNone(self.work('after-' + str(i), turn_id='other'))
         self.assertIsNotNone(self.work('after-last', turn_id='other'))
+    def test_stopped_owner_retest_reminder_is_conditional_and_once(self):
+        self.send('UserPromptSubmit')
+        self.send('SubagentStart', agent_id='child')
+        self.send('SubagentStop', agent_id='child')
+        out = self.send('PreToolUse', tool_name='Bash', tool_use_id='parent-retest',
+                        tool_input={'command': 'private-test-command'})
+        context = out['hookSpecificOutput']['additionalContext']
+        for phrase in ('permissions or environment', 'same suitable, resumable owner', 'concrete reason',
+                       'does not establish unfinished work', 'Parent acceptance', 'host restrictions',
+                       'do not force delegation'):
+            self.assertIn(phrase, context)
+        self.assertIsNone(self.work('next'))
+        content = (self.home / 'codex-task-routing/parent-guard/state.sqlite3').read_bytes()
+        self.assertNotIn(b'private-test-command', content)
+
+    def test_contact_and_other_active_child_suppress_resume_reminder(self):
+        self.send('UserPromptSubmit')
+        self.send('SubagentStart', agent_id='first')
+        self.send('SubagentStart', agent_id='second')
+        self.send('SubagentStop', agent_id='first')
+        self.assertIsNone(self.work('while-active'))
+        self.send('PreToolUse', tool_name='followup_task', tool_use_id='contact')
+        self.send('SubagentStop', agent_id='second')
+        self.send('PreToolUse', tool_name='send_message', tool_use_id='contact-again')
+        self.assertIsNone(self.work('after-contact'))
+
+    def test_unknown_or_duplicate_stop_does_not_trigger(self):
+        self.send('UserPromptSubmit')
+        self.send('SubagentStop', agent_id='unknown')
+        self.assertIsNone(self.work('unknown'))
+        self.send('SubagentStart', agent_id='child')
+        self.send('SubagentStop', agent_id='child')
+        self.assertIsNotNone(self.work('first'))
+        self.send('SubagentStop', agent_id='child')
+        self.assertIsNone(self.work('duplicate'))
+    def test_stop_reminder_survives_turn_change(self):
+        self.send('UserPromptSubmit')
+        self.send('SubagentStart', agent_id='child')
+        self.send('SubagentStop', agent_id='child')
+        self.send('UserPromptSubmit', turn_id='next')
+        self.assertIn('same suitable, resumable owner', self.work('next-work', turn_id='next')['hookSpecificOutput']['additionalContext'])
     def test_children_missing_ids_and_unknown_turn_do_not_count(self):
         self.send('UserPromptSubmit', agent_id='child')
         for i in range(guard.THRESHOLD + 1):
