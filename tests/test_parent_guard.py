@@ -113,7 +113,8 @@ class ParentGuardTests(unittest.TestCase):
         self.send('UserPromptSubmit')
         self.send('SubagentStart', agent_id='child')
         self.send('SubagentStop', agent_id='child')
-        out = self.work('parent-retest', tool_input={'command': 'private-test-command'})
+        out = self.send('PreToolUse', tool_name='Bash', tool_use_id='parent-retest',
+                        tool_input={'command': 'private-test-command'})
         context = out['hookSpecificOutput']['additionalContext']
         for phrase in ('permissions or environment', 'same suitable, resumable owner', 'concrete reason',
                        'does not establish unfinished work', 'Parent acceptance', 'host restrictions',
