@@ -80,6 +80,11 @@ def _database(home):
     db.execute('CREATE TABLE IF NOT EXISTS tools (session TEXT NOT NULL, turn TEXT NOT NULL, tool TEXT NOT NULL, PRIMARY KEY(session,turn,tool))')
     db.execute('CREATE TABLE IF NOT EXISTS active (session TEXT NOT NULL, agent TEXT NOT NULL, created INTEGER NOT NULL, PRIMARY KEY(session,agent))')
     db.execute('CREATE TABLE IF NOT EXISTS stopped (session TEXT PRIMARY KEY, created INTEGER NOT NULL)')
+    # Explicitly observed open root turn; never infer it from historic turn ordering.
+    db.execute('CREATE TABLE IF NOT EXISTS open_turn (session TEXT PRIMARY KEY, turn TEXT NOT NULL, created INTEGER NOT NULL)')
+    db.execute('CREATE TABLE IF NOT EXISTS seen_children (session TEXT NOT NULL, agent TEXT NOT NULL, turn TEXT NOT NULL, created INTEGER NOT NULL, PRIMARY KEY(session,agent,turn))')
+    db.execute('CREATE TABLE IF NOT EXISTS interrupted_turns (session TEXT NOT NULL, turn TEXT NOT NULL, created INTEGER NOT NULL, PRIMARY KEY(session,turn))')
+    db.execute('CREATE TABLE IF NOT EXISTS observed_turns (session TEXT NOT NULL, turn TEXT NOT NULL, PRIMARY KEY(session,turn))')
     return db
 
 
@@ -87,14 +92,14 @@ def handle(payload, home):
     if not isinstance(payload, dict):
         return None
     event = payload.get('hook_event_name')
-    if event not in {'UserPromptSubmit', 'PreToolUse', 'SubagentStart', 'SubagentStop'}:
+    if event not in {'UserPromptSubmit', 'PreToolUse', 'SubagentStart', 'SubagentStop', 'Stop', 'Interrupt'}:
         return None
     session, turn = _identifier(payload.get('session_id')), _identifier(payload.get('turn_id'))
     if session is None or turn is None:
         return None
     agent = payload.get('agent_id')
     # Lifecycle agent_id names the child, whereas tool/prompt agent_id identifies caller.
-    if event in {'UserPromptSubmit', 'PreToolUse'} and agent not in (None, ''):
+    if event in {'UserPromptSubmit', 'PreToolUse', 'Stop', 'Interrupt'} and agent not in (None, ''):
         return None
     if event in {'SubagentStart', 'SubagentStop'} and _identifier(agent) is None:
         return None
@@ -114,18 +119,39 @@ def handle(payload, home):
             db.execute('DELETE FROM turns WHERE created < ?', (now - TTL_SECONDS,))
             db.execute('DELETE FROM active WHERE created < ?', (now - TTL_SECONDS,))
             db.execute('DELETE FROM stopped WHERE created < ?', (now - TTL_SECONDS,))
+            db.execute('DELETE FROM open_turn WHERE created < ?', (now - TTL_SECONDS,))
+            db.execute('DELETE FROM seen_children WHERE created < ?', (now - TTL_SECONDS,))
+            db.execute('DELETE FROM interrupted_turns WHERE created < ?', (now - TTL_SECONDS,))
+            for table in ('open_turn', 'seen_children', 'interrupted_turns'):
+                db.execute(f'DELETE FROM {table} WHERE rowid IN (SELECT rowid FROM {table} ORDER BY created DESC, rowid DESC LIMIT -1 OFFSET ?)', (MAX_ROWS,))
             db.execute('DELETE FROM stopped WHERE rowid IN (SELECT rowid FROM stopped ORDER BY created DESC, rowid DESC LIMIT -1 OFFSET ?)', (MAX_ROWS,))
             db.execute('DELETE FROM active WHERE rowid IN (SELECT rowid FROM active ORDER BY created DESC, rowid DESC LIMIT -1 OFFSET ?)', (MAX_ROWS,))
             db.execute('DELETE FROM tools WHERE NOT EXISTS (SELECT 1 FROM turns WHERE turns.session=tools.session AND turns.turn=tools.turn)')
             # Duplicate prompt deliveries must not reset counts or a reminder.
             created = db.execute('INSERT OR IGNORE INTO turns(session,turn,created) VALUES(?,?,?)', (session, turn, now)).rowcount == 1
             db.execute('DELETE FROM turns WHERE rowid IN (SELECT rowid FROM turns ORDER BY created DESC, rowid DESC LIMIT -1 OFFSET ?)', (MAX_ROWS,))
-            if created:
+            db.execute('DELETE FROM observed_turns WHERE NOT EXISTS (SELECT 1 FROM turns WHERE turns.session=observed_turns.session AND turns.turn=observed_turns.turn)')
+            interrupted = db.execute('SELECT 1 FROM interrupted_turns WHERE session=? AND turn=?', (session, turn)).fetchone()
+            if created and not interrupted:
+                db.execute('INSERT OR REPLACE INTO open_turn VALUES(?,?,?)', (session, turn, now))
                 db.execute('COMMIT')
                 return {'hookSpecificOutput': {'hookEventName': 'UserPromptSubmit', 'additionalContext': PROMPT_REMINDER}}
         elif event == 'SubagentStart':
-            db.execute('INSERT OR REPLACE INTO active VALUES(?,?,?)', (session, _identifier(agent), now))
-            db.execute('UPDATE turns SET delegated=1 WHERE session=? AND turn=?', (session, turn))
+            child = _identifier(agent)
+            first = db.execute('INSERT OR IGNORE INTO seen_children VALUES(?,?,?,?)', (session, child, turn, now)).rowcount == 1
+            inserted = first and db.execute('INSERT OR IGNORE INTO active VALUES(?,?,?)', (session, child, now)).rowcount == 1
+            if inserted:
+                # This records a child start observed while the root turn was open,
+                # not proof that this turn caused the spawn. The lifecycle turn is
+                # the child's active turn and cannot identify the root turn.
+                db.execute('UPDATE turns SET delegated=1 WHERE session=? AND turn=(SELECT turn FROM open_turn WHERE session=?)', (session, session))
+                db.execute('INSERT OR IGNORE INTO observed_turns SELECT turns.session, turns.turn FROM turns JOIN open_turn ON turns.session=open_turn.session AND turns.turn=open_turn.turn WHERE turns.session=?', (session,))
+        elif event in {'Stop', 'Interrupt'}:
+            if event == 'Interrupt':
+                db.execute('INSERT OR IGNORE INTO interrupted_turns VALUES(?,?,?)', (session, turn, now))
+                db.execute('DELETE FROM interrupted_turns WHERE created < ?', (now - TTL_SECONDS,))
+                db.execute('DELETE FROM interrupted_turns WHERE rowid IN (SELECT rowid FROM interrupted_turns ORDER BY created DESC, rowid DESC LIMIT -1 OFFSET ?)', (MAX_ROWS,))
+            db.execute('DELETE FROM open_turn WHERE session=? AND turn=?', (session, turn))
         elif event == 'SubagentStop':
             removed = db.execute('DELETE FROM active WHERE session=? AND agent=?', (session, _identifier(agent))).rowcount
             if removed:
@@ -176,10 +202,12 @@ def main():
             try:
                 turns = db.execute('SELECT COUNT(*) FROM turns').fetchone()[0]
                 reminded = db.execute('SELECT COUNT(*) FROM turns WHERE reminded=1').fetchone()[0]
+                exists = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='observed_turns'").fetchone()
+                observed = db.execute('SELECT COUNT(*) FROM observed_turns JOIN turns USING(session,turn)').fetchone()[0] if exists else 0
             finally:
                 db.close()
-            print(json.dumps({'state': 'recorded' if turns else 'unobserved', 'retained_turns': turns, 'reminders': reminded,
-                              'note': 'Local state only; trust, complete event coverage and delegation success unknown.'}))
+            print(json.dumps({'state': 'recorded' if turns else 'unobserved', 'retained_turns': turns, 'reminders': reminded, 'turns_with_observed_child_start': observed,
+                              'note': 'Local state only; child start was observed during an open turn, not necessarily caused by it. Trust and complete event coverage unknown.'}))
             return 0
         except (OSError, sqlite3.Error, RoutingError, ValueError):
             print(json.dumps({'state': 'unavailable', 'note': 'State cannot be inspected; hook coverage unknown.'}))

@@ -71,6 +71,12 @@
             "command": "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','capture_hook.py'),run_name='__main__')\"",
             "timeout": 10,
             "statusMessage": "Recording enrolled usage metadata"
+          },
+          {
+            "type": "command",
+            "command": "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','parent_guard.py'),run_name='__main__')\"",
+            "timeout": 5,
+            "statusMessage": "Checking routing reminder"
           }
         ]
       }
@@ -130,6 +136,18 @@
             "type": "command",
             "command": "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','parent_guard.py'),run_name='__main__')\"",
             "timeout": 5,
+            "statusMessage": "Checking routing reminder"
+          }
+        ]
+      }
+    ],
+    "Interrupt": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','parent_guard.py'),run_name='__main__')\"",
+            "timeout": 3,
             "statusMessage": "Checking routing reminder"
           }
         ]
