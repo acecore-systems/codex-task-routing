@@ -7,6 +7,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import time
 import unittest
 import uuid
 
@@ -146,6 +147,54 @@ class ParentGuardTests(unittest.TestCase):
                 self.send('SubagentStart', session_id=session, turn_id='child-2', agent_id='child-2')
                 self.assertEqual(self.delegated(session, 'first'), 0)
                 self.assertEqual(self.delegated(session, 'second'), 1)
+
+    def test_interrupt_before_prompt_cannot_reopen_old_turn(self):
+        self.send('Interrupt', turn_id='old')
+        self.send('Interrupt', turn_id='old')
+        self.send('UserPromptSubmit', turn_id='new')
+        self.send('UserPromptSubmit', turn_id='old')
+        self.send('SubagentStart', turn_id='child', agent_id='agent')
+        self.assertEqual(self.delegated('session-a', 'old'), 0)
+        self.assertEqual(self.delegated('session-a', 'new'), 1)
+        self.send('UserPromptSubmit', session_id='session-b', turn_id='old')
+        self.send('SubagentStart', session_id='session-b', turn_id='child', agent_id='agent')
+        self.assertEqual(self.delegated('session-b', 'old'), 1)
+
+    def test_interrupt_retention_is_bounded_and_expires(self):
+        db = guard._database(self.home)
+        now = int(time.time())
+        db.execute('INSERT INTO interrupted_turns VALUES(?,?,?)',
+                   (guard._identifier('session-a'), guard._identifier('expired'), now - guard.TTL_SECONDS - 1))
+        db.close()
+        for i in range(guard.MAX_ROWS + 2):
+            self.send('Interrupt', turn_id='interrupt-' + str(i))
+        db = guard._database(self.home)
+        try:
+            self.assertLessEqual(db.execute('SELECT COUNT(*) FROM interrupted_turns').fetchone()[0], guard.MAX_ROWS)
+            self.assertIsNone(db.execute('SELECT 1 FROM interrupted_turns WHERE turn=?',
+                                         (guard._identifier('expired'),)).fetchone())
+        finally:
+            db.close()
+
+    def test_legacy_status_is_read_only_and_does_not_count_delegated(self):
+        path = self.home / 'codex-task-routing/parent-guard/state.sqlite3'
+        path.parent.mkdir(parents=True)
+        db = sqlite3.connect(path)
+        db.execute('CREATE TABLE turns (session TEXT NOT NULL, turn TEXT NOT NULL, created INTEGER NOT NULL, delegated INTEGER NOT NULL DEFAULT 0, owner_contact INTEGER NOT NULL DEFAULT 0, reminded INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(session,turn))')
+        db.execute('INSERT INTO turns VALUES(?,?,?,1,0,0)', (guard._identifier('session-a'), guard._identifier('legacy'), int(time.time())))
+        db.commit()
+        db.close()
+        before = path.read_bytes()
+        env = dict(os.environ, CODEX_HOME=str(self.home))
+        def status():
+            return json.loads(subprocess.run([sys.executable, str(SCRIPT), 'status'], text=True,
+                                             capture_output=True, env=env, check=True).stdout)
+        self.assertEqual(status()['turns_with_observed_child_start'], 0)
+        self.assertEqual(path.read_bytes(), before)
+        self.send('UserPromptSubmit', turn_id='new')
+        self.send('SubagentStart', turn_id='child', agent_id='agent')
+        self.assertEqual(status()['turns_with_observed_child_start'], 1)
+        self.assertEqual(self.delegated('session-a', 'legacy'), 1)
 
     def test_duplicate_child_start_does_not_mark_new_turn(self):
         self.send('UserPromptSubmit')
