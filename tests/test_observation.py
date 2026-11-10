@@ -319,6 +319,68 @@ class ObservationTestCase(unittest.TestCase):
         self.assertIn("Observation sample state is unknown", context)
         self.assertIn("Effective child defaults", context)
 
+    def test_corrupt_measurement_in_both_schemas_preserves_policy_delivery(self) -> None:
+        policy = self.policy()
+        self.start("legacy", policy=policy)
+        path = self.state_path(policy=policy)
+        key = self.sampling_key(policy=policy)
+        for schema in (1, 2):
+            if schema == 2:
+                routing.observation_campaign_open(
+                    codex_home=self.home, policy=policy, campaign_id="review", purpose="test")
+                routing.observation_start(
+                    codex_home=self.home, policy=policy, campaign_id="review", task_id="current")
+            before = path.read_bytes()
+            for invalid in ([], {"private-fixture": []}, True, None):
+                with self.subTest(schema=schema, state=invalid):
+                    state = json.loads(before)
+                    self.assertEqual(state["schema_version"], schema)
+                    sample = state["samples"][key]
+                    tasks = sample["tasks"] if schema == 1 else sample["campaigns"]["review"]["tasks"]
+                    record = next(iter(tasks.values()))
+                    record["measurement"]["state"] = invalid
+                    corrupt = json.dumps(state).encode("utf-8")
+                    path.write_bytes(corrupt)
+
+                    self.assertEqual(routing.observation_status(
+                        codex_home=self.home, policy=policy)["state"], "unknown")
+                    context = routing.hook_payload(
+                        event="SessionStart", source="startup", plugin_root=self.plugin,
+                        codex_home=self.home, cwd=self.base,
+                    )["hookSpecificOutput"]["additionalContext"]
+                    self.assertIn("Observation sample state is unknown", context)
+                    self.assertIn("Effective child defaults", context)
+                    self.assertNotIn("private-fixture", context)
+                    self.assertEqual(path.read_bytes(), corrupt)
+            path.write_bytes(before)
+
+    def test_parent_requests_and_observed_efforts_support_host_levels(self) -> None:
+        policy = self.policy()
+        for effort in ("low", "ultra"):
+            with self.subTest(effort=effort):
+                self.start(effort, policy=policy)
+                completion = partial_completion()
+                parent, child = completion["runs"]
+                parent["requested"]["effort"] = effort
+                parent["observed"] = {
+                    "model": parent["requested"]["model"], "effort": effort,
+                    "evidence_ref": None, "reason": None,
+                }
+                with self.assertRaisesRegex(routing.RoutingError, "verification reference"):
+                    self.complete(effort, completion, policy=policy)
+                parent["observed"]["evidence_ref"] = "host:parent-fixture"
+                child["observed"]["effort"] = effort
+                valid_child_request = child["requested"]["effort"]
+                child["requested"]["effort"] = effort
+                with self.assertRaisesRegex(routing.RoutingError, "requested effort is invalid"):
+                    self.complete(effort, completion, policy=policy)
+                child["requested"]["effort"] = valid_child_request
+                self.complete(effort, completion, policy=policy)
+                self.assertEqual(routing.observation_status(
+                    codex_home=self.home, policy=policy)["state"], "valid")
+                sample = json.loads(self.state_path(policy=policy).read_bytes())["samples"][self.sampling_key(policy=policy)]
+                self.assertEqual(sample["tasks"][effort]["runs"], completion["runs"])
+
     def test_process_exit_releases_lock_without_manual_cleanup(self) -> None:
         code = (
             "import os,sys; from pathlib import Path; sys.path.insert(0,sys.argv[1]); import routing\n"

@@ -188,6 +188,32 @@ class RoutingTestCase(unittest.TestCase):
                 self.assertEqual(path.read_bytes(), before)
                 self.assertNotIn(secret, json.dumps(result))
 
+    def test_invalid_unicode_in_override_has_controlled_diagnostics(self) -> None:
+        secret = "private-fixture"
+        for surrogate in (chr(0xD800), chr(0xDFFF)):
+            with self.subTest(surrogate=repr(surrogate)):
+                path = self.write_override({"schema_version": 1, "principles": {"summary": secret + surrogate}})
+                before = path.read_bytes()
+                status = routing.status_payload(plugin_root=self.plugin, codex_home=self.home)
+                self.assertFalse(status["ok"])
+                self.assertEqual(status["error_code"], "invalid_policy")
+                hook = routing.hook_payload(
+                    event="SessionStart", source="startup", plugin_root=self.plugin,
+                    codex_home=self.home, cwd=self.base,
+                )
+                self.assertNotIn("hookSpecificOutput", hook)
+                output = self.base / "bad-render"
+                with redirect_stdout(io.StringIO()) as stdout, redirect_stderr(io.StringIO()) as stderr:
+                    code = routing.main(["--codex-home", str(self.home), "render", "--output-dir", str(output)])
+                self.assertEqual(code, 2)
+                self.assertFalse(output.exists())
+                self.assertNotIn(secret, json.dumps([status, hook, stdout.getvalue(), stderr.getvalue()]))
+                self.assertEqual(path.read_bytes(), before)
+
+        valid = "Valid supplementary Unicode " + chr(0x1F680)
+        self.write_override({"schema_version": 1, "principles": {"summary": valid}})
+        self.assertEqual(self.policy().config["principles"]["summary"], valid)
+
     def test_status_does_not_echo_os_errors_or_unrecognized_error_text(self) -> None:
         for error, code in [
             (OSError("private-filesystem-sentinel"), "filesystem_unavailable"),
@@ -233,20 +259,20 @@ class RoutingTestCase(unittest.TestCase):
 
     def test_concurrent_cache_winner_is_reused_for_supported_os_errors(self) -> None:
         policy = self.policy()
-        original_rename = routing.os.rename
 
         for collision_errno in (errno.EEXIST, errno.ENOTEMPTY):
             with self.subTest(errno=collision_errno):
                 collision_home = self.base / f"home-{collision_errno}"
 
                 def winner_publish_then_signal_collision(source, destination):
-                    original_rename(source, destination)
+                    shutil.copytree(source, destination)
                     raise OSError(collision_errno, "simulated concurrent cache winner")
 
                 with patch.object(routing.os, "rename", side_effect=winner_publish_then_signal_collision):
                     cache = routing._cache_directory(collision_home, policy)
                 self.assertEqual(cache.name, policy.content_hash)
                 self.assertTrue(routing._is_managed_directory(cache))
+                self.assertEqual(list(cache.parent.glob('.routing-staging-*')), [])
 
         denied_calls = 0
 
@@ -259,6 +285,24 @@ class RoutingTestCase(unittest.TestCase):
             with self.assertRaises(routing.RoutingError):
                 routing._cache_directory(self.base / "home-denied", policy)
         self.assertEqual(denied_calls, 1)
+
+    def test_failed_render_cleans_only_its_unpublished_cache(self) -> None:
+        policy = self.policy()
+        root = self.home / routing.CACHE_RELATIVE
+        other_cache = root / "other"
+        other_cache.mkdir(parents=True)
+        sentinel = other_cache / "keep"
+        sentinel.write_bytes(b"other cache")
+
+        def fail_render(_policy, staging):
+            (staging / "partial.md").write_bytes(b"incomplete")
+            raise routing.RoutingError("simulated render failure")
+
+        with patch.object(routing, "render_policy", side_effect=fail_render):
+            with self.assertRaisesRegex(routing.RoutingError, "simulated render failure"):
+                routing._cache_directory(self.home, policy)
+        self.assertEqual(list(root.iterdir()), [other_cache])
+        self.assertEqual(sentinel.read_bytes(), b"other cache")
 
     @unittest.skipUnless(os.name == "nt", "Windows rename error mapping")
     def test_cache_rename_retries_only_bounded_windows_access_candidates(self) -> None:
@@ -305,6 +349,7 @@ class RoutingTestCase(unittest.TestCase):
             with self.assertRaises(routing.RoutingError):
                 routing._cache_directory(persistent_home, policy)
         self.assertEqual(persistent_calls, routing.CACHE_RENAME_MAX_ATTEMPTS)
+        self.assertEqual(list((persistent_home / routing.CACHE_RELATIVE).iterdir()), [])
         self.assertEqual(sleep.call_count, routing.CACHE_RENAME_MAX_ATTEMPTS - 1)
 
         mismatch_home = self.base / "home-mismatched-winner"

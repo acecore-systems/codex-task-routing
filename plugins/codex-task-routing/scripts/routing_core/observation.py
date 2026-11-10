@@ -27,6 +27,8 @@ MAX_OBSERVATION_TASK_ID_CHARS = 256
 MAX_OBSERVATION_REFERENCE_CHARS = 4096
 MAX_OBSERVATION_SCOPE_CHARS = 500
 MAX_OBSERVATION_RUNS = 32
+# Hosts can report efforts outside the plugin's child routing policy.
+OBSERVATION_EFFORTS = frozenset(EFFORT_ORDER) | {"low", "ultra"}
 
 
 class Policy(Protocol):
@@ -48,6 +50,10 @@ def _observation_text(value: Any, purpose: str, limit: int = MAX_OBSERVATION_REF
         raise RoutingError(f"{purpose} must be a non-empty string")
     if any(ord(character) < 32 for character in value):
         raise RoutingError(f"{purpose} contains control characters")
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise RoutingError(f"{purpose} must contain valid Unicode text") from exc
     return value
 
 
@@ -104,7 +110,7 @@ def _validate_observation_measurement(value: Any, *, allow_partial: bool) -> Non
     allowed = {"measured", "missing"}
     if allow_partial:
         allowed.add("partial")
-    if state not in allowed:
+    if not isinstance(state, str) or state not in allowed:
         raise RoutingError("observation measurement state is invalid")
     if state == "measured":
         if reason is not None:
@@ -124,12 +130,13 @@ def _validate_observation_verification(value: Any) -> None:
         raise RoutingError("verified observation must not have a missing reason")
 
 
-def _validate_observation_requested(value: Any) -> None:
+def _validate_observation_requested(value: Any, *, parent_run: bool) -> None:
     if not isinstance(value, dict) or set(value) != {"model", "effort", "reason"}:
         raise RoutingError("requested run settings have unsupported fields")
     model = _observation_optional_text(value.get("model"), "requested model")
     effort = value.get("effort")
-    if effort is not None and effort not in EFFORT_ORDER:
+    allowed_efforts = OBSERVATION_EFFORTS if parent_run else EFFORT_ORDER
+    if effort is not None and (not isinstance(effort, str) or effort not in allowed_efforts):
         raise RoutingError("requested effort is invalid")
     reason = _observation_optional_text(value.get("reason"), "requested settings reason")
     if (model is None or effort is None) and reason is None:
@@ -143,7 +150,7 @@ def _validate_observation_observed(value: Any) -> None:
         raise RoutingError("observed run settings have unsupported fields")
     model = _observation_optional_text(value.get("model"), "observed model")
     effort = value.get("effort")
-    if effort is not None and effort not in EFFORT_ORDER:
+    if effort is not None and (not isinstance(effort, str) or effort not in OBSERVATION_EFFORTS):
         raise RoutingError("observed effort is invalid")
     evidence = _observation_optional_text(value.get("evidence_ref"), "observed settings reference")
     reason = _observation_optional_text(value.get("reason"), "observed settings reason")
@@ -163,7 +170,7 @@ def _validate_observation_usage(value: Any) -> None:
         fields = {"basis", "state", "reason", "evidence_ref", "turn_scope",
                   "start_tokens", "end_tokens", "total_tokens", "start_boundary_ref",
                   "end_boundary_ref", "continuity_ref"}
-        if set(value) != fields or value.get("turn_scope") not in {"full_turn", "partial_turn"}:
+        if set(value) != fields or value.get("turn_scope") not in ("full_turn", "partial_turn"):
             raise RoutingError("aggregate run usage has unsupported fields")
         reason = _observation_optional_text(value.get("reason"), "aggregate usage reason")
         evidence = _observation_optional_text(value.get("evidence_ref"), "aggregate usage reference")
@@ -202,7 +209,7 @@ def _validate_observation_usage(value: Any) -> None:
     state = value.get("state")
     reason = _observation_optional_text(value.get("reason"), "run usage reason")
     evidence = _observation_optional_text(value.get("evidence_ref"), "run usage reference")
-    if value.get("turn_scope") not in {"full_turn", "partial_turn"}:
+    if value.get("turn_scope") not in ("full_turn", "partial_turn"):
         raise RoutingError("run usage turn scope is invalid")
     token_fields = ("input_tokens", "cache_input_tokens", "output_tokens", "reasoning_tokens")
     unknown_reasons = value.get("unknown_reasons")
@@ -245,10 +252,11 @@ def _validate_observation_run(value: Any) -> None:
     if not isinstance(value, dict) or set(value) != fields:
         raise RoutingError("observation run has unsupported fields")
     _observation_text(value.get("run_key"), "run key", 128)
-    if value.get("relationship") not in {"parent", "child", "grandchild"}:
+    relationship = value.get("relationship")
+    if relationship not in ("parent", "child", "grandchild"):
         raise RoutingError("run relationship is invalid")
     state = value.get("state")
-    if state not in {"ongoing", "completed", "interrupted"}:
+    if state not in ("ongoing", "completed", "interrupted"):
         raise RoutingError("run state is invalid")
     run_id = _observation_optional_text(value.get("run_id"), "run id")
     run_id_reason = _observation_optional_text(value.get("run_id_reason"), "run id missing reason")
@@ -256,7 +264,7 @@ def _validate_observation_run(value: Any) -> None:
         raise RoutingError("unknown run id needs a reason")
     if run_id is not None and run_id_reason is not None:
         raise RoutingError("known run id must not have an unknown reason")
-    _validate_observation_requested(value.get("requested"))
+    _validate_observation_requested(value.get("requested"), parent_run=relationship == "parent")
     _validate_observation_observed(value.get("observed"))
     _validate_observation_usage(value.get("usage"))
     if state != "completed" and value["usage"]["state"] == "measured":
@@ -268,7 +276,7 @@ def _validate_observation_completion(value: Any) -> None:
     if not isinstance(value, dict) or set(value) != fields:
         raise RoutingError("observation completion has unsupported fields")
     state = value.get("state")
-    if state not in {"completed", "interrupted"}:
+    if state not in ("completed", "interrupted"):
         raise RoutingError("observation completion state is invalid")
     _observation_text(value.get("scope"), "observation scope", MAX_OBSERVATION_SCOPE_CHARS)
     _validate_observation_measurement(value.get("measurement"), allow_partial=True)
@@ -326,7 +334,7 @@ def _validate_observation_record(value: Any, sampling_key: str, task_id: str) ->
         raise RoutingError("observation policy hash is invalid")
     if policy.get("sampling_key") != sampling_key:
         raise RoutingError("observation policy sampling key is invalid")
-    if value.get("state") not in {"ongoing", "completed", "interrupted"}:
+    if value.get("state") not in ("ongoing", "completed", "interrupted"):
         raise RoutingError("observation record state is invalid")
     _validate_observation_measurement(value.get("measurement"), allow_partial=True)
     for name in ("started_at", "updated_at"):
@@ -408,7 +416,7 @@ def _validate_capture(capture: Any) -> None:
     for thread_id, snapshot in capture["baselines"].items():
         _validate_capture_snapshot(thread_id, snapshot)
     verification = capture["verification"]
-    if not isinstance(verification, dict) or set(verification) != {"state", "first", "second", "reason", "continuity_ref"} or verification["state"] not in {"missing", "pending", "matched", "verified"} or not isinstance(verification["first"], dict) or len(verification["first"]) > 32 or not isinstance(verification["second"], dict) or len(verification["second"]) > 32:
+    if not isinstance(verification, dict) or set(verification) != {"state", "first", "second", "reason", "continuity_ref"} or verification["state"] not in ("missing", "pending", "matched", "verified") or not isinstance(verification["first"], dict) or len(verification["first"]) > 32 or not isinstance(verification["second"], dict) or len(verification["second"]) > 32:
         raise RoutingError("capture verification is invalid")
     if verification["state"] == "verified":
         if verification["reason"] is not None or _observation_optional_text(verification["continuity_ref"], "counter continuity evidence") is None:
@@ -423,7 +431,10 @@ def _validate_capture(capture: Any) -> None:
     if verification["state"] in {"matched", "verified"} and (not verification["first"] or set(verification["first"]) != set(verification["second"])):
         raise RoutingError("matched capture snapshots are incomplete")
     allowed = {"unregistered_child", "child_registration_failed", "invalid_event", "ambiguous_pair", "event_limit", "child_not_stopped"}
-    if not isinstance(capture["issues"], list) or len(capture["issues"]) > len(allowed) or any(issue not in allowed for issue in capture["issues"]) or len(set(capture["issues"])) != len(capture["issues"]):
+    issues = capture["issues"]
+    if (not isinstance(issues, list) or len(issues) > len(allowed)
+            or any(not isinstance(issue, str) or issue not in allowed for issue in issues)
+            or len(set(issues)) != len(issues)):
         raise RoutingError("capture issues are invalid")
     for thread_id, thread in capture["threads"].items():
         from .usage_metadata import _uuid
@@ -493,14 +504,14 @@ def _validate_observation_state(value: Any, sampling_key: str) -> dict[str, Any]
             if not isinstance(classifications, dict) or set(classifications) - set(campaign["tasks"]):
                 raise RoutingError("campaign classifications are invalid")
             for entry in classifications.values():
-                if not isinstance(entry, dict) or set(entry) != {"state", "evidence_ref"} or entry["state"] not in {"provisional", "normal", "excluded"}:
+                if not isinstance(entry, dict) or set(entry) != {"state", "evidence_ref"} or entry["state"] not in ("provisional", "normal", "excluded"):
                     raise RoutingError("campaign classification is invalid")
                 if entry["state"] == "provisional":
                     if entry["evidence_ref"] is not None:
                         raise RoutingError("provisional classification has evidence")
                 else:
                     _observation_text(entry["evidence_ref"], "classification evidence")
-            if campaign["arm_failure"] not in {None, "unreadable_prompt_event"}:
+            if campaign["arm_failure"] not in (None, "unreadable_prompt_event"):
                 raise RoutingError("campaign arm failure is invalid")
             arm = campaign["arm"]
             if arm is not None and campaign["arm_failure"] is not None:
@@ -832,7 +843,7 @@ def observation_start(*, codex_home: Path, policy: Policy, task_id: str, kind: s
 
     task_id = _observation_task_id(task_id)
     if kind != "normal":
-        if kind not in {"audit", "config"}:
+        if kind not in ("audit", "config"):
             raise RoutingError("observation kind is invalid")
         return {"state": "skipped", "reason": "non_normal_work", "recorded": False}
     sampling_key = observation_sampling_key(policy)

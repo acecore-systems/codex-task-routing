@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import io
 import json
+import os
 import shutil
 import socket
 import sys
@@ -220,6 +221,14 @@ class ChatTransferTestCase(unittest.TestCase):
         with self.assertRaisesRegex(chat_transfer.ChatTransferError, "already exists with a different response"):
             self.state.save_response(self.response(result="second result"))
         self.assertEqual(self.reply_path.read_bytes(), before)
+
+    @unittest.skipUnless(os.name == "nt", "Windows no-replace rename")
+    def test_windows_creates_reply_without_hard_links_or_overwrite(self) -> None:
+        with patch.object(chat_transfer.os, "link", side_effect=PermissionError):
+            self.assertTrue(chat_transfer._atomic_create_reply(self.reply_path, b"first"))
+            self.assertFalse(chat_transfer._atomic_create_reply(self.reply_path, b"second"))
+        self.assertEqual(self.reply_path.read_bytes(), b"first")
+        self.assertEqual(list(self.base.glob(".chat-transfer-*")), [])
 
     def test_completed_status_is_not_semantic_acceptance(self) -> None:
         status = chat_transfer._response_status_message("completed", created=True)
