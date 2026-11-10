@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import html
 import io
 import json
 import os
@@ -12,6 +13,7 @@ import uuid
 import threading
 import time
 from contextlib import redirect_stdout
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import urlencode
@@ -71,6 +73,17 @@ class ChatTransferTestCase(unittest.TestCase):
             "evidence": ["supplied evidence"],
         }
 
+    def workflow(self) -> dict[str, object]:
+        return {
+            "request_id": self.bundle["request_id"],
+            "input_sha256": self.bundle["input_sha256"],
+            "facts": dict(substantial=True, parent_has_independent_work=True, materials_approved=True,
+                          handoff_proportionate=True, requires_repeated_local_access=False, needs=[]),
+            "live_base": dict(is_root=True, route_enabled=True, transport="browser-temporary",
+                              actions_authorized=True,
+                              browser_checks={op: "permission_checked" for op in chat_transfer.chat_plan.BROWSER_OPERATIONS}),
+        }
+
     def test_page_has_stable_dom_fields_without_submitting_the_prompt(self) -> None:
         document = chat_transfer._page(
             self.state, status=chat_transfer._response_status_message(None)
@@ -85,6 +98,118 @@ class ChatTransferTestCase(unittest.TestCase):
         self.assertIn('&lt;canonical UUID&gt;', document)
         self.assertIn("default-src 'none'", chat_transfer.CONTENT_SECURITY_POLICY)
         self.assertIn("form-action 'self'", chat_transfer.CONTENT_SECURITY_POLICY)
+
+    def test_workflow_preflight_and_save_over_http(self) -> None:
+        workflow = self.workflow()
+        base = workflow["live_base"]
+        state = chat_transfer.TransferState(bundle=self.bundle, reply_path=self.reply_path, workflow=workflow)
+        state.token = "test-capability-token"
+        server = SimpleNamespace(state=state, server_port=32123, completed=False)
+        observation = dict(surface="chat-temporary", model="Pro", quota_state="no_limit_notice",
+                           observed_at=datetime.now(timezone.utc).isoformat())
+
+        def post(fields):
+            body = urlencode(fields).encode("utf-8")
+            frame = (f"POST /transfer/{state.token} HTTP/1.1\r\nHost: 127.0.0.1:32123\r\n"
+                     f"Origin: http://127.0.0.1:32123\r\nContent-Type: application/x-www-form-urlencoded\r\n"
+                     f"Content-Length: {len(body)}\r\n\r\n").encode("ascii") + body
+            received = bytearray()
+            connection = SimpleNamespace(makefile=lambda *_: io.BytesIO(frame), sendall=received.extend)
+            chat_transfer.TransferHandler(connection, ("127.0.0.1", 0), server)
+            header, _, page = bytes(received).partition(b"\r\n\r\n")
+            return int(header.split()[1]), page.decode("utf-8")
+
+        code, page = post({"response_json": json.dumps(self.response())})
+        self.assertEqual(code, 422)
+        self.assertFalse(self.reply_path.exists())
+        self.assertNotIn('id="saved_result"', page)
+        code, _ = post({"phase": "dispatch", "live_observation": json.dumps({**observation, "is_root": True})})
+        self.assertEqual(code, 422)
+        code, page = post({"phase": "dispatch", "live_observation": json.dumps(observation)})
+        self.assertEqual(code, 200)
+        self.assertIn('id="preflight_result" readonly', page)
+        self.assertEqual(state.preflight_result["plan"]["next_action"], "send_once")
+        self.assertEqual(state.preflight_result["input_sha256"], self.bundle["input_sha256"])
+        claim = self.base / f'.chat-dispatch-{self.bundle["request_id"]}.json'
+        self.assertEqual(json.loads(claim.read_text(encoding="utf-8")), {
+            "request_id": self.bundle["request_id"], "input_sha256": self.bundle["input_sha256"]})
+        second = chat_transfer.TransferState(bundle=self.bundle, reply_path=self.base / "different.json", workflow=workflow)
+        retry = second.check_preflight("dispatch", json.dumps(observation))
+        self.assertEqual(retry["plan"]["reason"], "dispatch_already_reserved")
+        self.assertNotEqual(retry["plan"]["next_action"], "send_once")
+        receive_base = {**base, "browser_checks": {**base["browser_checks"], "send": "blocked"}}
+        recovery = chat_transfer.TransferState(bundle=self.bundle, reply_path=self.reply_path,
+                                               workflow={**workflow, "live_base": receive_base})
+        exhausted = json.dumps({**observation, "quota_state": "exhausted"})
+        self.assertEqual(recovery.check_preflight("receive", exhausted)["plan"]["next_action"], "collect_reply")
+        self.assertEqual(post({"phase": "dispatch", "live_observation": json.dumps(observation)})[0], 422)
+        code, _ = post({"phase": "receive", "live_observation": json.dumps({**observation, "model": "other"})})
+        self.assertEqual(code, 200)
+        self.assertFalse(state.receive_ready)
+        self.assertEqual(post({"response_json": json.dumps(self.response())})[0], 422)
+        code, _ = post({"phase": "receive", "live_observation": json.dumps(observation)})
+        self.assertEqual(code, 200)
+        self.assertTrue(state.receive_ready)
+        code, page = post({"response_json": json.dumps(self.response())})
+        self.assertEqual(code, 200)
+        self.assertIn('id="saved_result" readonly', page)
+        saved_text = page.split('id="saved_result" readonly aria-readonly="true">', 1)[1].split('</textarea>', 1)[0]
+        self.assertEqual(json.loads(html.unescape(saved_text)), chat_transfer._saved_metadata(state))
+        self.assertEqual(json.loads(self.reply_path.read_text(encoding="utf-8")), self.response())
+        self.assertTrue(server.completed)
+        # A reply saved by the legacy helper may exist without a reservation.
+        claim.unlink()
+        completed = chat_transfer.TransferState(bundle=self.bundle, reply_path=self.reply_path, workflow=workflow)
+        duplicate = completed.check_preflight("dispatch", json.dumps(observation))
+        self.assertEqual(duplicate["plan"]["reason"], "reply_already_present")
+        self.assertFalse(claim.exists())
+
+    def test_workflow_rejects_missing_or_mismatched_bundle_identity(self) -> None:
+        workflow = self.workflow()
+        workflow_path = self.base / "workflow.json"
+        for field, wrong in (("request_id", str(uuid.uuid4())), ("input_sha256", "0" * 64)):
+            with self.subTest(field=field):
+                workflow_path.write_text(json.dumps({**workflow, field: wrong}), encoding="utf-8")
+                with self.assertRaisesRegex(chat_transfer.ChatTransferError, "does not match the prepared bundle"):
+                    chat_transfer.TransferState.from_paths(self.bundle_path, self.reply_path, workflow_path)
+                workflow_path.write_text(json.dumps({k: v for k, v in workflow.items() if k != field}), encoding="utf-8")
+                with self.assertRaisesRegex(chat_transfer.ChatTransferError, "invalid workflow fields"):
+                    chat_transfer.TransferState.from_paths(self.bundle_path, self.reply_path, workflow_path)
+
+    def test_workflow_rejects_a_different_output_directory(self) -> None:
+        workflow_path = self.base / "workflow.json"
+        workflow_path.write_text(json.dumps(self.workflow()), encoding="utf-8")
+        separate = self.base / "separate"
+        separate.mkdir()
+        other_reply = separate / "reply.json"
+        self.assertIsNotNone(chat_transfer.TransferState.from_paths(self.bundle_path, self.reply_path, workflow_path).workflow)
+        with self.assertRaisesRegex(chat_transfer.ChatTransferError, "must share one job directory"):
+            chat_transfer.TransferState.from_paths(self.bundle_path, other_reply, workflow_path)
+        self.assertIsNone(chat_transfer.TransferState.from_paths(self.bundle_path, other_reply).workflow)
+
+    def test_workflow_listening_metadata_has_only_tool_presence(self) -> None:
+        workflow = {**self.workflow(), "facts": {"needs": [{"tool": "private-name"}]}}
+        state = chat_transfer.TransferState(bundle=self.bundle, reply_path=self.reply_path, workflow=workflow)
+        state.token = "test-capability-token"
+        server = SimpleNamespace(origin="http://127.0.0.1:32123", completed=False,
+                                 handle_request=Mock(), server_close=Mock())
+        with (patch.object(chat_transfer, "create_server", return_value=server),
+              patch.object(chat_transfer.time, "monotonic", side_effect=[0.0, 1.01]),
+              redirect_stdout(io.StringIO()) as stdout):
+            self.assertEqual(chat_transfer.serve_transfer(state, timeout_seconds=1), 3)
+        events = [json.loads(line) for line in stdout.getvalue().splitlines()]
+        self.assertIs(events[0]["workflow"], True)
+        self.assertIs(events[0]["needs_tools"], True)
+        self.assertNotIn("private-name", stdout.getvalue())
+        self.assertNotIn(self.bundle["prompt"], stdout.getvalue())
+
+    def test_workflow_requires_inspection_before_server_start(self) -> None:
+        for checks in ({}, {"inspect": "blocked"}, {"inspect": "unknown"}):
+            with self.subTest(checks=checks), self.assertRaisesRegex(chat_transfer.ChatTransferError, "inspection"):
+                chat_transfer.TransferState(bundle=self.bundle, reply_path=self.reply_path,
+                    workflow={**self.workflow(), "live_base": {
+                        "is_root": True, "route_enabled": True, "transport": "browser-temporary",
+                        "browser_checks": checks}})
 
     def test_unauthenticated_paths_do_not_receive_prompt_or_token(self) -> None:
         error_document = chat_transfer._minimal_error_page().decode("utf-8")
