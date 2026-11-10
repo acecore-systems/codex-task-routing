@@ -14,7 +14,30 @@ function isProTemporaryDestination(url) {
 const proHandoff = (() => {
   const attempted = new Set();
   const visible = locator => locator.filter({ visible: true });
-  const readEditor = field => field.evaluate(element => element.value ?? element.innerText);
+  const readEditor = field => field.evaluate(element => {
+    const editable = element.getAttribute?.("contenteditable");
+    const prosemirror = (element.getAttribute?.("class") ?? "").split(/\s+/).includes("ProseMirror");
+    if (editable === "true" || editable === "plaintext-only" || element.isContentEditable || prosemirror) {
+      if (editable !== "true" || element.tagName !== "DIV" || !prosemirror) return null;
+      const paragraphs = Array.from(element.childNodes);
+      const textOrBreak = node => node.nodeType === 3 || (node.nodeType === 1 && node.tagName === "BR");
+      const plainSpan = node => node.nodeType === 1 && node.tagName === "SPAN" &&
+        (node.attributes.length === 0 || (node.attributes.length === 1 &&
+          node.getAttribute("data-prompt-literal-paste") !== null)) &&
+        Array.from(node.childNodes).every(textOrBreak);
+      if (!paragraphs.length || paragraphs.some(paragraph => paragraph.nodeType !== 1 ||
+          paragraph.tagName !== "P" || Array.from(paragraph.childNodes).some(node =>
+            !textOrBreak(node) && !plainSpan(node)))) return null;
+      if (paragraphs.length === 1 && paragraphs[0].childNodes.length === 1 &&
+          paragraphs[0].childNodes[0].nodeType === 1 && paragraphs[0].childNodes[0].tagName === "BR" &&
+          paragraphs[0].textContent === "") return "";
+      return paragraphs.map(paragraph => paragraph.innerText).join("\n");
+    }
+    return element.value ?? element.innerText;
+  });
+  const isProseMirrorEditor = field => field.evaluate(element => element.tagName === "DIV" &&
+    element.getAttribute?.("contenteditable") === "true" &&
+    (element.getAttribute("class") ?? "").split(/\s+/).includes("ProseMirror"));
 
   function requirePlan(plan, route, action) {
     if (plan?.route !== route || plan.next_action !== action ||
@@ -75,6 +98,11 @@ const proHandoff = (() => {
           await fillPrompt(prompt);
         } else {
           await composer.fill(prompt);
+          if (await isProseMirrorEditor(composer)) {
+            const line = prompt.split("\n").find(part => part.length > 0);
+            if (line) await composer.getByText(line, { exact: false }).first()
+              .waitFor({ state: "visible", timeoutMs: 15_000 });
+          }
         }
         if (await readComposer(composer) !== prompt) {
           return signal("prompt_mismatch");
@@ -158,6 +186,8 @@ const runProHandoff = (() => {
   const sendName = /^(?:送信|メッセージを送信|Send|Send message|Send prompt)$/i;
   const stopName = /^(?:停止|生成を停止する?|回答の生成を停止する?|応答を停止する?|Stop|Stop generating|Stop response|Stop streaming)$/i;
   const copyName = /^(?:コピー|コピーする|回答をコピーする?|Copy|Copy response)$/i;
+  const userHeading = "あなたの発言:";
+  const assistantHeading = "ChatGPT の発言:";
   const quotaText = /利用上限|usage limit|limit reached|reached (?:your|the) limit/i;
   const selectorTimeout = /^(?:Error:\s*)?(?:Playwright selector deadline exceeded\b|Timed out after \d+ms waiting for selector\b)/;
   const answerSelector = '[data-message-author-role="assistant"]';
@@ -180,12 +210,31 @@ const runProHandoff = (() => {
     return exact;
   }
 
-  async function ordinaryChat(pw) {
+  async function ordinaryChat(pw, allowMissing = false) {
     const chat = button(pw, "Chat");
     const work = button(pw, "Work");
-    return await chat.count() === 1 && await work.count() === 1 &&
+    const chatCount = await chat.count();
+    const workCount = await work.count();
+    if (allowMissing && chatCount === 0 && workCount === 0) return true;
+    return chatCount === 1 && workCount === 1 &&
       await chat.getAttribute("aria-pressed") === "true" &&
       await work.getAttribute("aria-pressed") === "false";
+  }
+
+  // Only called on the new tab after its explicit Chat / non-Work check.
+  async function temporarySurface(tab, phase = "dispatch") {
+    const url = await tab.url();
+    const pw = tab.playwright;
+    if (!await ordinaryChat(pw, true)) return false;
+    if (phase === "dispatch") return isProTemporaryDestination(url) &&
+      await visible(button(pw, temporaryOn)).count() === 1;
+    const parsed = new URL(url);
+    if (parsed.origin !== new URL(chatUrl).origin || parsed.username || parsed.password) return false;
+    if (await visible(button(pw, temporaryOn)).count() === 1) return true;
+    const modes = parsed.searchParams.getAll("temporary-chat");
+    return /^\/c\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(parsed.pathname) &&
+      modes.length === 1 && modes[0] === "true" && Array.from(parsed.searchParams).length === 1 && !parsed.hash &&
+      await visible(pw.getByText("一時チャット", { exact: true })).count() === 1;
   }
 
   async function openTemporary(tab) {
@@ -207,7 +256,9 @@ const runProHandoff = (() => {
       await toggle.click({ timeoutMs: uiTimeout });
     }
     await enabled.waitFor({ state: "visible", timeoutMs: uiTimeout });
-    return await ordinaryChat(pw) && await pw.locator("main [data-message-author-role]").count() === 0;
+    return await temporarySurface(tab) && await pw.locator("main [data-message-author-role]").count() === 0 &&
+      await pw.getByRole("heading", { name: userHeading, exact: true }).count() === 0 &&
+      await pw.getByRole("heading", { name: assistantHeading, exact: true }).count() === 0;
   }
 
   async function menuState(pw) {
@@ -241,7 +292,8 @@ const runProHandoff = (() => {
           const style = getComputedStyle(element);
           const rect = element.getBoundingClientRect();
           if (style.display === "none" || style.visibility !== "visible" || Number(style.opacity) === 0 ||
-              (rect.width <= 1 && rect.height <= 1) ||
+              (style.display !== "contents" && rect.width <= 1 && rect.height <= 1 &&
+                [style.overflow, style.overflowX, style.overflowY].some(value => value === "hidden" || value === "clip")) ||
               /^rect\(0(?:px)?[,\s]+0(?:px)?[,\s]+0(?:px)?[,\s]+0(?:px)?\)$/.test(style.clip) ||
               /^inset\(50%(?:\s+50%){0,3}\)$/.test(style.clipPath)) return false;
           if (element === menu) break;
@@ -250,16 +302,20 @@ const runProHandoff = (() => {
       };
       const stateText = [];
       const collect = element => {
+        const block = element !== menu && /^(?:block|flow-root|flex|grid|table|list-item)/.test(getComputedStyle(element).display);
+        const boundary = (block || element.tagName === "BR") && relevant({ parentElement: element });
+        if (boundary) stateText.push(" ");
         for (const node of element.childNodes) {
           if (node.nodeType === 3 && relevant(node)) stateText.push(node.textContent);
           else if (node.nodeType === 1) collect(node);
         }
+        if (block && boundary) stateText.push(" ");
       };
       collect(menu);
       for (const target of referenced) {
-        if (!menu.contains(target)) stateText.push(target.textContent);
+        stateText.push(" ", target.textContent, " ");
       }
-      const state = stateText.join(" ");
+      const state = stateText.join("");
       return {
         model: lines[0],
         current: now == null ? null : Number(now),
@@ -273,8 +329,7 @@ const runProHandoff = (() => {
 
   async function observePro(tab, { select = false, phase = "dispatch" } = {}) {
     const pw = tab.playwright;
-    if (new URL(await tab.url()).origin !== new URL(chatUrl).origin ||
-        !await ordinaryChat(pw) || await visible(button(pw, temporaryOn)).count() !== 1) {
+    if (!await temporarySurface(tab, phase)) {
       return { reason: "temporary_chat_unconfirmed" };
     }
     const picker = button(pw, pickerName);
@@ -358,7 +413,7 @@ const runProHandoff = (() => {
     }
   }
 
-  return async function ({ cua, listening, timeoutMs = 600_000, prepareTools }) {
+  return async function ({ cua, listening, timeoutMs = 270_000, prepareTools }) {
     if (listening?.event !== "listening" || listening.workflow !== true ||
         typeof listening.request_id !== "string" || typeof listening.needs_tools !== "boolean" ||
         !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 3_600_000) {
@@ -414,7 +469,7 @@ const runProHandoff = (() => {
           // Keep the original tab even if the outer REPL call is interrupted.
           await chat.markHandoff();
           const current = button(pw, pickerName);
-          if (!await ordinaryChat(pw) || await visible(button(pw, temporaryOn)).count() !== 1 ||
+          if (!await temporarySurface(chat) ||
               !pro.test((await current.innerText({ timeoutMs: uiTimeout })).trim()) ||
               await chat.url() !== temporaryChatUrl) {
             throw new Error("Pro selection changed before sending.");
@@ -428,7 +483,9 @@ const runProHandoff = (() => {
       if (sent.event !== "send_clicked") return stop(sent.event);
       phase = "wait";
       const assistant = pw.locator("main article").filter({ has: pw.locator(answerSelector) });
-      const finished = button(assistant, copyName);
+      const legacyFinished = button(assistant, copyName);
+      const headingFinished = button(pw.locator(".turn-action-controls"), "コピーする");
+      const finished = legacyFinished.or(headingFinished);
       const attention = pw.getByRole("alert").filter({
         hasText: /問題が発生|生成でき|something went wrong|error generating/i,
       });
@@ -463,7 +520,29 @@ const runProHandoff = (() => {
       if (receive.next_action !== "collect_reply") return stop(receive.reason ?? "receive_unconfirmed");
       const message = assistant.locator(answerSelector);
       const jsonBlock = visible(message.locator("pre code"));
-      const answer = await jsonBlock.count() === 1 ? jsonBlock : message;
+      let answer;
+      if (await visible(legacyFinished).count() === 1) {
+        answer = await jsonBlock.count() === 1 ? jsonBlock : message;
+      } else {
+        const heading = pw.getByRole("heading", { name: assistantHeading, exact: true });
+        const user = pw.getByRole("heading", { name: userHeading, exact: true });
+        const readSibling = locator => locator.evaluate(element => {
+          const sibling = element.nextElementSibling;
+          return sibling?.tagName === "DIV" && sibling.getClientRects().length ? sibling.innerText : null;
+        });
+        answer = {
+          filter() { return this; },
+          async count() {
+            if (await heading.count() !== 1 || await user.count() !== 1 ||
+                await visible(headingFinished).count() !== 1) return 0;
+            const userText = await readSibling(user);
+            return typeof userText === "string" &&
+              userText.includes(`Set request_id to ${request_id} and input_sha256 to ${input_sha256}.`) &&
+              await readSibling(heading) !== null ? 1 : 0;
+          },
+          innerText: () => readSibling(heading),
+        };
+      }
       phase = "save";
       const submission = await handoff.collect({ plan: receive, finished, answer, includeReply: true });
       if (submission.event !== "save_clicked") return stop(submission.event);

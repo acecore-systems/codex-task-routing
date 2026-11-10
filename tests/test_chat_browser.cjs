@@ -52,6 +52,47 @@ function fixture() {
   return { newHandoff, composer, state };
 }
 
+function proseMirror(text, { chip = false, split = false, span = false, decorated = false, marker = false } = {}) {
+  const paragraph = value => ({ nodeType: 1, tagName: "P", innerText: value || "\n", textContent: value,
+    childNodes: span ? [{ nodeType: 1, tagName: "SPAN", attributes: { length: decorated && marker ? 2 : decorated || marker ? 1 : 0 },
+      getAttribute: name => marker && name === "data-prompt-literal-paste" ? "" : null,
+      childNodes: [{ nodeType: 3 }, { nodeType: 1, tagName: "BR" }, { nodeType: 3 }] }] :
+      value ? [{ nodeType: 3 }] : [{ nodeType: 1, tagName: "BR" }] });
+  const childNodes = (split ? text.split("\n") : [text]).map(paragraph);
+  if (chip) childNodes.push({ nodeType: 1, tagName: "SPAN", innerText: "chip" });
+  return { tagName: "DIV", value: "", innerText: "", childNodes,
+    getAttribute: name => ({ class: "ProseMirror", contenteditable: "true" })[name] ?? null };
+}
+
+test("ProseMirror paragraphs preserve exact prompt and reject unexpected content", async () => {
+  for (const kind of ["single", "paragraphs", "span", "marked", "marked-extra", "decorated", "mismatch", "chip-before", "chip-after"]) {
+    const { newHandoff, state } = fixture();
+    let filled = false;
+    let clicks = 0;
+    let waited = false;
+    const composer = {
+      evaluate: async read => read(proseMirror(kind === "span" && filled && !waited ? "" : state.composer, {
+        split: kind === "paragraphs", chip: kind === "chip-before" || (kind === "chip-after" && filled),
+        span: ["span", "marked", "marked-extra", "decorated"].includes(kind) && filled,
+        decorated: ["decorated", "marked-extra"].includes(kind), marker: ["marked", "marked-extra"].includes(kind),
+      })),
+      fill: async text => { filled = true; state.composer = kind === "mismatch" ? text + "!" : text; },
+      getByText: (line, options) => ({ first: () => ({ waitFor: async wait => {
+        assert.equal(line, "First line.");
+        assert.equal(options.exact, false);
+        assert.equal(wait.state, "visible");
+        waited = true;
+      } }) }),
+    };
+    const result = await newHandoff().send({ plan: dispatch, composer, temporaryChatUrl: state.chatUrl,
+      sendButton: { click: async () => { clicks++; } } });
+    assert.equal(result.event, kind === "chip-before" ? "composer_not_ready" :
+      ["mismatch", "chip-after", "decorated", "marked-extra"].includes(kind) ? "prompt_mismatch" : "send_clicked");
+    assert.equal(clicks, ["single", "paragraphs", "span", "marked"].includes(kind) ? 1 : 0);
+    assert.equal(waited, kind !== "chip-before");
+  }
+});
+
 test("requires preflight and exact input, and does not retry an ambiguous click", async () => {
   const { newHandoff, composer, state } = fixture();
   const handoff = newHandoff();

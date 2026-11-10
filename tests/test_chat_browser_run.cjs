@@ -59,6 +59,9 @@ function control({ present = () => true, text = () => "", attribute = () => null
 function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = false,
   quotaAfterReply = false, quotaBeforeReply = false, runningAtQuota = false, changedModel = false,
   menuNotice = null,
+  switches = () => "chat", temporaryUrl = "https://chatgpt.com/?temporary-chat=true",
+  newMarkup = false, badge = true, oldHeading = false, wrongReplyHash = false, wrongUserHash = false,
+  conversationUrl = "https://chatgpt.com/c/12345678-1234-1234-1234-123456789abc?temporary-chat=true",
   timeoutMs = 1_000, waitTimeouts = 0, stopWaitTimeouts = 0, waitDenied = false } = {}) {
   let now = 0;
   class FixtureDate extends Date {
@@ -73,10 +76,12 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
   const model = () => state.power === 4 && !(changedModel && state.sent) ? "Pro" : "Extra High";
   const quotaVisible = () => (quotaAfterReply && state.ready) || (quotaBeforeReply && state.sent > 0);
   const chatButtons = {
-    Chat: control({ attribute: () => "true" }),
-    Work: control({ attribute: () => "false" }),
+    Chat: control({ present: () => !["absent", "work-only"].includes(switches(state)),
+      attribute: () => switches(state) === "work" ? "false" : "true" }),
+    Work: control({ present: () => !["absent", "chat-only"].includes(switches(state)),
+      attribute: () => switches(state) === "work" ? "true" : "false" }),
     "一時チャット": control({ present: () => !state.temporary, click: () => { state.temporary = true; } }),
-    "一時チャットをオフにする": control({ present: () => state.temporary }),
+    "一時チャットをオフにする": control({ present: () => state.temporary && !(newMarkup && state.sent) }),
     "ChatGPT モデルを選択": control({
       text: model, attribute: () => String(state.menu), click: () => { state.menu = true; },
     }),
@@ -103,7 +108,7 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
       },
     }),
   };
-  const final = control({ present: () => state.ready, wait: ({ timeoutMs }) => {
+  const waitForReply = ({ timeoutMs }) => {
     assert.equal(state.sent, 1);
     state.waits++;
     state.replyWaits.push(timeoutMs);
@@ -113,10 +118,14 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
       throw new Error("Playwright selector deadline exceeded");
     }
     state.ready = true;
-  } });
+  };
+  const final = control({ present: () => state.ready && !newMarkup, wait: waitForReply });
+  // The union wait observes the eventual matching locator in either layout.
+  final.waitFor = async options => { await waitForReply(options); };
+  const newFinal = control({ present: () => state.ready && newMarkup, wait: waitForReply });
   const message = control({ present: () => state.ready, text: () => JSON.stringify(reply) });
   message.locator = () => control({ present: () => false });
-  const article = control({ present: () => state.ready });
+  const article = control({ present: () => state.ready && !newMarkup });
   article.getByRole = () => final;
   article.locator = () => message;
   const chat = {
@@ -125,9 +134,24 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
       powerFocused: state.menu, limited: (limited || quotaVisible()) && model() === "Pro",
       locked: quotaVisible() && model() === "Pro",
     }),
-    locator: selector => selector === "main article" ? article : control({ present: () => false }),
+    locator: selector => {
+      if (selector === "main article") return article;
+      if (selector === ".turn-action-controls") return { getByRole: () => newFinal };
+      const absent = control({ present: () => false });
+      absent.getByRole = () => absent;
+      return absent;
+    },
     getByRole(role, { name } = {}) {
       if (role === "menu") return control({ present: () => state.menu });
+      if (role === "heading") {
+        const heading = control({ present: () => oldHeading || (newMarkup && state.sent > 0) });
+        heading.evaluate = async read => read({ nextElementSibling: {
+          tagName: "DIV", getClientRects: () => [1], innerText: name === "あなたの発言:"
+            ? `Set request_id to ${listening.request_id} and input_sha256 to ${wrongUserHash ? "0".repeat(64) : listening.input_sha256}.`
+            : JSON.stringify(wrongReplyHash ? { ...reply, input_sha256: "0".repeat(64) } : reply),
+        } });
+        return heading;
+      }
       if (role === "alert") return { filter: ({ hasText }) => control({
         present: () => quotaVisible() && hasText.test("Pro usage limit reached"),
       }) };
@@ -138,6 +162,7 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
       if (label) chatButtons[label].name = label;
       return chatButtons[label] ?? control({ present: () => false });
     },
+    getByText: () => control({ present: () => newMarkup && state.sent > 0 && badge }),
   };
   let live;
   let envelope;
@@ -186,7 +211,7 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
       return {
         id, playwright: id === "1" ? chat : local,
         url: async () => id === "1" && state.temporary
-          ? (state.sent ? "https://chatgpt.com/c/fixture" : "https://chatgpt.com/?temporary-chat=true")
+          ? (state.sent ? (newMarkup ? conversationUrl : "https://chatgpt.com/c/fixture") : temporaryUrl)
           : url,
         goto: async next => { url = next; },
         async pressKey(_, key) {
@@ -201,6 +226,76 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
     listTabs: async () => state.opened.filter(id => !state.closed.includes(id)).map(id => ({ id })),
   };
   return { run: () => run({ cua, listening, timeoutMs }), state };
+}
+
+test("both switches may disappear only after explicit Chat and temporary selection", async () => {
+  const { run, state } = fixture({ switches: s => s.temporary ? "absent" : "chat" });
+  assert.equal((await run()).event, "saved");
+  assert.equal(state.sent, 1);
+  assert.deepEqual(state.phases, ["dispatch", "receive"]);
+});
+
+test("heading layout receives the correlated reply from the same temporary chat", async () => {
+  const { run, state } = fixture({ newMarkup: true, switches: s => s.temporary ? "absent" : "chat" });
+  const result = await run();
+  assert.equal(result.event, "saved");
+  assert.equal(result.reply.result, reply.result);
+  assert.equal(state.sent, 1);
+  assert.deepEqual(state.phases, ["dispatch", "receive"]);
+});
+
+test("heading-layout reply with a different hash is never saved", async () => {
+  const { run, state } = fixture({ newMarkup: true, wrongReplyHash: true });
+  const result = await run();
+  assert.equal(result.event, "pending");
+  assert.equal(result.reason, "reply_mismatch");
+  assert.equal(state.saved, null);
+  assert.equal(state.sent, 1);
+});
+
+test("heading-layout conversation with a different user request is never saved", async () => {
+  const { run, state } = fixture({ newMarkup: true, wrongUserHash: true });
+  const result = await run();
+  assert.equal(result.event, "pending");
+  assert.equal(result.reason, "completion_unconfirmed");
+  assert.equal(state.saved, null);
+});
+
+for (const [label, options] of [
+  ["missing temporary badge", { badge: false }],
+  ["unbound conversation URL", { conversationUrl: "https://chatgpt.com/c/not-a-uuid?temporary-chat=true" }],
+  ["extra URL parameter", { conversationUrl: "https://chatgpt.com/c/12345678-1234-1234-1234-123456789abc?temporary-chat=true&extra=1" }],
+  ["Work selected during receive", { switches: s => s.sent ? "work" : "chat" }],
+]) {
+  test(`${label} blocks heading-layout collection`, async () => {
+    const { run, state } = fixture({ newMarkup: true, ...options });
+    const result = await run();
+    assert.equal(result.event, "pending");
+    assert.equal(result.reason, "temporary_chat_unconfirmed");
+    assert.equal(state.sent, 1);
+    assert.deepEqual(state.phases, ["dispatch"]);
+  });
+}
+
+test("existing conversation headings prevent sending into a nonempty chat", async () => {
+  const { run, state } = fixture({ oldHeading: true });
+  assert.equal((await run()).event, "blocked");
+  assert.equal(state.sent, 0);
+});
+
+for (const [label, options] of [
+  ["initially absent", { switches: () => "absent" }],
+  ["only Chat remains", { switches: s => s.temporary ? "chat-only" : "chat" }],
+  ["only Work remains", { switches: s => s.temporary ? "work-only" : "chat" }],
+  ["Work selected", { switches: s => s.temporary ? "work" : "chat" }],
+  ["non-temporary URL", { switches: s => s.temporary ? "absent" : "chat", temporaryUrl: "https://chatgpt.com/" }],
+]) {
+  test(`${label} does not allow dispatch`, async () => {
+    const { run, state } = fixture(options);
+    assert.equal((await run()).event, "blocked");
+    assert.equal(state.sent, 0);
+    assert.deepEqual(state.phases, []);
+  });
 }
 
 // Execute the actual browser callback against a small DOM with the same
@@ -220,13 +315,26 @@ function evaluateMenu(read, state, model, notice) {
     "aria-describedby": notice.referenced ? "current-notice" : null })[name] ?? null;
   const label = element(menu);
   const message = element(menu, notice.hidden);
+  if (notice.tiny) message.getBoundingClientRect = () => ({ width: 0, height: 0 });
+  if (notice.display) message.style.display = notice.display;
+  if (notice.overflow) message.style.overflow = notice.overflow;
   message.textContent = notice.text;
   menu.innerText = `${model}\n${notice.text}`;
   menu.querySelector = () => slider;
   menu.contains = target => target === message;
   label.nodeType = message.nodeType = 1;
   label.childNodes = [{ nodeType: 3, parentElement: label, textContent: model }];
-  message.childNodes = [{ nodeType: 3, parentElement: message, textContent: notice.text }];
+  if (notice.split) {
+    const inner = element(message);
+    inner.nodeType = 1;
+    inner.style.display = "inline";
+    inner.childNodes = [{ nodeType: 3, parentElement: inner, textContent: notice.split[1] }];
+    const hidden = element(message, true);
+    hidden.nodeType = 1;
+    hidden.childNodes = [{ nodeType: 3, parentElement: hidden, textContent: "unrelated" }];
+    message.childNodes = [{ nodeType: 3, parentElement: message, textContent: notice.split[0] },
+      ...(notice.hiddenMiddle ? [hidden] : []), inner];
+  } else message.childNodes = [{ nodeType: 3, parentElement: message, textContent: notice.text }];
   menu.childNodes = [label, message];
   const document = {
     activeElement: power,
@@ -250,6 +358,11 @@ for (const [label, notice, reason] of [
   ["visible quota", { text: "利用上限に達しました" }, "quota_exhausted"],
   ["visible lock", { text: "ロック中、アクセスオプションを開きます" }, "pro_locked"],
   ["current control description", { hidden: true, referenced: true, text: "利用上限に達しました" }, "quota_exhausted"],
+  ["display contents quota", { text: "利用上限", tiny: true, display: "contents" }, "quota_exhausted"],
+  ["tiny visible overflow quota", { text: "利用上限", tiny: true, overflow: "visible" }, "quota_exhausted"],
+  ["split inline quota", { text: "利用上限", split: ["利用", "上限"] }, "quota_exhausted"],
+  ["split inline lock", { text: "ロック中", split: ["ロック", "中"] }, "pro_locked"],
+  ["hidden block within inline quota", { text: "利用上限", split: ["利用", "上限"], hiddenMiddle: true }, "quota_exhausted"],
 ]) {
   test(`${label} blocks dispatch without sending`, async () => {
     const { run, state } = fixture({ menuNotice: notice });
@@ -258,6 +371,11 @@ for (const [label, notice, reason] of [
     assert.equal(state.sent, 0);
   });
 }
+
+test("tiny clipped overflow does not expose the hidden notice", async () => {
+  const { run } = fixture({ menuNotice: { text: "利用上限", tiny: true, overflow: "hidden" } });
+  assert.equal((await run()).event, "saved");
+});
 
 test("one run opens hidden tabs, sends once, waits, and returns the saved reply", async () => {
   const { run, state } = fixture();

@@ -107,10 +107,12 @@ Once the host has initialized the in-app Browser REPL, send the trusted
 `<plugin-root>/scripts/chat_browser.js` definition and the invocation below
 together as one script. If the definition is already loaded, send only the
 invocation. Set the tool timeout to cover setup, generation, and saving, and
-keep the local helper alive for the whole exchange.
+keep the local helper alive for the whole exchange. When the desktop Browser
+limits one tool call to 300 seconds, leave time for setup and saving within
+that limit. A longer model run can be recovered from the same tab.
 
 ```js
-const handoffResult = await runProHandoff({ cua, listening, timeoutMs: 600_000 });
+const handoffResult = await runProHandoff({ cua, listening, timeoutMs: 270_000 });
 // Include the reply only if it may appear in the caller's tool output.
 nodeRepl.write({
   event: handoffResult.event,
