@@ -1,5 +1,9 @@
 # 変更履歴
 
+## 0.30.5
+
+- 新規一時Chatへの送信を、入力前に観測したURLに結び付け、入力後やGitHub選択確認後に遷移した場合はクリック前に停止します。[検証範囲](validation-0.30.5.md)
+
 ## 0.30.4
 
 - 通常Chat Proの承認済み依頼をBrowserスクリプトで送り、同じ回答の終了表示を1回の待機で受け取れます。ローカル保存後のシグナルには依頼IDと入力ハッシュ、回答の状態が含まれます。[Browser手順](../plugins/codex-task-routing/skills/task-routing/references/chat-transfer.md#browser-script-and-completion-signal) · [検証範囲](validation-0.30.4.md)

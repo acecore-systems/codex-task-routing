@@ -28,7 +28,7 @@ const receive = {
 function fixture() {
   const createHandoff = vm.runInNewContext(script + "\nproHandoff;", { URL });
   const prompt = "First line.\nSecond line.";
-  const state = { composer: "", submitted: "", saveClicks: 0 };
+  const state = { composer: "", submitted: "", saveClicks: 0, chatUrl: "https://chatgpt.com/?temporary-chat=true" };
   const composer = {
     evaluate: async read => read({ value: state.composer }),
     fill: async text => { state.composer = text; },
@@ -47,7 +47,7 @@ function fixture() {
     },
   };
   const newHandoff = () => createHandoff({
-    chatTab: { url: async () => "https://chatgpt.com/" }, transferTab, listening,
+    chatTab: { url: async () => state.chatUrl }, transferTab, listening,
   });
   return { newHandoff, composer, state };
 }
@@ -60,7 +60,7 @@ test("requires preflight and exact input, and does not retry an ambiguous click"
     clicks++;
     throw new Error("browser did not acknowledge the click");
   } };
-  const args = { composer, sendButton, plan: dispatch };
+  const args = { composer, sendButton, plan: dispatch, temporaryChatUrl: state.chatUrl };
   await assert.rejects(
     handoff.send({ ...args, plan: { ...dispatch, transport: "codex-app-tools" } }),
     /temporary Chat preflight/,
@@ -84,7 +84,7 @@ test("GitHub dispatch rejects missing or non-Personalized mode before touching t
   const handoff = newHandoff();
   let clicks = 0;
   let selected = true;
-  const args = { composer, sendButton: { click: async () => { clicks++; } },
+  const args = { composer, sendButton: { click: async () => { clicks++; } }, temporaryChatUrl: state.chatUrl,
     verifyGitHubSelection: async () => selected };
   const githubPlan = { ...dispatch, checks: [{ tool: "GitHub" }] };
   for (const mode of [undefined, "unknown", "unpersonalized"]) {
@@ -106,8 +106,49 @@ test("GitHub dispatch rejects missing or non-Personalized mode before touching t
   assert.equal(clicks, 1);
 });
 
+test("dispatch binds the observed empty temporary destination before fill and click", async () => {
+  const { newHandoff, composer, state } = fixture();
+  const handoff = newHandoff();
+  let clicks = 0;
+  const args = { composer, plan: dispatch, temporaryChatUrl: state.chatUrl,
+    sendButton: { click: async () => { clicks++; } } };
+  for (const url of ["https://chatgpt.com/", "https://chatgpt.com/c/unrelated-existing-chat",
+    "https://other.example/?temporary-chat=true", "https://chatgpt.com/?temporary-chat=true&temporary-chat=true"]) {
+    state.chatUrl = url;
+    await assert.rejects(handoff.send(args), /destination/);
+    await assert.rejects(handoff.send({ ...args, temporaryChatUrl: url }), /destination/);
+    assert.equal(state.composer, "");
+  }
+  state.chatUrl = args.temporaryChatUrl;
+  await assert.rejects(handoff.send({ ...args, readComposer: async () => {
+    state.chatUrl = "https://chatgpt.com/c/unrelated-existing-chat";
+    return "";
+  } }), /destination/);
+  assert.equal(state.composer, "");
+  state.chatUrl = args.temporaryChatUrl;
+  await assert.rejects(handoff.send({ ...args, fillPrompt: async text => {
+    await composer.fill(text);
+    state.chatUrl = "https://chatgpt.com/c/unrelated-existing-chat";
+  } }), /destination/);
+  assert.equal(clicks, 0);
+  state.composer = "";
+  state.chatUrl = args.temporaryChatUrl;
+  const githubPlan = { ...dispatch, checks: [{ tool: "GitHub" }], temporary_chat_mode: "personalized" };
+  let checks = 0;
+  await assert.rejects(handoff.send({ ...args, plan: githubPlan, verifyGitHubSelection: async () => {
+    if (++checks === 2) state.chatUrl = "https://chatgpt.com/c/unrelated-existing-chat";
+    return true;
+  } }), /destination/);
+  assert.equal(clicks, 0);
+  state.composer = "";
+  state.chatUrl = "https://chatgpt.com/?temporary-chat=true&example=observed";
+  assert.equal((await handoff.send({ ...args, temporaryChatUrl: state.chatUrl })).event, "send_clicked");
+  assert.equal(clicks, 1);
+});
+
 test("one locator wait signals the observed completion", async () => {
-  const { newHandoff } = fixture();
+  const { newHandoff, state } = fixture();
+  state.chatUrl = "https://chatgpt.com/c/sent-temporary-chat";
   let finish;
   let started;
   const waiting = new Promise(resolve => { started = resolve; });
@@ -135,6 +176,7 @@ test("one locator wait signals the observed completion", async () => {
 
 test("collects only a visible, correlated final reply and leaves its fields unchanged", async () => {
   const { newHandoff, state } = fixture();
+  state.chatUrl = "https://chatgpt.com/c/sent-temporary-chat";
   const handoff = newHandoff();
   let done = false;
   const finished = { filter: () => ({ count: async () => Number(done) }) };

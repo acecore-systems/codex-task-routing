@@ -33,8 +33,23 @@ const proHandoff = (() => {
       }
     }
 
+    async function checkDestination(expected) {
+      let parsed;
+      try {
+        parsed = new URL(expected);
+      } catch {
+        throw new Error("Invalid Temporary Chat destination.");
+      }
+      const modes = parsed.searchParams.getAll("temporary-chat");
+      if (parsed.origin !== "https://chatgpt.com" || parsed.pathname !== "/" ||
+          parsed.username || parsed.password || modes.length !== 1 || modes[0] !== "true" ||
+          await chatTab.url() !== expected) {
+        throw new Error("The observed new Temporary Chat destination is unavailable or changed.");
+      }
+    }
+
     return {
-      async send({ plan, composer, sendButton, readComposer = readEditor, fillPrompt, verifyGitHubSelection }) {
+      async send({ plan, composer, sendButton, temporaryChatUrl, readComposer = readEditor, fillPrompt, verifyGitHubSelection }) {
         requirePlan(plan, "chat_candidate", "send_once");
         if (plan.live_checked !== true || attempted.has(request_id)) {
           throw new Error("Send requires fresh live checks and a request never attempted.");
@@ -44,7 +59,7 @@ const proHandoff = (() => {
             plan.temporary_chat_mode !== "personalized") {
           throw new Error("GitHub requires a Personalized observation in this new Temporary Chat.");
         }
-        await checkChat();
+        await checkDestination(temporaryChatUrl);
         if (needsGitHub && (typeof verifyGitHubSelection !== "function" || await verifyGitHubSelection() !== true)) {
           return signal("github_selection_unconfirmed");
         }
@@ -53,6 +68,7 @@ const proHandoff = (() => {
         if (!prompt || await readComposer(composer) !== "") {
           return signal("composer_not_ready");
         }
+        await checkDestination(temporaryChatUrl);
         if (fillPrompt) {
           await fillPrompt(prompt);
         } else {
@@ -61,10 +77,10 @@ const proHandoff = (() => {
         if (await readComposer(composer) !== prompt) {
           return signal("prompt_mismatch");
         }
-        await checkChat();
         if (needsGitHub && await verifyGitHubSelection() !== true) {
           return signal("github_selection_unconfirmed");
         }
+        await checkDestination(temporaryChatUrl);
         if (attempted.has(request_id)) {
           throw new Error("This request has already been attempted.");
         }
