@@ -144,11 +144,12 @@ For requests that need an approved tool, pass a `prepareTools(chatTab)`
 callback that performs and verifies the supported selection in the same call.
 For GitHub, current workflow metadata tells the runner to observe the mode and
 select Personalized when necessary before `prepareTools`. The runner checks
-the UI again after the callback and immediately before sending. The callback
-supplies `verifyGitHubSelection` and any editor callbacks the observed chip
-requires. The UI determines whether Personalized is selected. With older
-metadata, a GitHub dispatch requires an already selected Personalized mode
-that the runner can observe. The preflight checks the inventory and scope.
+the UI after the callback and uses that observation for dispatch. The callback
+supplies a read-only `verifyGitHubSelection` and any editor callbacks the
+observed chip requires. Editor callbacks preserve the selected mode and chip.
+With older metadata, a GitHub dispatch requires an already selected
+Personalized mode that the runner can observe. The preflight checks the
+inventory and scope.
 The default invocation handles requests without tool selection. If a required control is
 unknown, Pro is unavailable, or a host confirmation is required, resolve that
 condition through the supported host.

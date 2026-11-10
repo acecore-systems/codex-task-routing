@@ -60,7 +60,7 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
   quotaAfterReply = false, quotaBeforeReply = false, runningAtQuota = false, changedModel = false,
   timeoutMs = 1_000, waitTimeouts = 0, stopWaitTimeouts = 0, waitDenied = false,
   github = false, otherTool = false, legacy = false, mode = "personalized", selectionFails = false, revert = false,
-  revertBeforeClick = false, ambiguousMode = false, nav = "normal" } = {}) {
+  ambiguousMode = false, nav = "normal" } = {}) {
   let now = 0;
   class FixtureDate extends Date {
     static now() { return now; }
@@ -70,7 +70,7 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
     temporary: false, menu: false, power: 3, composer: "", sent: 0, ready: false,
     waits: 0, saved: null, handoff: false, phases: [], quotas: [], opened: [], closed: [],
     replyWaits: [], stopWaits: [], generationEnded: false,
-    mode, modeMenu: false, modeClicks: 0, prepared: 0,
+    mode, modeMenu: false, modeClicks: 0, prepared: 0, modeObservedAfterDispatch: false,
   };
   const model = () => state.power === 4 && !(changedModel && state.sent) ? "Pro" : "Extra High";
   const quotaVisible = () => (quotaAfterReply && state.ready) || (quotaBeforeReply && state.sent > 0);
@@ -150,6 +150,9 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
         text: () => state.composer, fill: text => { state.composer = text; },
       });
       const label = Object.keys(chatButtons).find(key => typeof name === "string" ? name === key : name?.test(key));
+      if (state.phases.includes("dispatch") && ["パーソナライズ", "パーソナライズなし"].includes(label)) {
+        state.modeObservedAfterDispatch = true;
+      }
       if (label) chatButtons[label].name = label;
       return chatButtons[label] ?? control({ present: () => false });
     },
@@ -218,25 +221,21 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
   };
   const input = { ...listening, needs_tools: github || otherTool };
   if (!legacy) input.needs_github = github;
-  let selectionChecks = 0;
   const prepareTools = github ? async () => {
     state.prepared++;
     if (revert) state.mode = "unpersonalized";
-    return { temporaryChatMode: "personalized", verifyGitHubSelection: async () => {
-      selectionChecks++;
-      if (revertBeforeClick && selectionChecks === 2) state.mode = "unpersonalized";
-      return true;
-    } };
+    return { temporaryChatMode: "personalized", verifyGitHubSelection: async () => true };
   } : otherTool ? async () => { state.prepared++; return {}; } : undefined;
   return { run: () => run({ cua, listening: input, timeoutMs, prepareTools }), state };
 }
 
-test("GitHub run selects Personalized only when needed and confirms it through send", async () => {
+test("GitHub run selects Personalized only when needed and uses the prepared mode for send", async () => {
   for (const mode of ["personalized", "unpersonalized"]) {
     const { run, state } = fixture({ github: true, mode });
     assert.equal((await run()).event, "saved");
     assert.equal(state.modeClicks, Number(mode === "unpersonalized"));
     assert.equal(state.prepared, 1);
+    assert.equal(state.modeObservedAfterDispatch, false);
     assert.equal(state.sent, 1);
   }
 });
@@ -246,7 +245,6 @@ test("GitHub run stops for failed, ambiguous or reverted mode", async () => {
     { mode: "unpersonalized", selectionFails: true },
     { mode: "unpersonalized", ambiguousMode: true },
     { mode: "personalized", revert: true },
-    { mode: "personalized", revertBeforeClick: true },
   ]) {
     const { run, state } = fixture({ github: true, ...options });
     assert.equal((await run()).event, "blocked");

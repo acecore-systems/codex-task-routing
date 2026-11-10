@@ -407,9 +407,12 @@ const runProHandoff = (() => {
         temporary_chat_mode: listening.needs_github === true ? "personalized" : tools.temporaryChatMode ?? "unknown",
       });
       if (dispatch.next_action !== "send_once") return stop(dispatch.reason ?? "dispatch_unconfirmed");
-      const githubRequired = listening.needs_github === true ||
-        dispatch.checks?.some(check => check.tool?.toLowerCase() === "github");
-      if (githubRequired && !await modeInChat(chat, temporaryChatUrl)) return stop("personalized_unconfirmed");
+      // Older listening events may only identify GitHub in the dispatch plan.
+      if (listening.needs_github !== true &&
+          dispatch.checks?.some(check => check.tool?.toLowerCase() === "github") &&
+          !await modeInChat(chat, temporaryChatUrl)) {
+        return stop("personalized_unconfirmed");
+      }
       phase = "send";
       const sent = await handoff.send({
         plan: dispatch, composer, temporaryChatUrl,
@@ -418,9 +421,6 @@ const runProHandoff = (() => {
           // Keep the original tab even if the outer REPL call is interrupted.
           await chat.markHandoff();
           const current = button(pw, pickerName);
-          if (githubRequired && !await modeInChat(chat, temporaryChatUrl)) {
-            throw new Error("Personalized selection changed before sending.");
-          }
           if (!await temporaryChatContext(chat) ||
               !pro.test((await current.innerText({ timeoutMs: uiTimeout })).trim()) ||
               await chat.url() !== temporaryChatUrl) {
