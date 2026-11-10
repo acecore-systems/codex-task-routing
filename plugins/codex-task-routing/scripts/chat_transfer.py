@@ -35,6 +35,7 @@ SCRIPT_DIRECTORY = Path(__file__).resolve().parent
 if str(SCRIPT_DIRECTORY) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIRECTORY))
 import chatgpt_route  # noqa: E402
+import chat_plan  # noqa: E402
 
 
 DEFAULT_TIMEOUT_SECONDS = 10 * 60
@@ -42,6 +43,7 @@ MAX_TIMEOUT_SECONDS = 60 * 60
 # A URL-encoded form can expand a valid 256 KiB reply substantially.  The
 # decoded canonical reply is separately kept within chatgpt_route.MAX_JSON_BYTES.
 MAX_POST_BYTES = chatgpt_route.MAX_JSON_BYTES * 3
+UI_OBSERVATION_FIELDS = frozenset({"surface", "model", "quota_state", "observed_at", "temporary_chat_mode"})
 CONTENT_SECURITY_POLICY = (
     "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; "
     "base-uri 'none'; frame-ancestors 'none'"
@@ -209,7 +211,7 @@ def _atomic_create_reply(path: Path, content: bytes) -> bool:
 class TransferState:
     """The bounded, in-memory state for exactly one bundle and reply target."""
 
-    def __init__(self, *, bundle: Mapping[str, Any], reply_path: Path) -> None:
+    def __init__(self, *, bundle: Mapping[str, Any], reply_path: Path, workflow: Mapping[str, Any] | None = None) -> None:
         request_id, input_sha256 = chatgpt_route._expected_request(bundle)
         prompt = bundle.get("prompt")
         if not isinstance(prompt, str):
@@ -220,14 +222,72 @@ class TransferState:
         self.input_sha256 = input_sha256
         self.reply_path = _safe_reply_path(reply_path)
         self.response_status: str | None = None
+        self.workflow = None
+        self.preflight_result: dict[str, Any] | None = None
+        self.receive_ready = False
+        self.dispatch_checked = False
+        if workflow is not None:
+            if not isinstance(workflow, dict) or not {"facts", "live_base"} <= set(workflow) or set(workflow) - {"facts", "inventory", "live_base"}:
+                raise ChatTransferError("invalid workflow fields")
+            base = workflow["live_base"]
+            if not isinstance(base, dict) or set(base) & UI_OBSERVATION_FIELDS:
+                raise ChatTransferError("invalid workflow live base")
+            try:
+                inspection = chat_plan.inspection_plan(base)
+            except chatgpt_route.ChatRouteError as exc:
+                raise ChatTransferError("workflow inspection preflight rejected") from exc
+            if inspection.get("next_action") != "inspect_chat_ui":
+                raise ChatTransferError("workflow inspection is not authorized")
+            facts = workflow["facts"]
+            if not isinstance(facts, dict) or not isinstance(facts.get("needs"), list):
+                raise ChatTransferError("invalid workflow facts")
+            self.workflow = dict(workflow)
         # Exposed only on the authorized local page.  These fixed strings
         # identify transport progress without retaining response material.
         self.transfer_status = "Waiting for one response JSON submission."
 
     @classmethod
-    def from_paths(cls, bundle_path: Path | str, reply_path: Path | str) -> "TransferState":
+    def from_paths(cls, bundle_path: Path | str, reply_path: Path | str, workflow_path: Path | str | None = None) -> "TransferState":
         bundle = chatgpt_route._load_json_object(Path(bundle_path), purpose="prepared bundle")
-        return cls(bundle=bundle, reply_path=Path(reply_path))
+        workflow = chatgpt_route._load_json_object(Path(workflow_path), purpose="workflow") if workflow_path is not None else None
+        return cls(bundle=bundle, reply_path=Path(reply_path), workflow=workflow)
+
+    def check_preflight(self, phase: str, observation_text: str) -> dict[str, Any]:
+        if self.workflow is None or phase not in {"dispatch", "receive"}:
+            raise ChatTransferError("invalid preflight phase")
+        if phase == "receive":
+            self.receive_ready = False
+        if phase == "dispatch" and self.dispatch_checked:
+            raise ChatTransferError("dispatch already checked")
+        try:
+            observation = chatgpt_route._parse_json_object(observation_text, purpose="live observation")
+            if set(observation) - UI_OBSERVATION_FIELDS:
+                raise ChatTransferError("invalid live observation fields")
+            live = {**self.workflow["live_base"], **observation}
+            if phase == "dispatch":
+                self.dispatch_checked = True
+                result = chat_plan.plan(self.workflow["facts"], self.workflow.get("inventory"), live=live)
+                if result.get("next_action") == "send_once" and os.path.lexists(self.reply_path):
+                    result = {"route": "not_ready", "reason": "reply_already_present",
+                              "next_action": "do_not_send", "preflight_complete": False}
+                elif result.get("next_action") == "send_once":
+                    claim = _safe_reply_path(self.reply_path.parent / f".chat-dispatch-{self.request_id}.json")
+                    if claim == self.reply_path:
+                        raise ChatTransferError("dispatch reservation conflicts with reply")
+                    content = (json.dumps({"request_id": self.request_id, "input_sha256": self.input_sha256},
+                                          sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+                    if not _atomic_create_reply(claim, content):
+                        result = {"route": "not_ready", "reason": "dispatch_already_reserved",
+                                  "next_action": "do_not_send", "preflight_complete": False}
+            else:
+                result = chat_plan.collection_plan(live, self.bundle)
+                self.receive_ready = result.get("route") == "chat_collection" and result.get("preflight_complete") is True
+        except (chatgpt_route.ChatRouteError, ValueError, TypeError) as exc:
+            self.preflight_result = None
+            raise ChatTransferError("preflight rejected") from exc
+        self.preflight_result = {"phase": phase, "request_id": self.request_id,
+                                 "input_sha256": self.input_sha256, "plan": result}
+        return self.preflight_result
 
     def save_response_text(self, response_text: str) -> tuple[dict[str, Any], bool]:
         """Validate and save one response, accepting only an identical retry."""
@@ -241,6 +301,9 @@ class TransferState:
 
     def save_response(self, response: Mapping[str, Any]) -> tuple[dict[str, Any], bool]:
         """Return validation metadata and whether this call created the reply."""
+
+        if self.workflow is not None and not self.receive_ready:
+            raise ChatTransferError("receive preflight is required")
 
         try:
             _safe_reply_path(self.reply_path)
@@ -299,6 +362,21 @@ def _page(state: TransferState, *, status: str, error: bool = False) -> bytes:
     escaped_prompt = html.escape(state.prompt, quote=False)
     escaped_status = html.escape(status, quote=False)
     action = html.escape(f"/transfer/{state.token}", quote=True)
+    workflow_form = ""
+    if state.workflow is not None:
+        preflight = html.escape(json.dumps(state.preflight_result, ensure_ascii=True) if state.preflight_result is not None else "", quote=False)
+        workflow_form = f'''<form method="post" action="{action}" accept-charset="utf-8">
+  <label for="live_observation">Live observation</label>
+  <textarea id="live_observation" name="live_observation" required></textarea>
+  <button type="submit" name="phase" value="dispatch">Check dispatch</button>
+  <button type="submit" name="phase" value="receive">Check receive</button>
+</form>
+<label for="preflight_result">Preflight result</label>
+<textarea id="preflight_result" readonly aria-readonly="true">{preflight}</textarea>'''
+    saved = ""
+    if state.response_status is not None:
+        saved_json = html.escape(json.dumps(_saved_metadata(state), ensure_ascii=True), quote=False)
+        saved = f'<label for="saved_result">Saved result</label><textarea id="saved_result" readonly aria-readonly="true">{saved_json}</textarea>'
     document = f"""<!doctype html>
 <html lang=\"en\">
 <meta charset=\"utf-8\">
@@ -315,6 +393,7 @@ textarea {{ box-sizing: border-box; min-height: 12rem; width: 100%; font: 0.9rem
 </style>
 <h1>Local Chat transfer</h1>
 <p>Use supported Browser DOM controls to move this approved prompt and the final response. This page does not contact Chat or any external service.</p>
+{workflow_form}
 <form method=\"post\" action=\"{action}\" accept-charset=\"utf-8\">
   <label for=\"request_prompt\">Request prompt</label>
   <textarea id=\"request_prompt\" readonly aria-readonly=\"true\">{escaped_prompt}</textarea>
@@ -322,6 +401,7 @@ textarea {{ box-sizing: border-box; min-height: 12rem; width: 100%; font: 0.9rem
   <textarea id=\"response_json\" name=\"response_json\" required></textarea>
   <button type=\"submit\">Save verified response</button>
 </form>
+{saved}
 <h2>Transfer status</h2>
 <p class=\"{status_class}\">{escaped_status}</p>
 </html>
@@ -479,6 +559,21 @@ class TransferHandler(BaseHTTPRequestHandler):
             self._set_transfer_status("Response body was incomplete.")
             self._send_error_page(HTTPStatus.BAD_REQUEST, "Transfer status: incomplete response body.")
             return
+        if self.server.state.workflow is not None:
+            try:
+                form = parse_qs(body.decode("utf-8"), strict_parsing=True, keep_blank_values=True,
+                                max_num_fields=2, errors="strict")
+                if set(form) == {"live_observation", "phase"} and all(len(v) == 1 for v in form.values()):
+                    if len(form["live_observation"][0].encode("utf-8")) > chatgpt_route.MAX_JSON_BYTES:
+                        raise ChatTransferError("observation exceeds size limit")
+                    self.server.state.check_preflight(form["phase"][0], form["live_observation"][0])
+                    self._send(HTTPStatus.OK, _page(self.server.state, status="Preflight checked."))
+                    return
+            except (UnicodeDecodeError, ValueError, ChatTransferError):
+                self.server.state.preflight_result = None
+                self.server.state.receive_ready = False
+                self._send_error_page(HTTPStatus.UNPROCESSABLE_ENTITY, "Preflight rejected.")
+                return
         self._set_transfer_status("Checking response JSON format.")
         try:
             response_text = _response_text_from_form(body)
@@ -512,6 +607,11 @@ def create_server(state: TransferState) -> TransferServer:
     return TransferServer(state)
 
 
+def _saved_metadata(state: TransferState) -> dict[str, Any]:
+    return {"event": "saved", "request_id": state.request_id,
+            "input_sha256": state.input_sha256, "status": state.response_status}
+
+
 def serve_transfer(state: TransferState, *, timeout_seconds: int) -> int:
     server = create_server(state)
     deadline = time.monotonic() + timeout_seconds
@@ -523,6 +623,8 @@ def serve_transfer(state: TransferState, *, timeout_seconds: int) -> int:
         "timeout_seconds": timeout_seconds,
         "url": f"{server.origin}/transfer/{state.token}",
     }
+    if state.workflow is not None:
+        metadata.update(workflow=True, needs_tools=bool(state.workflow["facts"]["needs"]))
     print(json.dumps(metadata, ensure_ascii=True, sort_keys=True), flush=True)
     try:
         while not server.completed:
@@ -558,12 +660,7 @@ def serve_transfer(state: TransferState, *, timeout_seconds: int) -> int:
     final_status = state.response_status
     print(
         json.dumps(
-            {
-                "event": "saved",
-                "request_id": state.request_id,
-                "input_sha256": state.input_sha256,
-                "status": final_status,
-            },
+            _saved_metadata(state),
             ensure_ascii=True,
             sort_keys=True,
         ),
@@ -576,6 +673,7 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run one local Browser-to-Chat response transfer")
     parser.add_argument("--bundle", type=Path, required=True, help="approved bundle.json path")
     parser.add_argument("--reply", type=Path, required=True, help="the single reply.json path to create")
+    parser.add_argument("--workflow", type=Path, help="optional workflow JSON path")
     parser.add_argument(
         "--timeout",
         type=int,
@@ -591,7 +689,7 @@ def main(argv: list[str] | None = None) -> int:
         print("error: timeout must be within the supported range", file=sys.stderr)
         return 2
     try:
-        state = TransferState.from_paths(args.bundle, args.reply)
+        state = TransferState.from_paths(args.bundle, args.reply, args.workflow)
     except (ChatTransferError, chatgpt_route.ChatRouteError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

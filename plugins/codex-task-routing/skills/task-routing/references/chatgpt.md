@@ -52,7 +52,7 @@ MCPが必要な仕事では、この依頼に必要な対応だけを整理し�
 
 ## `browser-temporary` の実行手順
 
-対応するBrowser REPLでは、[Browserスクリプト](chat-transfer.md#browser-script-and-completion-signal) を一度読み込み、手順5の送信、6の待機、7のフォーム転送に使います。
+対応する内蔵Browser REPLでは、[一回実行の手順](chat-transfer.md#one-browser-call)を使います。ローカルで依頼と承認済みの操作条件を準備した後、一回のブラウザ呼び出しで新しい一時チャットの確認から回答の保存・返却まで進めます。以下の確認条件は一回実行でも同じです。個別の工程を扱う場合は[各工程のスクリプト](chat-transfer.md#browser-script-and-completion-signal)を使います。
 
 1. [Browserの実条件と解消手順](chat-authorization.md)に従い、補助CLIの `status` で経路が有効でtransportが`browser-temporary`であることを確認します。具体的な操作と既存承認を整理します。転送が未確認でも、許可された契約読取り・新規空ChatのUI確認を先に行えます。`--phase inspect`は送信を行わず、不足する確認の担当・場所・内容を返します。スコープ、材料、合格条件、許可操作は実送信前にそろえます。非公開資料はデータと送信先の承認を確認し、秘密や無関係な履歴を含めません。
 2. サポートされたBrowser操作で `https://chatgpt.com/` を開き、通常Chatから新しい一時Chatを作成します。既存の下書きがある入力欄を使わず、ログイン入力は利用者に任せます。送信直前に、Chatが選択されWorkが未選択であること、一時Chatであること、UIのモデル表示が `Pro` であることを確認します。選択・確認できなければ送信しません。

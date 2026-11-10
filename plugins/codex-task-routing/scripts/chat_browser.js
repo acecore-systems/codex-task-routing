@@ -1,5 +1,16 @@
 // Load this definition once in the supported Browser REPL. The route owner
 // supplies locators observed in the current tabs and the existing CLI checks.
+function isProTemporaryDestination(url) {
+  try {
+    const parsed = new URL(url);
+    const modes = parsed.searchParams.getAll("temporary-chat");
+    return parsed.origin === "https://chatgpt.com" && parsed.pathname === "/" &&
+      !parsed.username && !parsed.password && modes.length === 1 && modes[0] === "true";
+  } catch {
+    return false;
+  }
+}
+
 const proHandoff = (() => {
   const attempted = new Set();
   const visible = locator => locator.filter({ visible: true });
@@ -34,16 +45,7 @@ const proHandoff = (() => {
     }
 
     async function checkDestination(expected) {
-      let parsed;
-      try {
-        parsed = new URL(expected);
-      } catch {
-        throw new Error("Invalid Temporary Chat destination.");
-      }
-      const modes = parsed.searchParams.getAll("temporary-chat");
-      if (parsed.origin !== "https://chatgpt.com" || parsed.pathname !== "/" ||
-          parsed.username || parsed.password || modes.length !== 1 || modes[0] !== "true" ||
-          await chatTab.url() !== expected) {
+      if (!isProTemporaryDestination(expected) || await chatTab.url() !== expected) {
         throw new Error("The observed new Temporary Chat destination is unavailable or changed.");
       }
     }
@@ -104,7 +106,7 @@ const proHandoff = (() => {
         return signal(await visible(finished).count() === 1 ? "reply_ready" : "completion_unconfirmed");
       },
 
-      async collect({ plan, finished, answer }) {
+      async collect({ plan, finished, answer, includeReply = false }) {
         requirePlan(plan, "chat_collection", "collect_reply");
         if (plan.request_id !== request_id || plan.input_sha256 !== input_sha256) {
           throw new Error("The receive preflight belongs to another request.");
@@ -131,8 +133,295 @@ const proHandoff = (() => {
         await checkTransfer();
         await form.getByRole("button", { name: "Save verified response", exact: true }).click();
         // The CLI emits the authoritative saved event after validation and write.
-        return signal("save_clicked");
+        const submitted = signal("save_clicked");
+        return includeReply ? { ...submitted, reply: identity } : submitted;
       },
     };
+  };
+})();
+
+// One exchange in the documented Browser REPL. The local transfer helper
+// evaluates both plans and acknowledges saving.
+const runProHandoff = (() => {
+  const started = new Set();
+  const chatUrl = "https://chatgpt.com/";
+  const uiTimeout = 15_000;
+  const pro = /^(?:Pro|6 Pro|GPT-6 Pro)$/i;
+  const pickerName = /^(?:ChatGPT モデルを選択|Select model|Choose model|Choose a model)$/i;
+  const temporaryOn = /^(?:一時チャットをオフにする|Turn off temporary chat)$/i;
+  const temporaryOff = /^(?:一時チャット|一時チャットをオンにする|Temporary Chat|Turn on temporary chat)$/i;
+  const composerName = /^(?:ChatGPT に聞く|Ask ChatGPT|Message ChatGPT|Prompt)$/i;
+  const sendName = /^(?:送信|メッセージを送信|Send|Send message|Send prompt)$/i;
+  const stopName = /^(?:停止|生成を停止する?|回答の生成を停止する?|応答を停止する?|Stop|Stop generating|Stop response|Stop streaming)$/i;
+  const copyName = /^(?:コピー|コピーする|回答をコピーする?|Copy|Copy response)$/i;
+  const answerSelector = '[data-message-author-role="assistant"]';
+
+  const button = (scope, name) => scope.getByRole("button", { name, exact: true });
+  const visible = locator => locator.filter({ visible: true });
+  const field = (scope, name) => scope.getByLabel(name, { exact: true });
+  const readJson = async locator => JSON.parse(await locator.evaluate(element => element.value));
+
+  async function observedButton(pw, candidate) {
+    await candidate.waitFor({ state: "visible", timeoutMs: uiTimeout });
+    const name = await candidate.evaluate(element =>
+      element.getAttribute("aria-label") ?? element.getAttribute("title") ?? element.innerText.trim(),
+    );
+    if (!name) throw new Error("The button has no observed name.");
+    const exact = button(pw, name);
+    if (await exact.count() !== 1) throw new Error("The observed button is ambiguous.");
+    return exact;
+  }
+
+  async function ordinaryChat(pw) {
+    const chat = button(pw, "Chat");
+    const work = button(pw, "Work");
+    return await chat.count() === 1 && await work.count() === 1 &&
+      await chat.getAttribute("aria-pressed") === "true" &&
+      await work.getAttribute("aria-pressed") === "false";
+  }
+
+  async function openTemporary(tab) {
+    await tab.goto(chatUrl);
+    const pw = tab.playwright;
+    const chat = button(pw, "Chat");
+    await chat.waitFor({ state: "visible", timeoutMs: uiTimeout });
+    const work = button(pw, "Work");
+    if (await chat.getAttribute("aria-pressed") === "false" && await work.count() === 1 &&
+        await work.getAttribute("aria-pressed") === "true") {
+      await chat.click({ timeoutMs: uiTimeout });
+    }
+    if (!await ordinaryChat(pw)) return false;
+    // The model picker appears after the Chat controls are ready for input.
+    await button(pw, pickerName).waitFor({ state: "visible", timeoutMs: uiTimeout });
+    const enabled = button(pw, temporaryOn);
+    if (await enabled.count() === 0) {
+      const toggle = await observedButton(pw, button(pw, temporaryOff));
+      await toggle.click({ timeoutMs: uiTimeout });
+    }
+    await enabled.waitFor({ state: "visible", timeoutMs: uiTimeout });
+    return await ordinaryChat(pw) && await pw.locator("main [data-message-author-role]").count() === 0;
+  }
+
+  async function menuState(pw) {
+    return pw.evaluate(() => {
+      const menus = Array.from(document.querySelectorAll('[role="menu"]'))
+        .filter(menu => menu.getClientRects().length);
+      if (menus.length !== 1) return null;
+      const menu = menus[0];
+      const lines = menu.innerText.split("\n").map(line => line.trim()).filter(Boolean);
+      const slider = menu.querySelector('[role="slider"]');
+      const now = slider?.getAttribute("aria-valuenow");
+      const max = slider?.getAttribute("aria-valuemax");
+      const power = slider?.closest('[role="menuitem"]');
+      return {
+        model: lines[0],
+        current: now == null ? null : Number(now),
+        maximum: max == null ? null : Number(max),
+        powerFocused: Boolean(power && document.activeElement === power),
+        limited: lines.some(line => /利用上限|usage limit|limit reached|reached (?:your|the) limit/i.test(line)),
+        locked: lines.some(line => /ロック中|\blocked\b/i.test(line)),
+      };
+    });
+  }
+
+  async function observePro(tab, select) {
+    const pw = tab.playwright;
+    if (new URL(await tab.url()).origin !== new URL(chatUrl).origin ||
+        !await ordinaryChat(pw) || await visible(button(pw, temporaryOn)).count() !== 1) {
+      return { reason: "temporary_chat_unconfirmed" };
+    }
+    const picker = button(pw, pickerName);
+    await picker.waitFor({ state: "visible", timeoutMs: uiTimeout });
+    if (await picker.getAttribute("aria-expanded") !== "true") {
+      await (await observedButton(pw, picker)).click({ timeoutMs: uiTimeout });
+    }
+    await pw.getByRole("menu").waitFor({ state: "visible", timeoutMs: uiTimeout });
+    let menu = await menuState(pw);
+    const original = menu?.current;
+    // The current Chat menu exposes a focused Power control and discrete steps.
+    // Advance only through observed values and stop at an actual Pro label.
+    if (select && Number.isSafeInteger(original) && Number.isSafeInteger(menu.maximum) &&
+        menu.maximum - original <= 8) {
+      while (!pro.test(menu.model ?? "") && menu.powerFocused && menu.current < menu.maximum) {
+        const previous = menu.current;
+        await tab.pressKey(null, "Right");
+        menu = await menuState(pw);
+        if (!menu || menu.current !== previous + 1) break;
+      }
+    }
+    const reason = !menu || !pro.test(menu.model ?? "") ? "pro_not_observed" :
+      menu.limited ? "quota_exhausted" : menu.locked ? "pro_locked" : null;
+    if (reason && select && Number.isSafeInteger(original)) {
+      // Put the picker back if exploring from a different Power reached a lock.
+      while (menu?.powerFocused && menu.current > original) {
+        const previous = menu.current;
+        await tab.pressKey(null, "Left");
+        menu = await menuState(pw);
+        if (!menu || menu.current !== previous - 1) break;
+      }
+    }
+    if (reason) return { reason };
+    await tab.pressKey(null, "Escape");
+    const model = (await picker.innerText({ timeoutMs: uiTimeout })).trim();
+    if (!pro.test(model)) return { reason: "pro_selection_unconfirmed" };
+    return {
+      live: { surface: "chat-temporary", model, quota_state: "no_limit_notice",
+        observed_at: new Date().toISOString() },
+    };
+  }
+
+  async function planFor(tab, listening, phase, live) {
+    if (await tab.url() !== listening.url) throw new Error("Transfer form changed.");
+    const form = tab.playwright;
+    await field(form, "Live observation").fill(JSON.stringify(live), { timeoutMs: uiTimeout });
+    const check = button(form, phase === "dispatch" ? "Check dispatch" : "Check receive");
+    await form.expectNavigation(() => check.click({ timeoutMs: uiTimeout }), {
+      url: listening.url, waitUntil: "domcontentloaded", timeoutMs: uiTimeout,
+    });
+    if (await tab.url() !== listening.url) throw new Error("Transfer form changed.");
+    const result = await readJson(field(form, "Preflight result"));
+    if (result?.phase !== phase || !matchesRequest(result, listening) || !result.plan) {
+      throw new Error("Preflight result could not be correlated.");
+    }
+    return result.plan;
+  }
+
+  function matchesRequest(value, listening) {
+    return value?.request_id === listening.request_id && value.input_sha256 === listening.input_sha256;
+  }
+
+  async function disposeTabs(cua, chat, transfer, retainChat) {
+    for (const tab of [transfer, retainChat ? null : chat]) {
+      try {
+        if (tab) await tab.close();
+      } catch {
+        // The returned metadata distinguishes unconfirmed closure.
+      }
+    }
+    try {
+      const open = await cua.listTabs({ browser: "iab", emit: false });
+      return {
+        chat_closed: chat ? !open.some(tab => tab.id === chat.id) : true,
+        transfer_closed: transfer ? !open.some(tab => tab.id === transfer.id) : true,
+        handoff_marked: retainChat,
+      };
+    } catch {
+      return { chat_closed: null, transfer_closed: null, handoff_marked: retainChat };
+    }
+  }
+
+  return async function ({ cua, listening, timeoutMs = 600_000, prepareTools }) {
+    if (listening?.event !== "listening" || listening.workflow !== true ||
+        typeof listening.request_id !== "string" || typeof listening.needs_tools !== "boolean" ||
+        !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 3_600_000) {
+      return { event: "blocked", phase: "setup", reason: "invalid_workflow_input" };
+    }
+    const { request_id, input_sha256 } = listening;
+    const result = (event, fields) => ({ event, request_id, input_sha256, ...fields });
+    if (listening.needs_tools && typeof prepareTools !== "function") {
+      return result("blocked", { phase: "setup", reason: "tool_selection_adapter_required" });
+    }
+    if (started.has(request_id)) return result("blocked", { phase: "setup", reason: "already_started" });
+    started.add(request_id);
+    let chat;
+    let transfer;
+    let attempted = false;
+    let phase = "open";
+    const stop = reason => result(attempted ? "pending" : "blocked", { phase, reason });
+
+    async function exchange() {
+      chat = await cua.createBrowserTab("iab", "about:blank", { visible: false });
+      if (!await openTemporary(chat)) return stop("empty_temporary_chat_unconfirmed");
+      const temporaryChatUrl = await chat.url();
+      if (!isProTemporaryDestination(temporaryChatUrl)) return stop("temporary_chat_destination_unconfirmed");
+      phase = "model";
+      let observation = await observePro(chat, true);
+      if (observation.reason) return stop(observation.reason);
+      // Scope and connector authority are still checked by the existing plan.
+      // An adapter performs only the permitted UI actions inside this call.
+      const tools = listening.needs_tools ? await prepareTools(chat) : {};
+      if (!tools) return stop("tool_selection_unconfirmed");
+      if (listening.needs_tools) {
+        observation = await observePro(chat, false);
+        if (observation.reason) return stop(observation.reason);
+      }
+      const pw = chat.playwright;
+      const composer = pw.getByRole("textbox", { name: composerName });
+      await composer.waitFor({ state: "visible", timeoutMs: uiTimeout });
+      phase = "transfer";
+      transfer = await cua.createBrowserTab("iab", "about:blank", { visible: false });
+      const handoff = proHandoff({ chatTab: chat, transferTab: transfer, listening });
+      await transfer.goto(listening.url);
+      phase = "dispatch";
+      const dispatch = await planFor(transfer, listening, "dispatch", {
+        ...observation.live,
+        temporary_chat_mode: tools.temporaryChatMode ?? "unknown",
+      });
+      if (dispatch.next_action !== "send_once") return stop(dispatch.reason ?? "dispatch_unconfirmed");
+      phase = "send";
+      const sent = await handoff.send({
+        plan: dispatch, composer, temporaryChatUrl,
+        sendButton: { click: async () => {
+          const send = await observedButton(pw, button(pw, sendName));
+          // Keep the original tab even if the outer REPL call is interrupted.
+          await chat.markHandoff();
+          const current = button(pw, pickerName);
+          if (!await ordinaryChat(pw) || await visible(button(pw, temporaryOn)).count() !== 1 ||
+              !pro.test((await current.innerText({ timeoutMs: uiTimeout })).trim()) ||
+              await chat.url() !== temporaryChatUrl) {
+            throw new Error("Pro selection changed before sending.");
+          }
+          attempted = true;
+          await send.click({ timeoutMs: uiTimeout });
+        } },
+        readComposer: tools.readComposer, fillPrompt: tools.fillPrompt,
+        verifyGitHubSelection: tools.verifyGitHubSelection,
+      });
+      if (sent.event !== "send_clicked") return stop(sent.event);
+      phase = "wait";
+      const assistant = pw.locator("main article").filter({ has: pw.locator(answerSelector) });
+      const finished = button(assistant, copyName);
+      const attention = pw.getByRole("alert").filter({
+        hasText: /利用上限|問題が発生|生成でき|usage limit|something went wrong|error generating/i,
+      });
+      const waitStarted = Date.now();
+      const ready = await handoff.wait({ finished, attention, timeoutMs });
+      if (ready.event !== "reply_ready") return stop(ready.event);
+      const generating = visible(button(pw, stopName));
+      if (await generating.count() !== 0) {
+        await generating.first().waitFor({
+          state: "hidden", timeoutMs: Math.max(1, timeoutMs - (Date.now() - waitStarted)),
+        });
+      }
+      phase = "receive";
+      observation = await observePro(chat, false);
+      if (observation.reason) return stop(observation.reason);
+      const receive = await planFor(transfer, listening, "receive", observation.live);
+      if (receive.next_action !== "collect_reply") return stop(receive.reason ?? "receive_unconfirmed");
+      const message = assistant.locator(answerSelector);
+      const jsonBlock = visible(message.locator("pre code"));
+      const answer = await jsonBlock.count() === 1 ? jsonBlock : message;
+      phase = "save";
+      const submission = await handoff.collect({ plan: receive, finished, answer, includeReply: true });
+      if (submission.event !== "save_clicked") return stop(submission.event);
+      const savedField = field(transfer.playwright, "Saved result");
+      await savedField.waitFor({ state: "visible", timeoutMs: uiTimeout });
+      const saved = await readJson(savedField);
+      if (await transfer.url() !== listening.url || saved.event !== "saved" ||
+          !matchesRequest(saved, listening) || saved.status !== submission.reply.status) {
+        return stop("save_unconfirmed");
+      }
+      return { ...saved, completion: ready.event, reply: submission.reply };
+    }
+
+    let outcome;
+    try {
+      outcome = await exchange();
+    } catch {
+      outcome = stop("browser_operation_unconfirmed");
+    }
+    const retainChat = outcome.event === "pending";
+    const cleanup = await disposeTabs(cua, chat, transfer, retainChat);
+    return { ...outcome, ...(cleanup.handoff_marked && cleanup.chat_closed === false && { tab_id: chat.id }), cleanup };
   };
 })();

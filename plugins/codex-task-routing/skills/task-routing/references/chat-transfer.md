@@ -81,6 +81,69 @@ acceptance. If collection must be retried, restore only this local form with
 the same bundle and reply target; never resend the model task for a local
 display failure.
 
+## One Browser call
+
+For an approved request, use the normal `prepare` command to create
+`bundle.json`. Give the transfer helper a `workflow.json` with the existing
+dispatch `facts`, the optional capability `inventory`, and `live_base`.
+`live_base` contains the owner's confirmed actor, route, transport, action
+authorization, and operation checks. The Browser supplies the current
+`surface`, `model`, `quota_state`, `observed_at`, and optional
+`temporary_chat_mode` for each phase. Record approvals only after verifying
+their actual scope. The helper checks inspect at startup and evaluates dispatch
+and receive separately when the Browser submits current observations.
+
+```text
+python <plugin-root>/scripts/chat_transfer.py --bundle bundle.json --reply reply.json --workflow workflow.json --timeout 720
+```
+
+Keep the job files in the same private working directory. The startup
+`listening` event supplies the loopback URL and the request identifiers.
+Once the host has initialized the in-app Browser REPL, send the trusted
+`<plugin-root>/scripts/chat_browser.js` definition and the invocation below
+together as one script. If the definition is already loaded, send only the
+invocation. Set the tool timeout to cover setup, generation, and saving, and
+keep the local helper alive for the whole exchange.
+
+```js
+const handoffResult = await runProHandoff({ cua, listening, timeoutMs: 600_000 });
+// Include the reply only if it may appear in the caller's tool output.
+nodeRepl.write({
+  event: handoffResult.event,
+  completion: handoffResult.completion,
+  status: handoffResult.status,
+  phase: handoffResult.phase,
+  reason: handoffResult.reason,
+  reply: handoffResult.reply,
+});
+```
+
+The runner uses the documented Browser actions with hidden tabs. It opens a
+new empty Temporary Chat, confirms the destination and the displayed Pro
+selection, dispatches once, waits for the current response, checks receive,
+and saves the correlated reply. It returns `completion: "reply_ready"`,
+`event: "saved"`, and `reply` in the same result after the helper acknowledges
+the write. `reply` includes the validated result and evidence. Consume that
+value in the script or use the verified `reply.json` locally. For material that
+must remain local, omit `reply` from tool output and use the saved file.
+The reply status and the owner's assessment of the result remain separate.
+
+For requests that need an approved tool, pass a `prepareTools(chatTab)`
+callback that performs and verifies the supported selection in the same call.
+For GitHub, it supplies the observed `temporaryChatMode`, the
+`verifyGitHubSelection` callback, and any editor callbacks the observed chip
+requires. The preflight still checks the inventory and scope. The default
+invocation handles requests without tool selection. If a required control is
+unknown, Pro is unavailable, or a host confirmation is required, resolve that
+condition through the supported host.
+
+The helper refuses a dispatch if the reply path already exists and reserves
+the request ID before returning `send_once`. Retain that reservation with the
+job files. A `pending` result after an attempted send can include the original
+tab for recovery. Use the existing receive procedure on that tab with the
+same bundle and output path.
+A timeout or an unknown click outcome leaves the request unresolved.
+
 ## Browser script and completion signal
 
 With a Browser REPL that supports Playwright locators, load the definition in
