@@ -46,6 +46,33 @@ class ChatPlanTests(unittest.TestCase):
         self.facts['needs'] = []
         self.assertEqual(cp.plan(self.facts)['route'], 'chat_candidate')
 
+    def test_github_new_temporary_dispatch_requires_observed_personalized_mode(self):
+        live = dict(is_root=True, route_enabled=True, surface='chat-temporary', model='Pro',
+                    transport='browser-temporary', transport_authorized=True,
+                    actions_authorized=True, quota_state='no_limit_notice', observed_at=self.now.isoformat())
+        for mode in (None, 'unknown', 'unpersonalized'):
+            current = dict(live)
+            if mode is not None:
+                current['temporary_chat_mode'] = mode
+            result = cp.plan(self.facts, self.inventory, now=self.now, live=current)
+            self.assertEqual(result['reason'], 'github_requires_personalized_temporary_chat')
+            self.assertEqual(result['next_action'], 'observe_personalized_mode')
+        live['temporary_chat_mode'] = 'personalized'
+        result = cp.plan(self.facts, self.inventory, now=self.now, live=live)
+        self.assertEqual(result['route'], 'chat_candidate')
+        self.assertEqual(result['temporary_chat_mode'], 'personalized')
+        self.inventory['capabilities'] = []
+        self.assertEqual(cp.plan(self.facts, self.inventory, now=self.now, live=live)['route'], 'preflight_needed')
+        self.facts['needs'] = []
+        live.pop('temporary_chat_mode')
+        self.assertEqual(cp.plan(self.facts, self.inventory, now=self.now, live=live)['route'], 'chat_candidate')
+        self.facts['needs'] = [{'tool': 'Other', 'operation': 'read', 'scope': 'example'}]
+        self.inventory['installed_plugins'] = ['Other']
+        self.inventory['capabilities'] = [{**self.facts['needs'][0], 'state': 'verified',
+                                           'observed_at': '2026-09-13T00:00:00Z',
+                                           'expires_at': '2026-09-15T00:00:00Z'}]
+        self.assertEqual(cp.plan(self.facts, self.inventory, now=self.now, live=live)['route'], 'chat_candidate')
+
     def test_gates_and_blocked(self):
         for key in ('substantial', 'parent_has_independent_work', 'handoff_proportionate'):
             changed = {**self.facts, key: False}

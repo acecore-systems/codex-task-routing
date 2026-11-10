@@ -87,7 +87,7 @@ class FirstUseCapabilityTests(unittest.TestCase):
                          transport_evidence=dict(basis='host_tool_contract',
                              reference='Synthetic test fixture: host permits this exact send/receive flow.',
                              transport='browser-temporary', operations=['send', 'receive']),
-                         actions_authorized=True, quota_state='no_limit_notice',
+                         actions_authorized=True, quota_state='no_limit_notice', temporary_chat_mode='personalized',
                          observed_at=self.now.isoformat())
 
     def evaluate(self, **changes):

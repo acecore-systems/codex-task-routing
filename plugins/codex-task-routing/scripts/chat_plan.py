@@ -233,7 +233,7 @@ def inspection_plan(live):
         raise ChatRouteError("inspection requires a live object")
     required = {"is_root", "route_enabled", "transport"}
     allowed = required | {"surface", "model", "transport_authorized", "transport_evidence",
-                          "actions_authorized", "quota_state", "observed_at", "browser_checks", "actor"}
+                          "actions_authorized", "quota_state", "observed_at", "browser_checks", "actor", "temporary_chat_mode"}
     _require_keys(live, required=required, allowed=allowed, purpose="inspection live")
     for field in ("is_root", "route_enabled"):
         if type(live[field]) is not bool:
@@ -302,7 +302,9 @@ def check_live(live, *, now, phase="dispatch"):
     if not isinstance(live, dict):
         raise ChatRouteError("live must be an object")
     _require_keys(live, required=required,
-                  allowed=required | {"quota_state", "transport_authorized", "transport_evidence", "browser_checks", "actor"}, purpose="live")
+                  allowed=required | {"quota_state", "transport_authorized", "transport_evidence", "browser_checks", "actor", "temporary_chat_mode"}, purpose="live")
+    if "temporary_chat_mode" in live and live["temporary_chat_mode"] not in ("personalized", "unpersonalized", "unknown"):
+        raise ChatRouteError("invalid temporary Chat mode observation")
     for name in ("is_root", "route_enabled", "actions_authorized"):
         if type(live[name]) is not bool:
             raise ChatRouteError("live gates must be JSON booleans")
@@ -349,6 +351,7 @@ def collection_plan(live, request, *, now=None):
             "next_action": "collect_reply", "preflight_complete": True,
             "dispatch_authorized": False, "dispatch_performed": False,
             "request_id": request_id, "input_sha256": input_sha256,
+            "transport": live["transport"],
             "observation_source": "caller_supplied", "backend_model": "unknown",
             "authorization_attested": False}
 
@@ -398,6 +401,14 @@ def plan(facts, inventory=None, *, now=None, live=None):
             return blocked
         if inventory is not None and inventory["surface"] != live["surface"]:
             return {"route": "preflight_needed", "reason": "capability_surface_mismatch"}
+        if (live["transport"] == "browser-temporary"
+                and any(need["tool"].casefold() == "github" for need in needs)
+                and live.get("temporary_chat_mode") != "personalized"):
+            return {"route": "preflight_needed", "reason": "github_requires_personalized_temporary_chat",
+                    "next_action": "observe_personalized_mode",
+                    "resolution": {"where": "The new empty Temporary Chat before its first message",
+                                   "action": "Select Personalized and observe the selected mode in this Chat; "
+                                             "if unavailable or unconfirmed, do not send with GitHub."}}
     checks = []
     caps = inventory["capabilities"] if inventory else []
     for need in needs:
@@ -417,6 +428,8 @@ def plan(facts, inventory=None, *, now=None, live=None):
             "reason": "supplied_dispatch_checks_passed" if live is not None else "inspect_live_surface_model_and_permissions",
             "next_action": "send_once" if live is not None else "inspect_browser",
             "preflight_complete": live is not None, "dispatch_performed": False,
+            "transport": live["transport"] if live is not None else None,
+            "temporary_chat_mode": live.get("temporary_chat_mode", "unknown") if live is not None else "unknown",
             "checks": checks, "live_checked": live is not None, "delegation_mode": delegation,
             "observation_source": "caller_supplied", "backend_model": "unknown",
             "authorization_attested": False}

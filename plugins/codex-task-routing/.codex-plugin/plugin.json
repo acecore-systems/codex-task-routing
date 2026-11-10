@@ -1,6 +1,6 @@
 {
   "name": "codex-task-routing",
-  "version": "0.30.3",
+  "version": "0.30.4",
   "description": "Task delegation policies for research, documents, images, operations, and development in Codex.",
   "author": {
     "name": "Acecore",

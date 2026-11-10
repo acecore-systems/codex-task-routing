@@ -108,6 +108,8 @@ CLIの終了コード0は分類処理の成功です。`chat_candidate` も送�
 
 `--live`なしは過去の分類呼出し互換用で、結果の`live_checked:false`を送信可能と扱いません。`true`も入力された観測の整合を検証しただけで、実UI・backendモデル・権限の機械的な証明ではありません。legacy `codex-app-tools`のsurfaceは`chat`であり、一時Chatを作成・操作しません。
 
+GitHubを必要とする新規 `browser-temporary` 送信では、上記liveに `"temporary_chat_mode": "personalized"` を追加します。その新しい空の一時ChatのUIで初回送信前に `Personalized`（「パーソナライズ」）の選択を観測できた場合だけ指定します。未観測は省略または `unknown`、非選択は `unpersonalized` とし、送信を止めます。選択の確認はGitHubの接続・操作・正確な対象権限や承認の確認に代わりません。送信済み依頼のreceive、ツール不要・他ツールの依頼およびlegacy入力の分類は従来どおりです。CLIは観測値の真実性を確認できません。
+
 
 ## 初回操作と実行済みの区別（0.8.1）
 

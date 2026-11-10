@@ -558,7 +558,12 @@ def serve_transfer(state: TransferState, *, timeout_seconds: int) -> int:
     final_status = state.response_status
     print(
         json.dumps(
-            {"event": "saved", "request_id": state.request_id, "status": final_status},
+            {
+                "event": "saved",
+                "request_id": state.request_id,
+                "input_sha256": state.input_sha256,
+                "status": final_status,
+            },
             ensure_ascii=True,
             sort_keys=True,
         ),
