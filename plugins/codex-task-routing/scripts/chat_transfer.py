@@ -244,6 +244,12 @@ class TransferState:
             facts = workflow["facts"]
             if not isinstance(facts, dict) or not isinstance(facts.get("needs"), list):
                 raise ChatTransferError("invalid workflow facts")
+            try:
+                classification = chat_plan.plan(facts)
+            except chatgpt_route.ChatRouteError as exc:
+                raise ChatTransferError("invalid workflow facts") from exc
+            if classification.get("route") == "local_auth":
+                raise ChatTransferError("private authentication is not a Chat workflow")
             self.workflow = dict(workflow)
         # Exposed only on the authorized local page.  These fixed strings
         # identify transport progress without retaining response material.
@@ -633,7 +639,9 @@ def serve_transfer(state: TransferState, *, timeout_seconds: int) -> int:
         "url": f"{server.origin}/transfer/{state.token}",
     }
     if state.workflow is not None:
-        metadata.update(workflow=True, needs_tools=bool(state.workflow["facts"]["needs"]))
+        needs = state.workflow["facts"]["needs"]
+        metadata.update(workflow=True, needs_tools=bool(needs),
+                        needs_github=any(need["tool"].casefold() == "github" for need in needs))
     print(json.dumps(metadata, ensure_ascii=True, sort_keys=True), flush=True)
     try:
         while not server.completed:

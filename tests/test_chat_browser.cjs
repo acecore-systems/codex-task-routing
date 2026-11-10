@@ -239,3 +239,36 @@ test("collects only a visible, correlated final reply and leaves its fields unch
   assert.equal(state.submitted, finalJson);
   assert.equal(state.saveClicks, 1);
 });
+
+test("wait binds the first conversation URL and collection rejects a later same-origin move", async () => {
+  const { newHandoff, state } = fixture();
+  const handoff = newHandoff();
+  const finished = {
+    filter() { return this; }, first() { return this; }, count: async () => 1,
+    waitFor: async () => { state.chatUrl = "https://chatgpt.com/c/sent-temporary-chat"; },
+  };
+  assert.equal((await handoff.wait({ finished, timeoutMs: 1000 })).event, "reply_ready");
+  state.chatUrl = "https://chatgpt.com/c/another-chat";
+  const answer = { filter() { return this; }, count: async () => 1,
+    innerText: async () => JSON.stringify({ request_id, input_sha256, status: "completed", result: "Answer", evidence: [] }),
+  };
+  await assert.rejects(handoff.collect({ plan: receive, finished, answer }), /original Chat/);
+  assert.equal(state.submitted, "");
+  assert.equal(state.saveClicks, 0);
+});
+
+test("collection rechecks the conversation after reading the displayed reply", async () => {
+  const { newHandoff, state } = fixture();
+  state.chatUrl = "https://chatgpt.com/c/sent-temporary-chat";
+  const handoff = newHandoff();
+  const finished = { filter() { return this; }, count: async () => 1 };
+  const answer = { filter() { return this; }, count: async () => 1,
+    innerText: async () => {
+      state.chatUrl = "https://chatgpt.com/c/another-chat";
+      return JSON.stringify({ request_id, input_sha256, status: "completed", result: "Answer", evidence: [] });
+    },
+  };
+  await assert.rejects(handoff.collect({ plan: receive, finished, answer }), /original Chat/);
+  assert.equal(state.submitted, "");
+  assert.equal(state.saveClicks, 0);
+});

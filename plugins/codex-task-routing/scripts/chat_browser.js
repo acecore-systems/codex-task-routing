@@ -11,6 +11,18 @@ function isProTemporaryDestination(url) {
   }
 }
 
+function isProConversationDestination(url) {
+  try {
+    const parsed = new URL(url);
+    const modes = parsed.searchParams.getAll("temporary-chat");
+    return parsed.origin === "https://chatgpt.com" && /^\/c\/[a-z0-9-]+$/i.test(parsed.pathname) &&
+      !parsed.username && !parsed.password &&
+      (modes.length === 0 || (modes.length === 1 && modes[0] === "true"));
+  } catch {
+    return false;
+  }
+}
+
 const proHandoff = (() => {
   const attempted = new Set();
   const visible = locator => locator.filter({ visible: true });
@@ -54,11 +66,17 @@ const proHandoff = (() => {
     }
     const signal = event => ({ event, request_id, input_sha256 });
     const form = transferTab.playwright;
+    let conversationUrl;
 
     async function checkChat() {
-      if (new URL(await chatTab.url()).origin !== "https://chatgpt.com") {
-        throw new Error("The original Chat tab is unavailable.");
+      const current = await chatTab.url();
+      const conversation = isProConversationDestination(current);
+      if ((!isProTemporaryDestination(current) && !conversation) ||
+          (conversationUrl && current !== conversationUrl)) {
+        throw new Error("The original Chat destination is unavailable or changed.");
       }
+      // Bind the first conversation reached from the temporary composer.
+      if (conversation) conversationUrl = current;
     }
 
     async function checkTransfer() {
@@ -160,8 +178,10 @@ const proHandoff = (() => {
         if (identity?.request_id !== request_id || identity.input_sha256 !== input_sha256) {
           return signal("reply_mismatch");
         }
+        await checkChat();
         await checkTransfer();
         await form.getByLabel("Response JSON", { exact: true }).fill(response);
+        await checkChat();
         await checkTransfer();
         await form.getByRole("button", { name: "Save verified response", exact: true }).click();
         // The CLI emits the authoritative saved event after validation and write.
@@ -182,6 +202,9 @@ const runProHandoff = (() => {
   const pickerName = /^(?:ChatGPT モデルを選択|Select model|Choose model|Choose a model)$/i;
   const temporaryOn = /^(?:一時チャットをオフにする|Turn off temporary chat)$/i;
   const temporaryOff = /^(?:一時チャット|一時チャットをオンにする|Temporary Chat|Turn on temporary chat)$/i;
+  const personalized = /^(?:Personalized|パーソナライズ)$/i;
+  const unpersonalized = /^(?:Unpersonalized|パーソナライズなし)$/i;
+  const personalizedChoice = /^(?:Personalized|パーソナライズ)(?:\s|$)/i;
   const composerName = /^(?:ChatGPT に聞く|Ask ChatGPT|Message ChatGPT|Prompt)$/i;
   const sendName = /^(?:送信|メッセージを送信|Send|Send message|Send prompt)$/i;
   const stopName = /^(?:停止|生成を停止する?|回答の生成を停止する?|応答を停止する?|Stop|Stop generating|Stop response|Stop streaming)$/i;
@@ -221,20 +244,38 @@ const runProHandoff = (() => {
       await work.getAttribute("aria-pressed") === "false";
   }
 
-  // Only called on the new tab after its explicit Chat / non-Work check.
-  async function temporarySurface(tab, phase = "dispatch") {
-    const url = await tab.url();
+  async function temporaryChatContext(tab, { phase = "dispatch" } = {}) {
     const pw = tab.playwright;
-    if (!await ordinaryChat(pw, true)) return false;
-    if (phase === "dispatch") return isProTemporaryDestination(url) &&
-      await visible(button(pw, temporaryOn)).count() === 1;
-    const parsed = new URL(url);
-    if (parsed.origin !== new URL(chatUrl).origin || parsed.username || parsed.password) return false;
+    const current = await tab.url();
+    if (!await ordinaryChat(pw, true) || !(isProTemporaryDestination(current) ||
+        (phase === "receive" && isProConversationDestination(current)))) return false;
     if (await visible(button(pw, temporaryOn)).count() === 1) return true;
+    if (phase !== "receive") return false;
+    const parsed = new URL(current);
     const modes = parsed.searchParams.getAll("temporary-chat");
     return /^\/c\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(parsed.pathname) &&
       modes.length === 1 && modes[0] === "true" && Array.from(parsed.searchParams).length === 1 && !parsed.hash &&
       await visible(pw.getByText("一時チャット", { exact: true })).count() === 1;
+  }
+
+  async function modeInChat(tab, expectedUrl, { select = false } = {}) {
+    const pw = tab.playwright;
+    if (await tab.url() !== expectedUrl || !isProTemporaryDestination(expectedUrl) ||
+        !await temporaryChatContext(tab)) return false;
+    const yes = visible(button(pw, personalized));
+    const no = visible(button(pw, unpersonalized));
+    const yesCount = await yes.count();
+    const noCount = await no.count();
+    if (yesCount === 1 && noCount === 0) return true;
+    if (!select || yesCount !== 0 || noCount !== 1) return false;
+    await no.click({ timeoutMs: uiTimeout });
+    const menu = visible(pw.getByRole("menu", { name: unpersonalized }));
+    if (await menu.count() !== 1) return false;
+    const choice = visible(menu.getByRole("menuitemradio", { name: personalizedChoice }));
+    if (await choice.count() !== 1 || await choice.getAttribute("aria-checked") !== "false" ||
+        await tab.url() !== expectedUrl) return false;
+    await choice.click({ timeoutMs: uiTimeout });
+    return await tab.url() === expectedUrl && await yes.count() === 1 && await no.count() === 0;
   }
 
   async function openTemporary(tab) {
@@ -256,7 +297,7 @@ const runProHandoff = (() => {
       await toggle.click({ timeoutMs: uiTimeout });
     }
     await enabled.waitFor({ state: "visible", timeoutMs: uiTimeout });
-    return await temporarySurface(tab) && await pw.locator("main [data-message-author-role]").count() === 0 &&
+    return await temporaryChatContext(tab) && await pw.locator("main [data-message-author-role]").count() === 0 &&
       await pw.getByRole("heading", { name: userHeading, exact: true }).count() === 0 &&
       await pw.getByRole("heading", { name: assistantHeading, exact: true }).count() === 0;
   }
@@ -329,7 +370,7 @@ const runProHandoff = (() => {
 
   async function observePro(tab, { select = false, phase = "dispatch" } = {}) {
     const pw = tab.playwright;
-    if (!await temporarySurface(tab, phase)) {
+    if (!await temporaryChatContext(tab, { phase })) {
       return { reason: "temporary_chat_unconfirmed" };
     }
     const picker = button(pw, pickerName);
@@ -416,6 +457,8 @@ const runProHandoff = (() => {
   return async function ({ cua, listening, timeoutMs = 270_000, prepareTools }) {
     if (listening?.event !== "listening" || listening.workflow !== true ||
         typeof listening.request_id !== "string" || typeof listening.needs_tools !== "boolean" ||
+        (listening.needs_github !== undefined && typeof listening.needs_github !== "boolean") ||
+        (listening.needs_github === true && !listening.needs_tools) ||
         !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 3_600_000) {
       return { event: "blocked", phase: "setup", reason: "invalid_workflow_input" };
     }
@@ -440,10 +483,16 @@ const runProHandoff = (() => {
       phase = "model";
       let observation = await observePro(chat, { select: true });
       if (observation.reason) return stop(observation.reason);
+      if (listening.needs_github === true && !await modeInChat(chat, temporaryChatUrl, { select: true })) {
+        return stop("personalized_unconfirmed");
+      }
       // Scope and connector authority are still checked by the existing plan.
       // An adapter performs only the permitted UI actions inside this call.
       const tools = listening.needs_tools ? await prepareTools(chat) : {};
       if (!tools) return stop("tool_selection_unconfirmed");
+      if (listening.needs_github === true && !await modeInChat(chat, temporaryChatUrl)) {
+        return stop("personalized_unconfirmed");
+      }
       if (listening.needs_tools) {
         observation = await observePro(chat);
         if (observation.reason) return stop(observation.reason);
@@ -458,9 +507,15 @@ const runProHandoff = (() => {
       phase = "dispatch";
       const dispatch = await planFor(transfer, listening, "dispatch", {
         ...observation.live,
-        temporary_chat_mode: tools.temporaryChatMode ?? "unknown",
+        temporary_chat_mode: listening.needs_github === true ? "personalized" : tools.temporaryChatMode ?? "unknown",
       });
       if (dispatch.next_action !== "send_once") return stop(dispatch.reason ?? "dispatch_unconfirmed");
+      // Older listening events may only identify GitHub in the dispatch plan.
+      if (listening.needs_github !== true &&
+          dispatch.checks?.some(check => check.tool?.toLowerCase() === "github") &&
+          !await modeInChat(chat, temporaryChatUrl)) {
+        return stop("personalized_unconfirmed");
+      }
       phase = "send";
       const sent = await handoff.send({
         plan: dispatch, composer, temporaryChatUrl,
@@ -469,7 +524,7 @@ const runProHandoff = (() => {
           // Keep the original tab even if the outer REPL call is interrupted.
           await chat.markHandoff();
           const current = button(pw, pickerName);
-          if (!await temporarySurface(chat) ||
+          if (!await temporaryChatContext(chat) ||
               !pro.test((await current.innerText({ timeoutMs: uiTimeout })).trim()) ||
               await chat.url() !== temporaryChatUrl) {
             throw new Error("Pro selection changed before sending.");
