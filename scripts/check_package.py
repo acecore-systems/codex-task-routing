@@ -26,7 +26,7 @@ def check():
         assert not (PLUGIN / removed).exists(), removed
     assert (PLUGIN / 'skills/task-routing/references/native-cloud.md').is_file()
     expected_events = {'SessionStart', 'SubagentStart', 'PreToolUse', 'PreModelRequest',
-                       'PostModelRequest', 'Stop', 'SubagentStop', 'UserPromptSubmit'}
+                       'PostModelRequest', 'Stop', 'Interrupt', 'SubagentStop', 'UserPromptSubmit'}
     assert set(hooks) == expected_events
     routing_command = "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','routing.py'),run_name='__main__')\" hook"
     guard_command = "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','spawn_guard.py'),run_name='__main__')\" hook"
@@ -43,7 +43,7 @@ def check():
         'SubagentStop': [capture_command, reminder_command],
         'UserPromptSubmit': [capture_command + ' prompt', reminder_command],
         'PreModelRequest': [capture_command], 'PostModelRequest': [capture_command],
-        'Stop': [capture_command],
+        'Stop': [capture_command, reminder_command], 'Interrupt': [reminder_command],
     }
     for event, groups in hooks.items():
         if event != 'PreToolUse':

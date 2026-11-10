@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import sqlite3
 import subprocess
 import sys
 import unittest
@@ -109,6 +110,76 @@ class ParentGuardTests(unittest.TestCase):
         for i in range(guard.THRESHOLD - 1):
             self.assertIsNone(self.work('after-' + str(i), turn_id='other'))
         self.assertIsNotNone(self.work('after-last', turn_id='other'))
+    def delegated(self, session, turn):
+        path = self.home / 'codex-task-routing/parent-guard/state.sqlite3'
+        db = sqlite3.connect(path)
+        try:
+            row = db.execute('SELECT delegated FROM turns WHERE session=? AND turn=?',
+                             (guard._identifier(session), guard._identifier(turn))).fetchone()
+            return None if row is None else row[0]
+        finally:
+            db.close()
+
+    def test_child_turn_is_attributed_to_observed_open_root_turn(self):
+        self.send('UserPromptSubmit')
+        self.send('UserPromptSubmit', session_id='session-b', turn_id='root-b')
+        self.send('SubagentStart', turn_id='child-turn', agent_id='child')
+        self.assertEqual(self.delegated('session-a', 'turn-a'), 1)
+        self.assertEqual(self.delegated('session-b', 'root-b'), 0)
+        self.send('SubagentStop', turn_id='child-turn', agent_id='child')
+        self.assertIsNotNone(self.work('resume'))
+        for i in range(guard.THRESHOLD + 1):
+            self.assertIsNone(self.work('after-' + str(i)))
+
+    def test_closed_and_duplicate_turns_are_not_reopened(self):
+        for end in ('Stop', 'Interrupt'):
+            with self.subTest(end=end):
+                session = 'session-' + end
+                self.send('UserPromptSubmit', session_id=session, turn_id='first')
+                self.send(end, session_id=session, turn_id='first')
+                self.send('UserPromptSubmit', session_id=session, turn_id='first')
+                self.send('SubagentStart', session_id=session, turn_id='child-1', agent_id='child-1')
+                self.assertEqual(self.delegated(session, 'first'), 0)
+                self.send('UserPromptSubmit', session_id=session, turn_id='second')
+                self.send('UserPromptSubmit', session_id=session, turn_id='first')
+                self.send(end, session_id=session, turn_id='first')
+                self.send('SubagentStart', session_id=session, turn_id='child-2', agent_id='child-2')
+                self.assertEqual(self.delegated(session, 'first'), 0)
+                self.assertEqual(self.delegated(session, 'second'), 1)
+
+    def test_duplicate_child_start_does_not_mark_new_turn(self):
+        self.send('UserPromptSubmit')
+        self.send('SubagentStart', agent_id='child', turn_id='child-turn')
+        self.send('SubagentStop', agent_id='child', turn_id='child-turn')
+        self.send('PreToolUse', tool_name='followup_task', tool_use_id='contact')
+        self.send('Stop')
+        self.send('UserPromptSubmit', turn_id='next')
+        self.send('SubagentStart', agent_id='child', turn_id='child-turn')
+        self.assertEqual(self.delegated('session-a', 'turn-a'), 1)
+        self.assertEqual(self.delegated('session-a', 'next'), 0)
+        for i in range(guard.THRESHOLD - 1):
+            self.assertIsNone(self.work('next-' + str(i), turn_id='next'))
+        self.assertIsNotNone(self.work('next-last', turn_id='next'))
+        self.send('SubagentStart', agent_id='child', turn_id='new-child-turn')
+        self.assertEqual(self.delegated('session-a', 'next'), 1)
+
+    def test_existing_active_child_does_not_mark_open_turn(self):
+        self.send('UserPromptSubmit')
+        db = guard._database(self.home)
+        db.execute('INSERT INTO active VALUES(?,?,?)',
+                   (guard._identifier('session-a'), guard._identifier('child'), 1))
+        db.close()
+        self.send('SubagentStart', agent_id='child', turn_id='child-turn')
+        self.assertEqual(self.delegated('session-a', 'turn-a'), 0)
+
+    def test_existing_database_does_not_infer_old_turn_is_open(self):
+        db = guard._database(self.home)
+        db.execute('INSERT INTO turns(session,turn,created) VALUES(?,?,?)',
+                   (guard._identifier('session-a'), guard._identifier('turn-a'), 1))
+        db.close()
+        self.send('SubagentStart', agent_id='child', turn_id='child-turn')
+        self.assertEqual(self.delegated('session-a', 'turn-a'), 0)
+
     def test_stopped_owner_retest_reminder_is_conditional_and_once(self):
         self.send('UserPromptSubmit')
         self.send('SubagentStart', agent_id='child')
