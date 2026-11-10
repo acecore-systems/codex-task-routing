@@ -26,6 +26,15 @@ TTL_SECONDS = 7 * 86400
 MAX_ROWS = 512
 WORK_TOOLS = frozenset({'exec', 'exec_command', 'apply_patch', 'write_stdin'})
 OWNER_TOOLS = frozenset({'send_input', 'followup_task', 'wait_agent'})
+CONTACT_TOOLS = frozenset({'send_input', 'followup_task', 'send_message'})
+RESUME_REMINDER = (
+    'Task Routing: a delegated owner stopped. If their unit still needs ordinary verification, '
+    'fixes or retesting, make only the necessary parent decision on permissions or environment, '
+    'then consider returning the remaining work to the same suitable, resumable owner. If that is '
+    'not possible, state the concrete reason. The stop does not establish unfinished work. Parent '
+    'acceptance, useful independent work, parent-only operations, active children, host restrictions '
+    'and approvals remain valid; do not force delegation or automate execution.'
+)
 REMINDER = (
     'Task Routing: sustained local work without an observed delegate. Consider handing a complete '
     'unit to an existing delegated owner or an allowed suitable child. Parent familiarity alone '
@@ -42,6 +51,8 @@ PROMPT_REMINDER = (
     'materials, decisions, constraints, acceptance and authority. Check actual access, a useful '
     'independent parent task for parallel work or host permission and added value for serial work. '
     'Use the allowed delegation tool when suitable; if the parent continues, give a concrete reason. '
+    'After necessary parent permission or environment decisions, return remaining ordinary checks, '
+    'fixes and retests to the same suitable resumable owner where possible; otherwise state why. '
     'Continue a suitable delegated owner, answer short questions normally, and respect the effective '
     'custom policy, user prohibitions and host restrictions. Do not invent work or force delegation.'
 )
@@ -65,6 +76,7 @@ def _database(home):
     db.execute('CREATE TABLE IF NOT EXISTS turns (session TEXT NOT NULL, turn TEXT NOT NULL, created INTEGER NOT NULL, delegated INTEGER NOT NULL DEFAULT 0, owner_contact INTEGER NOT NULL DEFAULT 0, reminded INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(session,turn))')
     db.execute('CREATE TABLE IF NOT EXISTS tools (session TEXT NOT NULL, turn TEXT NOT NULL, tool TEXT NOT NULL, PRIMARY KEY(session,turn,tool))')
     db.execute('CREATE TABLE IF NOT EXISTS active (session TEXT NOT NULL, agent TEXT NOT NULL, created INTEGER NOT NULL, PRIMARY KEY(session,agent))')
+    db.execute('CREATE TABLE IF NOT EXISTS stopped (session TEXT PRIMARY KEY, created INTEGER NOT NULL)')
     return db
 
 
@@ -89,7 +101,7 @@ def handle(payload, home):
             return None
         name = name.rsplit('.', 1)[-1].rsplit('__', 1)[-1]
         tool = _identifier(payload.get('tool_use_id'))
-        if tool is None or name not in WORK_TOOLS | OWNER_TOOLS | {'spawn_agent', 'Agent'}:
+        if tool is None or name not in WORK_TOOLS | OWNER_TOOLS | CONTACT_TOOLS | {'spawn_agent', 'Agent'}:
             return None
     db = _database(home)
     try:
@@ -98,6 +110,8 @@ def handle(payload, home):
         if event == 'UserPromptSubmit':
             db.execute('DELETE FROM turns WHERE created < ?', (now - TTL_SECONDS,))
             db.execute('DELETE FROM active WHERE created < ?', (now - TTL_SECONDS,))
+            db.execute('DELETE FROM stopped WHERE created < ?', (now - TTL_SECONDS,))
+            db.execute('DELETE FROM stopped WHERE rowid IN (SELECT rowid FROM stopped ORDER BY created DESC, rowid DESC LIMIT -1 OFFSET ?)', (MAX_ROWS,))
             db.execute('DELETE FROM active WHERE rowid IN (SELECT rowid FROM active ORDER BY created DESC, rowid DESC LIMIT -1 OFFSET ?)', (MAX_ROWS,))
             db.execute('DELETE FROM tools WHERE NOT EXISTS (SELECT 1 FROM turns WHERE turns.session=tools.session AND turns.turn=tools.turn)')
             # Duplicate prompt deliveries must not reset counts or a reminder.
@@ -110,11 +124,20 @@ def handle(payload, home):
             db.execute('INSERT OR REPLACE INTO active VALUES(?,?,?)', (session, _identifier(agent), now))
             db.execute('UPDATE turns SET delegated=1 WHERE session=? AND turn=?', (session, turn))
         elif event == 'SubagentStop':
-            db.execute('DELETE FROM active WHERE session=? AND agent=?', (session, _identifier(agent)))
+            removed = db.execute('DELETE FROM active WHERE session=? AND agent=?', (session, _identifier(agent))).rowcount
+            if removed:
+                db.execute('INSERT OR REPLACE INTO stopped VALUES(?,?)', (session, now))
         else:
             row = db.execute('SELECT delegated, owner_contact, reminded FROM turns WHERE session=? AND turn=?', (session, turn)).fetchone()
             if row is not None:
-                if name in {'spawn_agent', 'Agent'}:
+                if name in CONTACT_TOOLS:
+                    db.execute('DELETE FROM stopped WHERE session=?', (session,))
+                    db.execute('UPDATE turns SET owner_contact=1 WHERE session=? AND turn=?', (session, turn))
+                elif name in WORK_TOOLS and db.execute('SELECT 1 FROM stopped WHERE session=?', (session,)).fetchone() and not db.execute('SELECT 1 FROM active WHERE session=? LIMIT 1', (session,)).fetchone():
+                    db.execute('DELETE FROM stopped WHERE session=?', (session,))
+                    db.execute('COMMIT')
+                    return {'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'additionalContext': RESUME_REMINDER}}
+                elif name in {'spawn_agent', 'Agent'}:
                     pass  # an attempted spawn is not a started child
                 elif name in OWNER_TOOLS:
                     db.execute('UPDATE turns SET owner_contact=1 WHERE session=? AND turn=?', (session, turn))
