@@ -749,7 +749,7 @@ def _chatgpt_context(home: Path, plugin_root: Path, *, for_child: bool = False) 
         f"Opt-in ChatGPT Chat route is enabled (required UI model: Pro; legacy labels 6 Pro / GPT-6 Pro; transport: {transport}{legacy_suffix}). "
         + eligibility
         + "Host restrictions and authorization apply. Choose suitable Cloud before Pro for independent repo work; "
-        "otherwise evaluate enabled Pro first for suitable substantial work; retain a suitable owner. "
+        "follow the effective policy and overrides for consultation and other roles; retain a suitable owner. "
         "Before use read <plugin-root>/skills/task-routing/references/chatgpt.md and chat-authorization.md; "
         "unknown authorization blocks dispatch. Reuse valid approvals; transport_evidence is optional. Keep secrets local, one owner and one request; "
         "never resend on uncertainty, use Work or a model API."
@@ -858,8 +858,8 @@ def hook_payload(
                      "apply the effective principles and host limits when deciding. "
                      "Return unresolved contradictions to root." if review else
                      "Delegate with scope, authority, tests, acceptance and return conditions. Parent owns priorities, "
-                     "architecture, acceptance and important exceptions; Terra is the default for ordinary "
-                     "implementation and investigation. Keep the owner through ordinary fixes and tests. "
+                     "architecture, acceptance and important exceptions; Luna is the default for investigation, Terra for ordinary "
+                     "implementation and fixes, and Sol for difficult execution. Consult Pro when eligible and use Astra only when needed. Keep the owner through ordinary fixes and tests. "
                      "Parallel work needs useful independent parent work; serial specialist delegation needs host "
                      "permission and added value. Local-resource needs alone do not rule out a suitable child. "
                      "Do not retain ordinary implementation merely to create independent parent work. "
@@ -890,8 +890,8 @@ def hook_payload(
                     f"Configured child-routing reference only; it does not change the parent: {model_matrix}.",
                     ("Custom principles replace the bundled summary; read effective.md before routing. " if review else
                      "Keep the agreed complete unit through ordinary fixes, tests and authorized PR work. "
-                     "Terra is the default for ordinary work; Sol handles agreed-design elaboration or a recorded "
-                     "Terra capability gap. Architecture and important exceptions return to the parent. "
+                     "Luna handles investigation, Terra ordinary implementation and fixes, and Sol difficult execution; consult eligible Pro and use Astra only when needed. A recorded "
+                     "capability gap, difficult judgment and important exceptions return to the parent. "
                      "Allowed standard grandchildren: Astra child to Sol/Terra/Luna; Sol child to Terra/Luna; "
                      "Terra child to Luna; Luna children and all grandchildren cannot delegate. "
                      "No same-role, higher-role or same-model delegation. "

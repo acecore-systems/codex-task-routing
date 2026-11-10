@@ -46,7 +46,7 @@ class ChatHookTests(unittest.TestCase):
         parent = self.payload()["hookSpecificOutput"]["additionalContext"]
         self.assertIn("Opt-in ChatGPT Chat route is enabled", parent)
         self.assertIn("transport: browser-temporary", parent)
-        for phrase in ("Choose suitable Cloud before Pro", "evaluate enabled Pro first", "unknown authorization blocks dispatch", "chatgpt.md", "chat-authorization.md", "never resend"):
+        for phrase in ("Choose suitable Cloud before Pro", "follow the effective policy and overrides", "unknown authorization blocks dispatch", "chatgpt.md", "chat-authorization.md", "never resend"):
             self.assertIn(phrase, parent)
         self.assertLessEqual(len(parent.encode("utf-8")), routing.MAX_ADDITIONAL_CONTEXT_BYTES)
         child = self.payload("SubagentStart")["hookSpecificOutput"]["additionalContext"]

@@ -38,6 +38,33 @@ class SessionRecommendationTests(unittest.TestCase):
     def alternative(self, route):
         return next(item for item in self.recommend()['alternatives'] if item['route'] == route)
 
+    def test_consultation_flag_preserves_legacy_and_excludes_new_chat_for_research(self):
+        self.facts['work'].update(kind='analysis', purpose='調査', reasons=['independent_deliverable'])
+        self.facts['work'].pop('repository')
+        self.facts['execution']['chat_can_complete'] = True
+        self.facts['host']['chat_pro'] = True
+        self.assertEqual(self.recommend()['route'], 'chat_pro')  # legacy omission
+        self.facts['work']['consultation'] = True
+        self.assertEqual(self.recommend()['route'], 'chat_pro')
+        self.facts['work']['consultation'] = False
+        self.assertNotEqual(self.recommend()['route'], 'chat_pro')
+        chat = self.alternative('chat_pro')
+        self.assertEqual(chat['suitability'], 'not_suitable')
+        self.assertIn('not_consultation', chat['why'])
+        for invalid in (None, 'false', 0):
+            self.facts['work']['consultation'] = invalid
+            with self.subTest(invalid=invalid), self.assertRaises(sp.SessionPlanError):
+                self.recommend()
+
+    def test_consultation_flag_preserves_cloud_and_existing_owner(self):
+        self.facts['work']['consultation'] = True
+        self.facts['execution']['chat_can_complete'] = True
+        self.facts['host']['chat_pro'] = True
+        self.assertEqual(self.recommend()['route'], 'codex_cloud')
+        self.facts['owner'] = dict(status='continuing', owner_id='owner', route='chat_pro', suitable=True)
+        self.facts['work']['consultation'] = False
+        self.assertEqual(self.recommend()['next_action'], 'reuse_existing_owner')
+
     def test_new_repository_work_compares_cloud_without_a_preselected_candidate(self):
         result = self.recommend()
         self.assertEqual(result['route'], 'codex_cloud')

@@ -183,7 +183,9 @@ def recommend_session(facts):
     _schema(facts["schema_version"])
     work, owner, execution, host = (facts[key] for key in ("work", "owner", "execution", "host"))
     _object(work, {"purpose", "kind", "independent", "tightly_coupled", "handoff_benefit", "reasons"},
-            {"repository", "parent_only", "context_separation_benefit"})
+            {"repository", "parent_only", "context_separation_benefit", "consultation"})
+    if "consultation" in work and not isinstance(work["consultation"], bool):
+        raise SessionPlanError("work.consultation must be a boolean")
     _text(work["purpose"])
     if "repository" in work:
         _text(work["repository"])
@@ -281,7 +283,8 @@ def recommend_session(facts):
         [("execution.chat_can_complete", execution.get("chat_can_complete")),
          ("host.chat_pro", host.get("chat_pro")),
          ("host.materials_transfer", host.get("materials_transfer"))],
-        split_exclusions + [("local_execution_required", local_only)])
+        split_exclusions + [("local_execution_required", local_only),
+                            ("not_consultation", work.get("consultation") is False)])
     # A text-only proposal can support a parent's same-goal unit. It is not
     # a new session and does not transfer the parent's edit/test ownership.
     same_goal_haiku = work["independent"] is False and (

@@ -6,7 +6,7 @@ model・effortと、仕事を置く実行環境は別に選びます。同じ完
 
 ## 目的単位から推薦する
 
-新規の独立repo実装・テスト・長時間の完了単位では、必要材料・実環境・必須テスト・ローカル依存・引継ぎ便益・ホスト条件が適合すればCloudをProより先に選びます。親やChatでも実行できるという理由だけでCloudから除外しません。同じ完了単位の適任担当は継続し、密結合や高い引継ぎ負担がある仕事は分割しません。Cloudに不適合な工程やrepo以外の分析等は、承認済み材料と実際のChatツールで完結すればProを先に検討します。
+新規の独立repo実装・テスト・長時間の完了単位では、必要材料・実環境・必須テスト・ローカル依存・引継ぎ便益・ホスト条件が適合すればCloudをProより先に選びます。親やChatでも実行できるという理由だけでCloudから除外しません。同じ完了単位の適任担当は継続し、密結合や高い引継ぎ負担がある仕事は分割しません。役割を先に分類し、相談は承認済み材料と実際のChatツールで完結すればProを先に検討します。調査・実装は各役割に従います。
 
 通常は「目的・分ける理由・候補・代案・不足・次の操作」を短く説明すれば十分です。毎回のhelper実行は不要です。判断を再現可能にしたい場合は、candidateを先に指定せず新しいサブコマンドへ入力します。
 
@@ -72,6 +72,8 @@ python <plugin-root>/scripts/session_plan.py recommend --facts <work-unit.json>
 
 親から同じ目的の完了単位を移す場合は、例えば`owner={"status":"continuing","owner_id":"root","route":"continue_current","suitable":true,"kind":"parent"}`、`work.independent=false`、`work.parent_only=false`、`work.context_separation_benefit=true`、`work.handoff_benefit=true`、`work.tightly_coupled=false`と、確認済みの`host.subagent=true`を指定します。標準子を推薦し、実行許可は発行しません。親専用や親子間の密結合は継続、便益やアクセスがunknownなら未確認を返します。context便益がfalseでも、別の具体的便益を含む総便益がtrueなら委譲候補です。別目的の独立repo工程では既存のCloud優先比較を維持します。旧`select`契約は変更しません。
 
+recommendの任意のwork.consultationは明示boolです。相談はtrue、調査・実装はfalseを指定し、falseでは新規Chat候補を除外します。省略した旧入力は従来の文脈比較を維持します。既存担当とCloudの優先、認可条件は変わりません。
+
 host.subagentは標準階層・役割・depth・並列なら委譲者自身の独立作業・直列なら追加価値とホスト許可を確認した範囲です。host.new_sessionは本人の新規トップレベルタスクの明示依頼と現ホスト条件、host.chat_proは既存opt-in・actor条件等を含みます。host.materials_transferのtrueは今回の対象・材料・操作に有効な元承認を再利用できます。unknownを勝手にtrueへせず、上位の実承認要求を維持します。
 
 出力の`route`は推薦、`why`は判断理由、`alternatives`は他候補の適合状態・理由・不足、`gaps`は採用候補と目的単位の未確認事項です。alternativesのsuitabilityはeligible / conditional / unavailable / not_suitable / blockedで、eligibleも送信承認ではありません。`proposal`は目的と候補・条件付きか、Haiku候補の場合は要求model/effort・text-only・親による編集/テストの継続も示します。`handoff_required`は目的・範囲・合格条件・許可操作・終端・必要証拠・元依頼同一性等の準備項目を返します。`execution_authorized`は常にfalseで、Haiku以外のmodel/effortや親設定を変更せず、状態も変更しません。
@@ -86,7 +88,7 @@ host.subagentは標準階層・役割・depth・並列なら委譲者自身の�
 | 同一目的の限定的な資料照合 | 「本体と独立した照合作業を標準子へ任せます」。標準の階層・並列/直列条件を確認 |
 | 短い修正 / 密結合 / 高い引継ぎ負担 | 現在担当で継続。独立ファイルや別の成果物があるだけで分けない |
 | 独立した継続管理、ローカル専用接続が必要 | 別ローカルセッションを提案し、実作成には本人の明示依頼と現ホスト条件を確認 |
-| 材料が揃いChatで完結する分析 | 既存のPro方針へ。Cloudを使うだけのために移さない |
+| 材料が揃いChatで完結する相談 | work.consultation=trueでPro方針へ。Cloudを使うだけのために移さない |
 | 既存Cloud担当の通常修正・status要求・受入待ち | 元担当・元taskを継続。新しい別タスクや再送にせず、同一依頼の回収と内容受入へ |
 | 長時間だけ / 長文脈だけ | 独立目的や分担便益がなければ現在担当で継続 |
 | hostや材料転送がunknown / false | unknownは不足を残す。falseは候補をblockedにし、推薦を実行許可へ変えない |
