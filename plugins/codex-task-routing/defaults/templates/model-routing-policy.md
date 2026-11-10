@@ -1,4 +1,4 @@
-Terra（terra61）={{models.terra61.id}}/{{models.terra61.default_effort}}は通常の実装・修正・デバッグ・探索・複数ファイル作業・調査下書きの既定委譲先。Solは合意済み設計の具体化・能力不足時に理由を記して選び、許可された場合は実装をTerraへ委譲しレビュー・統合する。旧terraは互換専用で選定しない。既存原則overrideを保持し、候補・役割・Chat境界との整合を確認する。
+調査はLuna/{{models.luna.default_effort}}、通常の実装・修正はTerra/{{models.terra61.default_effort}}、難題の実行はSol/{{models.sol.default_effort}}、相談は条件を満たす通常Chat Proを優先し、必要な時だけAstra/{{models.astra.default_effort}}を検討する。難しい判断・実装を含む調査は分離可能な証拠収集をLunaに任せ、重い判断はrootへ戻して役割を再判定する。root Sol→Sol子は難題の具体的な完了単位の分離に追加価値がある場合に限り、同モデルへの無用な移管はしない。親の実model・effort、有効override、既存担当とホスト・階層の制約は維持する。旧terraは互換専用で選定しない。既存原則overrideを保持し、候補・役割・Chat境界との整合を確認する。
 
 {{principles.policy_intro}}
 {{principles.policy_effort}}

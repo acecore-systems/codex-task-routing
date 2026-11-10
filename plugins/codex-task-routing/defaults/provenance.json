@@ -1,5 +1,5 @@
 {
-  "policy_revision": "2026-11-08-haiku-normal-routing",
+  "policy_revision": "2026-11-10-role-defaults",
   "source_sha256": {
     "AGENTS.md": "bd2584d350c204f1ffbc8c005c084fc34360acddf8812557504350820e34be42",
     "model-routing-policy.md": "9335ccec4516bc71b68d01f9304d6e71d3b5efcd77a210476571cd7d060c476c",
@@ -39,7 +39,8 @@
     "0.26.0 intentional policy change: add opt-in root-owned Haiku API candidate for ordinary or substantial work using an explicitly authorized Claude Code CLI route; existing Cloud/Pro priority, native child models, hooks, parent and overrides preserved",
     "0.27.0 intentional policy change: evaluate coupled creative work as a complete delegation unit; advisory prompt context once per root turn without reading prompt content; explicit overrides and host gates preserved",
     "0.28.0 intentional policy change: parent familiarity is not delegated ownership; include future-work context separation in handoff value, preserve delegated owner continuity and host gates; compatible explicit parent-owner recommendation facts",
-    "0.29.0 intentional policy change: root may select opt-in Haiku text-only proposals for ordinary same-goal work with explicit adapter, authorization, host and delegation conditions; preserve suitable owners, Cloud/Pro priority, parent edit/test ownership and existing overrides"
+    "0.29.0 intentional policy change: root may select opt-in Haiku text-only proposals for ordinary same-goal work with explicit adapter, authorization, host and delegation conditions; preserve suitable owners, Cloud/Pro priority, parent edit/test ownership and existing overrides",
+    "0.30.0 intentional policy change: recommend Sol/max parent without changing actual settings; Luna/max investigation, Terra/high ordinary implementation, Sol/high difficult execution, consultation prefers eligible Pro, Astra/xhigh only as needed; Cloud and authorization boundaries preserved"
   ],
   "source_policy_revision": "2026-09-14",
   "rendered_sha256": {
