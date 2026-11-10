@@ -227,8 +227,11 @@ class TransferState:
         self.receive_ready = False
         self.dispatch_checked = False
         if workflow is not None:
-            if not isinstance(workflow, dict) or not {"facts", "live_base"} <= set(workflow) or set(workflow) - {"facts", "inventory", "live_base"}:
+            required = {"request_id", "input_sha256", "facts", "live_base"}
+            if not isinstance(workflow, dict) or not required <= set(workflow) <= required | {"inventory"}:
                 raise ChatTransferError("invalid workflow fields")
+            if (workflow["request_id"], workflow["input_sha256"]) != (request_id, input_sha256):
+                raise ChatTransferError("workflow does not match the prepared bundle")
             base = workflow["live_base"]
             if not isinstance(base, dict) or set(base) & UI_OBSERVATION_FIELDS:
                 raise ChatTransferError("invalid workflow live base")
@@ -248,8 +251,14 @@ class TransferState:
 
     @classmethod
     def from_paths(cls, bundle_path: Path | str, reply_path: Path | str, workflow_path: Path | str | None = None) -> "TransferState":
+        workflow = None
+        if workflow_path is not None:
+            job_directory = chatgpt_route._assert_safe_ancestors(bundle_path).parent
+            if any(chatgpt_route._assert_safe_ancestors(path).parent != job_directory
+                   for path in (reply_path, workflow_path)):
+                raise ChatTransferError("bundle, workflow and reply must share one job directory")
+            workflow = chatgpt_route._load_json_object(workflow_path, purpose="workflow")
         bundle = chatgpt_route._load_json_object(Path(bundle_path), purpose="prepared bundle")
-        workflow = chatgpt_route._load_json_object(Path(workflow_path), purpose="workflow") if workflow_path is not None else None
         return cls(bundle=bundle, reply_path=Path(reply_path), workflow=workflow)
 
     def check_preflight(self, phase: str, observation_text: str) -> dict[str, Any]:

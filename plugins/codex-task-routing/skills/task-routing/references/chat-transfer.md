@@ -86,6 +86,9 @@ display failure.
 For an approved request, use the normal `prepare` command to create
 `bundle.json`. Give the transfer helper a `workflow.json` with the existing
 dispatch `facts`, the optional capability `inventory`, and `live_base`.
+Include `request_id` and `input_sha256` from the approved bundle when recording
+the workflow. The helper rejects missing or mismatched identifiers before
+opening the local form.
 `live_base` contains the owner's confirmed actor, route, transport, action
 authorization, and operation checks. The Browser supplies the current
 `surface`, `model`, `quota_state`, `observed_at`, and optional
@@ -97,7 +100,8 @@ and receive separately when the Browser submits current observations.
 python <plugin-root>/scripts/chat_transfer.py --bundle bundle.json --reply reply.json --workflow workflow.json --timeout 720
 ```
 
-Keep the job files in the same private working directory. The startup
+Place `bundle.json`, `workflow.json`, and the `reply.json` target in the same
+private job directory. The workflow requires this layout. The startup
 `listening` event supplies the loopback URL and the request identifiers.
 Once the host has initialized the in-app Browser REPL, send the trusted
 `<plugin-root>/scripts/chat_browser.js` definition and the invocation below
@@ -112,6 +116,7 @@ nodeRepl.write({
   event: handoffResult.event,
   completion: handoffResult.completion,
   status: handoffResult.status,
+  quota_state: handoffResult.quota_state,
   phase: handoffResult.phase,
   reason: handoffResult.reason,
   reply: handoffResult.reply,
@@ -121,12 +126,19 @@ nodeRepl.write({
 The runner uses the documented Browser actions with hidden tabs. It opens a
 new empty Temporary Chat, confirms the destination and the displayed Pro
 selection, dispatches once, waits for the current response, checks receive,
-and saves the correlated reply. It returns `completion: "reply_ready"`,
+and saves the correlated reply. It waits in short Browser intervals within the
+same call and returns `pending` with `reason: "wait_timeout"` if the response
+wait expires. It returns `completion: "reply_ready"`,
 `event: "saved"`, and `reply` in the same result after the helper acknowledges
 the write. `reply` includes the validated result and evidence. Consume that
 value in the script or use the verified `reply.json` locally. For material that
 must remain local, omit `reply` from tool output and use the saved file.
 The reply status and the owner's assessment of the result remain separate.
+On a saved reply, `quota_state` reports the observed limit notice during
+collection. A notice that new generation is exhausted can coexist with a
+finished reply from the last Pro message. Collection still requires a matching
+Pro display, receive permission, and response identifiers. A quota alert with
+no finished reply or active generation leaves the original request pending.
 
 For requests that need an approved tool, pass a `prepareTools(chatTab)`
 callback that performs and verifies the supported selection in the same call.
@@ -138,10 +150,10 @@ unknown, Pro is unavailable, or a host confirmation is required, resolve that
 condition through the supported host.
 
 The helper refuses a dispatch if the reply path already exists and reserves
-the request ID before returning `send_once`. Retain that reservation with the
-job files. A `pending` result after an attempted send can include the original
-tab for recovery. Use the existing receive procedure on that tab with the
-same bundle and output path.
+the request ID before returning `send_once`. Continue in the original job
+directory and retain its reservation. A `pending` result after an attempted
+send can include the original tab for recovery. Use the existing receive
+procedure on that tab with the same bundle and output path.
 A timeout or an unknown click outcome leaves the request unresolved.
 
 ## Browser script and completion signal

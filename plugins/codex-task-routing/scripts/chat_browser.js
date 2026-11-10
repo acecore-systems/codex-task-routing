@@ -92,18 +92,22 @@ const proHandoff = (() => {
         return signal("send_clicked");
       },
 
-      async wait({ finished, attention, timeoutMs }) {
+      async wait({ finished, attention, quotaAttention, timeoutMs,
+        waitFor = (locator, options) => locator.waitFor(options) }) {
         if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 3_600_000) {
           throw new Error("Set a bounded Browser wait of 1 to 3600000 ms.");
         }
         await checkChat();
-        const terminal = attention ? finished.or(attention) : finished;
-        await visible(terminal).first().waitFor({ state: "visible", timeoutMs });
+        let terminal = attention ? finished.or(attention) : finished;
+        if (quotaAttention) terminal = terminal.or(quotaAttention);
+        await waitFor(visible(terminal).first(), { state: "visible", timeoutMs });
         await checkChat();
         if (attention && await visible(attention).count()) {
           return signal("attention_required");
         }
-        return signal(await visible(finished).count() === 1 ? "reply_ready" : "completion_unconfirmed");
+        if (await visible(finished).count() === 1) return signal("reply_ready");
+        if (quotaAttention && await visible(quotaAttention).count()) return signal("quota_exhausted");
+        return signal("completion_unconfirmed");
       },
 
       async collect({ plan, finished, answer, includeReply = false }) {
@@ -154,12 +158,16 @@ const runProHandoff = (() => {
   const sendName = /^(?:送信|メッセージを送信|Send|Send message|Send prompt)$/i;
   const stopName = /^(?:停止|生成を停止する?|回答の生成を停止する?|応答を停止する?|Stop|Stop generating|Stop response|Stop streaming)$/i;
   const copyName = /^(?:コピー|コピーする|回答をコピーする?|Copy|Copy response)$/i;
+  const quotaText = /利用上限|usage limit|limit reached|reached (?:your|the) limit/i;
+  const selectorTimeout = /^(?:Error:\s*)?(?:Playwright selector deadline exceeded\b|Timed out after \d+ms waiting for selector\b)/;
   const answerSelector = '[data-message-author-role="assistant"]';
+  class WaitTimeoutError extends Error {}
 
   const button = (scope, name) => scope.getByRole("button", { name, exact: true });
   const visible = locator => locator.filter({ visible: true });
   const field = (scope, name) => scope.getByLabel(name, { exact: true });
   const readJson = async locator => JSON.parse(await locator.evaluate(element => element.value));
+  const quotaAlert = pw => pw.getByRole("alert").filter({ hasText: quotaText });
 
   async function observedButton(pw, candidate) {
     await candidate.waitFor({ state: "visible", timeoutMs: uiTimeout });
@@ -224,7 +232,7 @@ const runProHandoff = (() => {
     });
   }
 
-  async function observePro(tab, select) {
+  async function observePro(tab, { select = false, phase = "dispatch" } = {}) {
     const pw = tab.playwright;
     if (new URL(await tab.url()).origin !== new URL(chatUrl).origin ||
         !await ordinaryChat(pw) || await visible(button(pw, temporaryOn)).count() !== 1) {
@@ -249,8 +257,9 @@ const runProHandoff = (() => {
         if (!menu || menu.current !== previous + 1) break;
       }
     }
+    const limited = menu?.limited || await visible(quotaAlert(pw)).count() > 0;
     const reason = !menu || !pro.test(menu.model ?? "") ? "pro_not_observed" :
-      menu.limited ? "quota_exhausted" : menu.locked ? "pro_locked" : null;
+      limited && phase === "dispatch" ? "quota_exhausted" : menu.locked && !limited ? "pro_locked" : null;
     if (reason && select && Number.isSafeInteger(original)) {
       // Put the picker back if exploring from a different Power reached a lock.
       while (menu?.powerFocused && menu.current > original) {
@@ -265,7 +274,7 @@ const runProHandoff = (() => {
     const model = (await picker.innerText({ timeoutMs: uiTimeout })).trim();
     if (!pro.test(model)) return { reason: "pro_selection_unconfirmed" };
     return {
-      live: { surface: "chat-temporary", model, quota_state: "no_limit_notice",
+      live: { surface: "chat-temporary", model, quota_state: limited ? "exhausted" : "no_limit_notice",
         observed_at: new Date().toISOString() },
     };
   }
@@ -335,14 +344,14 @@ const runProHandoff = (() => {
       const temporaryChatUrl = await chat.url();
       if (!isProTemporaryDestination(temporaryChatUrl)) return stop("temporary_chat_destination_unconfirmed");
       phase = "model";
-      let observation = await observePro(chat, true);
+      let observation = await observePro(chat, { select: true });
       if (observation.reason) return stop(observation.reason);
       // Scope and connector authority are still checked by the existing plan.
       // An adapter performs only the permitted UI actions inside this call.
       const tools = listening.needs_tools ? await prepareTools(chat) : {};
       if (!tools) return stop("tool_selection_unconfirmed");
       if (listening.needs_tools) {
-        observation = await observePro(chat, false);
+        observation = await observePro(chat);
         if (observation.reason) return stop(observation.reason);
       }
       const pw = chat.playwright;
@@ -382,19 +391,34 @@ const runProHandoff = (() => {
       const assistant = pw.locator("main article").filter({ has: pw.locator(answerSelector) });
       const finished = button(assistant, copyName);
       const attention = pw.getByRole("alert").filter({
-        hasText: /利用上限|問題が発生|生成でき|usage limit|something went wrong|error generating/i,
+        hasText: /問題が発生|生成でき|something went wrong|error generating/i,
       });
-      const waitStarted = Date.now();
-      const ready = await handoff.wait({ finished, attention, timeoutMs });
-      if (ready.event !== "reply_ready") return stop(ready.event);
+      const quotaAttention = quotaAlert(pw);
       const generating = visible(button(pw, stopName));
+      const deadline = Date.now() + timeoutMs;
+      const waitFor = async (locator, { state }) => {
+        // The IAB caps each locator wait independently of the REPL deadline.
+        for (let remaining = deadline - Date.now(); remaining > 0; remaining = deadline - Date.now()) {
+          try {
+            await locator.waitFor({ state, timeoutMs: Math.min(2_500, remaining) });
+            return;
+          } catch (error) {
+            if (!selectorTimeout.test(error?.message ?? "")) throw error;
+          }
+        }
+        throw new WaitTimeoutError();
+      };
+      const waitOptions = { finished, attention, timeoutMs, waitFor };
+      let ready = await handoff.wait({ ...waitOptions, quotaAttention });
+      if (ready.event === "quota_exhausted" && await generating.count() !== 0) {
+        ready = await handoff.wait(waitOptions);
+      }
+      if (ready.event !== "reply_ready") return stop(ready.event);
       if (await generating.count() !== 0) {
-        await generating.first().waitFor({
-          state: "hidden", timeoutMs: Math.max(1, timeoutMs - (Date.now() - waitStarted)),
-        });
+        await waitFor(generating.first(), { state: "hidden" });
       }
       phase = "receive";
-      observation = await observePro(chat, false);
+      observation = await observePro(chat, { phase });
       if (observation.reason) return stop(observation.reason);
       const receive = await planFor(transfer, listening, "receive", observation.live);
       if (receive.next_action !== "collect_reply") return stop(receive.reason ?? "receive_unconfirmed");
@@ -411,14 +435,14 @@ const runProHandoff = (() => {
           !matchesRequest(saved, listening) || saved.status !== submission.reply.status) {
         return stop("save_unconfirmed");
       }
-      return { ...saved, completion: ready.event, reply: submission.reply };
+      return { ...saved, completion: ready.event, quota_state: observation.live.quota_state, reply: submission.reply };
     }
 
     let outcome;
     try {
       outcome = await exchange();
-    } catch {
-      outcome = stop("browser_operation_unconfirmed");
+    } catch (error) {
+      outcome = stop(error instanceof WaitTimeoutError ? "wait_timeout" : "browser_operation_unconfirmed");
     }
     const retainChat = outcome.event === "pending";
     const cleanup = await disposeTabs(cua, chat, transfer, retainChat);

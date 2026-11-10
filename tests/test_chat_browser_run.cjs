@@ -28,9 +28,9 @@ function control({ present = () => true, text = () => "", attribute = () => null
       value: text(), innerText: text(),
       getAttribute: key => key === "aria-label" ? locator.name : attribute(key),
     }),
-    async waitFor() {
-      if (wait) await wait();
-      assert.equal(present(), true);
+    async waitFor(options = {}) {
+      if (wait) await wait(options);
+      assert.equal(present(), options.state !== "hidden");
     },
     async click() {
       assert.equal(present(), true);
@@ -39,18 +39,38 @@ function control({ present = () => true, text = () => "", attribute = () => null
     fill,
     filter: () => locator,
     first: () => locator,
-    or: () => locator,
+    or(other) {
+      const left = this;
+      const union = {
+        count: async () => await left.count() + await other.count(),
+        async waitFor(options) {
+          if (!await union.count()) await left.waitFor(options);
+        },
+        filter: () => union,
+        first: () => union,
+        or: locator.or,
+      };
+      return union;
+    },
   };
   return locator;
 }
 
-function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = false } = {}) {
-  const run = vm.runInNewContext(source + "\nrunProHandoff;", { URL });
+function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = false,
+  quotaAfterReply = false, quotaBeforeReply = false, runningAtQuota = false, changedModel = false,
+  timeoutMs = 1_000, waitTimeouts = 0, stopWaitTimeouts = 0, waitDenied = false } = {}) {
+  let now = 0;
+  class FixtureDate extends Date {
+    static now() { return now; }
+  }
+  const run = vm.runInNewContext(source + "\nrunProHandoff;", { URL, Date: FixtureDate });
   const state = {
     temporary: false, menu: false, power: 3, composer: "", sent: 0, ready: false,
-    waits: 0, saved: null, handoff: false, phases: [], opened: [], closed: [],
+    waits: 0, saved: null, handoff: false, phases: [], quotas: [], opened: [], closed: [],
+    replyWaits: [], stopWaits: [], generationEnded: false,
   };
-  const model = () => state.power === 4 ? "Pro" : "Extra High";
+  const model = () => state.power === 4 && !(changedModel && state.sent) ? "Pro" : "Extra High";
+  const quotaVisible = () => (quotaAfterReply && state.ready) || (quotaBeforeReply && state.sent > 0);
   const chatButtons = {
     Chat: control({ attribute: () => "true" }),
     Work: control({ attribute: () => "false" }),
@@ -58,6 +78,19 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
     "一時チャットをオフにする": control({ present: () => state.temporary }),
     "ChatGPT モデルを選択": control({
       text: model, attribute: () => String(state.menu), click: () => { state.menu = true; },
+    }),
+    Stop: control({
+      present: () => (runningAtQuota && state.sent > 0 && !state.ready) ||
+        (stopWaitTimeouts > 0 && state.ready && !state.generationEnded),
+      wait: ({ state: target, timeoutMs }) => {
+        assert.equal(target, "hidden");
+        state.stopWaits.push(timeoutMs);
+        if (state.stopWaits.length <= stopWaitTimeouts) {
+          now += timeoutMs;
+          throw new Error(`Timed out after ${timeoutMs}ms waiting for selector Stop`);
+        }
+        state.generationEnded = true;
+      },
     }),
     送信: control({
       click() {
@@ -69,9 +102,15 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
       },
     }),
   };
-  const final = control({ present: () => state.ready, wait: () => {
+  const final = control({ present: () => state.ready, wait: ({ timeoutMs }) => {
     assert.equal(state.sent, 1);
     state.waits++;
+    state.replyWaits.push(timeoutMs);
+    if (waitDenied) throw new Error("Browser permission denied");
+    if (state.waits <= waitTimeouts) {
+      now += timeoutMs;
+      throw new Error("Playwright selector deadline exceeded");
+    }
     state.ready = true;
   } });
   const message = control({ present: () => state.ready, text: () => JSON.stringify(reply) });
@@ -82,11 +121,15 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
   const chat = {
     evaluate: async () => ({
       model: model(), current: state.power, maximum: 4,
-      powerFocused: state.menu, limited: limited && model() === "Pro", locked: false,
+      powerFocused: state.menu, limited: (limited || quotaVisible()) && model() === "Pro",
+      locked: quotaVisible() && model() === "Pro",
     }),
     locator: selector => selector === "main article" ? article : control({ present: () => false }),
     getByRole(role, { name } = {}) {
       if (role === "menu") return control({ present: () => state.menu });
+      if (role === "alert") return { filter: ({ hasText }) => control({
+        present: () => quotaVisible() && hasText.test("Pro usage limit reached"),
+      }) };
       if (role === "textbox") return control({
         text: () => state.composer, fill: text => { state.composer = text; },
       });
@@ -121,6 +164,7 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
       const dispatch = name === "Check dispatch";
       const phase = dispatch ? "dispatch" : "receive";
       state.phases.push(phase);
+      state.quotas.push(live.quota_state);
       const plan = {
         route: dispatch ? "chat_candidate" : "chat_collection",
         next_action: dispatch ? "send_once" : "collect_reply",
@@ -155,7 +199,7 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
     },
     listTabs: async () => state.opened.filter(id => !state.closed.includes(id)).map(id => ({ id })),
   };
-  return { run: () => run({ cua, listening, timeoutMs: 1000 }), state };
+  return { run: () => run({ cua, listening, timeoutMs }), state };
 }
 
 test("one run opens hidden tabs, sends once, waits, and returns the saved reply", async () => {
@@ -163,6 +207,7 @@ test("one run opens hidden tabs, sends once, waits, and returns the saved reply"
   const result = await run();
   assert.equal(result.event, "saved");
   assert.equal(result.completion, "reply_ready");
+  assert.equal(result.quota_state, "no_limit_notice");
   assert.equal(result.reply.result, reply.result);
   assert.deepEqual(state.phases, ["dispatch", "receive"]);
   assert.equal(state.sent, 1);
@@ -179,6 +224,73 @@ test("a Pro quota lock stops before opening the transfer form", async () => {
   assert.equal(state.sent, 0);
   assert.deepEqual(state.opened, ["1"]);
   assert.equal(result.cleanup.chat_closed, true);
+});
+
+test("the last Pro message is still saved when its completion and the quota notice coexist", async () => {
+  const { run, state } = fixture({ quotaAfterReply: true });
+  const result = await run();
+  assert.equal(result.event, "saved");
+  assert.equal(result.quota_state, "exhausted");
+  assert.equal(result.reply.result, reply.result);
+  assert.deepEqual(state.quotas, ["no_limit_notice", "exhausted"]);
+  assert.equal(state.sent, 1);
+});
+
+test("a quota notice without a response or active generation returns pending promptly", async () => {
+  const { run, state } = fixture({ quotaBeforeReply: true });
+  const result = await run();
+  assert.equal(result.event, "pending");
+  assert.equal(result.reason, "quota_exhausted");
+  assert.equal(result.tab_id, "1");
+  assert.equal(state.waits, 0);
+  assert.equal(state.sent, 1);
+});
+
+test("a quota notice during active generation waits for the same answer", async () => {
+  const { run, state } = fixture({ quotaBeforeReply: true, runningAtQuota: true });
+  const result = await run();
+  assert.equal(result.event, "saved");
+  assert.equal(result.quota_state, "exhausted");
+  assert.equal(state.waits, 1);
+  assert.equal(state.sent, 1);
+});
+
+test("a changed model still blocks collection after sending", async () => {
+  const { run, state } = fixture({ changedModel: true, quotaAfterReply: true });
+  const result = await run();
+  assert.equal(result.event, "pending");
+  assert.equal(result.reason, "pro_not_observed");
+  assert.deepEqual(state.phases, ["dispatch"]);
+  assert.equal(result.reply, undefined);
+});
+
+test("response and generation waits retry selector timeouts against one deadline", async () => {
+  const { run, state } = fixture({ timeoutMs: 7_000, waitTimeouts: 1, stopWaitTimeouts: 1 });
+  const result = await run();
+  assert.equal(result.event, "saved");
+  assert.deepEqual(state.replyWaits, [2_500, 2_500]);
+  assert.deepEqual(state.stopWaits, [2_500, 2_000]);
+  assert.equal(state.sent, 1);
+});
+
+test("response wait expiry leaves the original request pending", async () => {
+  const { run, state } = fixture({ timeoutMs: 5_200, waitTimeouts: 3 });
+  const result = await run();
+  assert.equal(result.event, "pending");
+  assert.equal(result.phase, "wait");
+  assert.equal(result.reason, "wait_timeout");
+  assert.equal(result.tab_id, "1");
+  assert.deepEqual(state.replyWaits, [2_500, 2_500, 200]);
+  assert.equal(state.sent, 1);
+});
+
+test("a Browser permission denial during waiting stops without retrying", async () => {
+  const { run, state } = fixture({ timeoutMs: 7_000, waitDenied: true });
+  const result = await run();
+  assert.equal(result.event, "pending");
+  assert.equal(result.reason, "browser_operation_unconfirmed");
+  assert.deepEqual(state.replyWaits, [2_500]);
+  assert.equal(state.sent, 1);
 });
 
 test("an unacknowledged click retains the same Chat and a second run cannot resend", async () => {
