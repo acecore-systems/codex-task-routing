@@ -866,7 +866,8 @@ def hook_payload(
                     rendered_context,
                     f"Effective child defaults (do not change parent): {model_matrix}.",
                     "Before substantial investigation or implementation select an owner and, when suitable "
-                    "and allowed, call the actual delegation tool with a complete unit. A plan is not delegation; "
+                    "and allowed, call the actual delegation tool with a complete unit. For implementation, hand builds, offline tests, fixes and retests to one owner "
+                    "from the start. A plan is not delegation; "
                     "do not solve the unit first just to classify it. If the parent continues, briefly give a "
                     "concrete reason once. Parent familiarity is not continuing ownership: hand off scope, materials, "
                     "decisions, constraints, acceptance and authority; count separation of future work as a benefit. "
@@ -877,7 +878,7 @@ def hook_payload(
                      "Return unresolved contradictions to root." if review else
                      "Delegate scope, authority, tests, acceptance and return conditions. Parent owns priorities, "
                      "architecture, acceptance and important exceptions. Default to Luna for investigation, Terra for ordinary "
-                     "implementation and fixes, and Sol for difficult execution. Consult eligible Pro; use Astra only when needed. Keep the owner for ordinary fixes and tests. "
+                     "implementation and fixes, and Sol for difficult execution. Consult eligible Pro; use Astra only when needed. "
                      "Parallel work needs useful independent parent work; serial specialist delegation needs host "
                      "permission and added value. Local-resource needs alone do not rule out a suitable child. "
                      "Do not retain ordinary implementation merely to create independent parent work. "

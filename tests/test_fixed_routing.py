@@ -401,7 +401,8 @@ class FixedRoutingTests(unittest.TestCase):
             codex_home=self.home, cwd=self.home)['hookSpecificOutput']['additionalContext']
         self.assertLess(len(context.encode('utf-8')), 3000)
         for phrase in ('Before substantial investigation', 'call the actual delegation tool',
-                       'A plan is not delegation', 'concrete reason once', 'user prohibitions', 'host restrictions'):
+                       'A plan is not delegation', 'concrete reason once', 'user prohibitions', 'host restrictions',
+                       'builds, offline tests, fixes and retests to one owner'):
             self.assertIn(phrase, context)
         child = routing.hook_payload(event='SubagentStart', source='startup',
             codex_home=self.home, cwd=self.home)['hookSpecificOutput']['additionalContext']
