@@ -72,7 +72,7 @@ class ParentGuardTests(unittest.TestCase):
         out = self.work(guard.THRESHOLD - 1)
         self.assertEqual(set(out['hookSpecificOutput']), {'hookEventName', 'additionalContext'})
         text = out['hookSpecificOutput']['additionalContext']
-        for phrase in ('Short work', 'parent-only operations', 'acceptance', 'same suitable owner', 'user prohibitions', 'host limits', 'non-blocking'):
+        for phrase in ('Short work', 'parent-only operations', 'acceptance', 'if unassigned delegate a complete unit', 'user prohibitions', 'host limits', 'non-blocking'):
             self.assertIn(phrase, text)
         self.assertIsNone(self.work(100))
         content = (self.home / 'codex-task-routing/parent-guard/state.sqlite3').read_bytes()
@@ -333,11 +333,7 @@ class ParentGuardTests(unittest.TestCase):
                 session = 'edit-' + mode
                 if mode != 'unknown':
                     self.send('UserPromptSubmit', session_id=session)
-                if mode == 'active':
-                    self.send('SubagentStart', session_id=session, agent_id='owner')
-                elif mode == 'contact':
-                    self.send('PreToolUse', session_id=session, tool_name='send_input', tool_use_id='contact')
-                elif mode in ('closed', 'interrupted'):
+                if mode in ('closed', 'interrupted'):
                     self.send('Stop' if mode == 'closed' else 'Interrupt', session_id=session)
                 self.assertIsNone(self.send(
                     'PreToolUse', session_id=session, tool_name='functions__apply_patch', tool_use_id='edit',

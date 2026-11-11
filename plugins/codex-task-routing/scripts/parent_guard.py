@@ -37,7 +37,8 @@ RESUME_REMINDER = (
 )
 REMINDER = (
     'Task Routing: check the suitable execution owner before continuing substantial work. '
-    'Return ordinary work to the same suitable owner where possible; reuse existing checks. '
+    'Resume a suitable owner, or if unassigned delegate a complete unit to an allowed suitable owner; '
+    'reuse existing checks. '
     'Short work, parent-only operations, acceptance, user prohibitions and host limits remain valid. '
     'This is non-blocking and does not establish what the calls did.'
 )
