@@ -267,6 +267,7 @@ class UpdaterTest(unittest.TestCase):
         with (
             patch.object(updater.os, "killpg") as killpg,
             patch.object(updater, "_wait_for_command_stop", return_value=True),
+            patch.object(updater, "TERMINATION_GRACE_SECONDS", 0),
         ):
             self.assertTrue(updater._terminate_process_tree(process))
         self.assertEqual([call.args for call in killpg.call_args_list], [
@@ -287,6 +288,7 @@ class UpdaterTest(unittest.TestCase):
                 self.subTest(errors=errors, stopped=stopped),
                 patch.object(updater.os, "killpg", side_effect=errors),
                 patch.object(updater, "_wait_for_command_stop", return_value=stopped),
+                patch.object(updater, "TERMINATION_GRACE_SECONDS", 0),
             ):
                 self.assertEqual(updater._terminate_process_tree(Mock(pid=12345)), expected)
 
@@ -331,6 +333,100 @@ class UpdaterTest(unittest.TestCase):
         finally:
             # Bound fixture lifetime even when testing an unfixed implementation.
             release.write_text("released", encoding="utf-8")
+            if parent_pid.exists():
+                try:
+                    os.killpg(int(parent_pid.read_text(encoding="utf-8")), updater.signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+
+    @unittest.skipIf(os.name == "nt", "POSIX process groups")
+    def test_group_gets_only_the_remaining_termination_grace(self) -> None:
+        for root_wait in (0.0, 2.0):
+            clock = [0.0]
+            signals = []
+
+            def wait(process):
+                clock[0] += root_wait
+                return True
+
+            def sleep(seconds):
+                clock[0] += seconds
+
+            with (
+                self.subTest(root_wait=root_wait),
+                patch.object(updater, "TERMINATION_GRACE_SECONDS", 3),
+                patch.object(updater, "_wait_for_command_stop", side_effect=wait),
+                patch.object(updater.time, "monotonic", side_effect=lambda: clock[0]),
+                patch.object(updater.time, "sleep", side_effect=sleep),
+                patch.object(updater.os, "killpg",
+                             side_effect=lambda pid, sig: signals.append((sig, clock[0]))),
+            ):
+                self.assertTrue(updater._terminate_process_tree(Mock(pid=12345)))
+            self.assertEqual(signals[0], (updater.signal.SIGTERM, 0.0))
+            self.assertEqual(signals[-1], (updater.signal.SIGKILL, 3.0))
+            self.assertTrue(any(sig == 0 for sig, _ in signals))
+
+    @unittest.skipIf(os.name == "nt", "POSIX process groups")
+    def test_grace_probe_distinguishes_exited_and_unconfirmed_groups(self) -> None:
+        for error, expected in (
+            (ProcessLookupError(), True),
+            (PermissionError(), False),
+            (OSError("group inspection failed"), False),
+        ):
+            with (
+                self.subTest(error=error),
+                patch.object(updater, "_wait_for_command_stop", return_value=True),
+                patch.object(updater.time, "monotonic", return_value=0.0),
+                patch.object(updater.time, "sleep", side_effect=AssertionError("unexpected sleep")),
+                patch.object(updater.os, "killpg", side_effect=[None, error]) as killpg,
+            ):
+                self.assertEqual(updater._terminate_process_tree(Mock(pid=12345)), expected)
+            self.assertEqual([call.args[1] for call in killpg.call_args_list],
+                             [updater.signal.SIGTERM, 0])
+
+    @unittest.skipIf(os.name == "nt", "POSIX process groups")
+    def test_timeout_allows_child_cleanup_after_root_exit_and_pipe_eof(self) -> None:
+        self.state_dir.mkdir(parents=True)
+        ready, pending, cleaned, parent_pid = [
+            self.base / name for name in ("ready", "pending", "cleaned", "parent")
+        ]
+        child = "\n".join([
+            "import signal,sys,time",
+            "from pathlib import Path",
+            "ready,pending,cleaned = map(Path,sys.argv[1:])",
+            "def stop(*unused):",
+            "    time.sleep(.2)",
+            "    pending.unlink()",
+            "    cleaned.write_text('done')",
+            "    raise SystemExit(0)",
+            "signal.signal(signal.SIGTERM, stop)",
+            "pending.write_text('incomplete update')",
+            "ready.write_text('ready')",
+            "time.sleep(15)",
+        ])
+        parent = "\n".join([
+            "import os,subprocess,sys,time",
+            "from pathlib import Path",
+            "Path(sys.argv[4]).write_text(str(os.getpid()))",
+            "subprocess.Popen([sys.executable,'-S','-c'," + repr(child) + ",*sys.argv[1:4]],"
+            "stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)",
+            "time.sleep(20)",
+        ])
+        try:
+            result = updater._run_command(
+                [sys.executable, "-S", "-c", parent,
+                 str(ready), str(pending), str(cleaned), str(parent_pid)],
+                self.state_dir, timeout=2,
+            )
+            self.assertTrue(ready.exists(), "child fixture must install its signal handler")
+            deadline = time.monotonic() + 1
+            while not cleaned.exists() and time.monotonic() < deadline:
+                time.sleep(.01)
+            self.assertTrue(result.timed_out)
+            self.assertFalse(result.containment_failed)
+            self.assertTrue(cleaned.exists(), "SIGKILL interrupted cleanup within the grace period")
+            self.assertFalse(pending.exists())
+        finally:
             if parent_pid.exists():
                 try:
                     os.killpg(int(parent_pid.read_text(encoding="utf-8")), updater.signal.SIGKILL)

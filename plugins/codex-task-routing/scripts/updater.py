@@ -469,7 +469,18 @@ def _terminate_process_tree(process: subprocess.Popen[str], job: WindowsJob | No
         return _wait_for_command_stop(process)
     except OSError:
         return False
+    deadline = time.monotonic() + TERMINATION_GRACE_SECONDS
     _wait_for_command_stop(process)
+    # communicate() may return before a detached-pipe child finishes SIGTERM
+    # cleanup. Preserve the group's remaining grace, not just the root's.
+    while (remaining := deadline - time.monotonic()) > 0:
+        try:
+            os.killpg(process.pid, 0)
+        except ProcessLookupError:
+            return _wait_for_command_stop(process)
+        except OSError:
+            return False
+        time.sleep(min(0.05, remaining))
     try:
         os.killpg(process.pid, signal.SIGKILL)
     except ProcessLookupError:

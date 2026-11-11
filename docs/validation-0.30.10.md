@@ -5,11 +5,13 @@
 - 2026-11-11、通常Chatの一時チャットでUIのPro選択を送信前後に確認し、公開mainのコミット `6e4dad48b356637cc2d25d326a08ee51f0bf258f` の追跡対象145ファイルを渡しました。添付と各Git blobを照合し、Proから全本文の確認結果、3つの独立パッチ、検証記録を回収しました。
 - 採用した統合パッチのSHA-256は `e0b34dea0a78f43af5beb5a43b838fb0e63e26af2128bce148d045605206d9b8` です。回答JSONは同じチャットから再構成して回収され、パッチは最初の報告とバイト列のハッシュが一致しました。
 - POSIXのタイムアウト後に起動元とパイプだけが終了する条件、JSONの整数変換例外がCLIとフックの診断境界を抜ける条件、BrowserテストのCIへの組込みを確認しました。回帰テストを追加し、配布版番号を0.30.10へ更新しました。
+- PR #61のマージ前に、Proで `605b89b76ea34404d9816df84560833cb74cc191` の全差分をレビューしました。子の後始末が途中で打ち切られる条件を再現し、起動元とパイプの終了後も、プロセスグループにSIGTERM後の残りの猶予を確保するパッチを採用しました。
 
 ## 検証結果
 
-- Proの隔離Linux、Python 3.13.5、Node.js 22.16.0で、修正前に新規回帰テストの失敗を確認し、修正後にPython 470件中465件成功・5件skip、Node 51件成功、package検査成功を記録しています。回収した検証記録とログの結果を照合しました。
-- Codex側のWindows 11、Python 3.13.16で `python -m unittest discover -s tests -v` が成功しました。470件中467件成功・POSIX専用3件skipです。
+- 最初の修正案では、Proの隔離Linux、Python 3.13.5、Node.js 22.16.0で、修正前に新規回帰テストの失敗を確認し、修正後にPython 470件中465件成功・5件skip、Node 51件成功、package検査成功を記録しています。回収した検証記録とログの結果を照合しました。
+- マージ前レビューでは、Proの隔離Linuxで、子の後始末を待つ回帰テストが元のPRで失敗し、追加修正後に成功しました。残りの猶予、終了済みグループ、権限エラーを含む関連8件が成功しました。
+- 追加修正後、Codex側のWindows 11、Python 3.13.16で `python -m unittest discover -s tests -v` が成功しました。473件中467件成功・POSIX専用6件skipです。
 - 同じ専用worktreeでNode.js 24.22.1の `node --test tests/test_chat_browser.cjs tests/test_chat_browser_run.cjs` が51件成功しました。
 - CIにはNode.js 22の準備と既存Browserテスト2ファイルの明示実行を追加しました。各OS/Python構成の結果はPRのChecksに記録します。
 
