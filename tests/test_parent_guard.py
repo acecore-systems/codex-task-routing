@@ -415,7 +415,10 @@ class ExecutionOwnerPolicyTests(unittest.TestCase):
         policy = self.routing.load_policy(codex_home=self.home)
         checkpoint = policy.resolve_token('principles.policy_execution_owner')
         for text in ('Luna/max', 'Terra/high', 'Sol/high', 'Pro', '失敗診断', '再試験',
-                     '最小確認', '同時作業数・モデル別使用件数を目的にしない'):
+                     '最小確認', '同時作業数・モデル別使用件数を目的にしない',
+                     '現在の実model・effort', '有効な明示override', '完了成果と副作用',
+                     '未完了単位だけ', '文章指示を実際のeffort変更と扱わず',
+                     'クライアントとnative hostの部品境界'):
             self.assertIn(text, checkpoint)
         for name in ('effective.md', 'model-routing-policy.md'):
             self.assertEqual(policy.rendered_documents()[name].count(checkpoint), 1)
