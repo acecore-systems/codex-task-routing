@@ -86,14 +86,43 @@ class ParentGuardTests(unittest.TestCase):
         for i in range(2, guard.THRESHOLD):
             self.assertIsNone(self.work(i))
         self.assertIsNotNone(self.work(guard.THRESHOLD))
-    def test_child_spawn_and_existing_owner_suppress(self):
-        for index, kind in enumerate(('followup_task', 'send_input', 'wait_agent')):
+    def test_contact_does_not_suppress_sustained_work(self):
+        for index, kind in enumerate(('followup_task', 'send_input', 'send_message')):
             with self.subTest(kind=kind):
                 turn = 'turn-' + str(index)
                 self.send('UserPromptSubmit', turn_id=turn)
                 self.send('PreToolUse', turn_id=turn, tool_name=kind, tool_use_id='owner')
-                for i in range(guard.THRESHOLD + 2):
+                for i in range(guard.THRESHOLD - 1):
                     self.assertIsNone(self.work(i, turn_id=turn))
+                out = self.work('last', turn_id=turn)
+                self.assertEqual(out['hookSpecificOutput']['additionalContext'], guard.OWNER_REMINDER)
+                self.assertIsNone(self.work('extra', turn_id=turn))
+
+    def test_wait_is_neither_contact_nor_work(self):
+        self.send('UserPromptSubmit')
+        for i in range(10):
+            self.assertIsNone(self.send('PreToolUse', tool_name='wait_agent', tool_use_id=str(i)))
+        for i in range(guard.THRESHOLD - 1):
+            self.assertIsNone(self.work(i))
+        out = self.work('last')
+        self.assertEqual(out['hookSpecificOutput']['additionalContext'], guard.REMINDER)
+
+    def test_started_child_and_wait_without_parent_work_are_quiet(self):
+        self.send('UserPromptSubmit')
+        self.send('SubagentStart', agent_id='child')
+        for i in range(10):
+            self.assertIsNone(self.send('PreToolUse', tool_name='wait_agent', tool_use_id=str(i)))
+        for i in range(guard.THRESHOLD - 1):
+            self.assertIsNone(self.work(i))
+        out = self.work('last')
+        context = out['hookSpecificOutput']['additionalContext']
+        self.assertEqual(context, guard.OWNER_REMINDER)
+        for phrase in ('scope', 'actual access', 'same owner', 'Parent-only', 'acceptance',
+                       'user prohibitions', 'custom policy', 'host restrictions', 'non-blocking'):
+            self.assertIn(phrase, context)
+        self.assertIsNone(self.work('last'))
+        self.assertIsNone(self.work('extra'))
+
     def test_failed_spawn_attempt_and_generic_wait_do_not_suppress(self):
         self.send('UserPromptSubmit')
         self.send('PreToolUse', tool_name='spawn_agent', tool_use_id='attempt')
@@ -105,13 +134,13 @@ class ParentGuardTests(unittest.TestCase):
         self.send('UserPromptSubmit')
         self.send('SubagentStart', agent_id='child')
         self.send('UserPromptSubmit', turn_id='other')
-        for i in range(guard.THRESHOLD + 1):
+        for i in range(guard.THRESHOLD - 1):
             self.assertIsNone(self.work(i, turn_id='other'))
+        out = self.work('last', turn_id='other')
+        self.assertEqual(out['hookSpecificOutput']['additionalContext'], guard.OWNER_REMINDER)
         self.send('SubagentStop', agent_id='child')
         self.assertIn('same suitable, resumable owner', self.work('resume')['hookSpecificOutput']['additionalContext'])
-        for i in range(guard.THRESHOLD - 1):
-            self.assertIsNone(self.work('after-' + str(i), turn_id='other'))
-        self.assertIsNotNone(self.work('after-last', turn_id='other'))
+        self.assertIsNone(self.work('after', turn_id='other'))
     def delegated(self, session, turn):
         path = self.home / 'codex-task-routing/parent-guard/state.sqlite3'
         db = sqlite3.connect(path)

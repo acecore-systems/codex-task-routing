@@ -36,7 +36,7 @@ def check():
     assert len(hooks['PreToolUse']) == 2
     assert hooks['PreToolUse'][0]['matcher'] == 'spawn_agent|Agent'
     assert [h['command'] for h in hooks['PreToolUse'][0]['hooks']] == [guard_command]
-    assert hooks['PreToolUse'][1]['matcher'] == '.*(Bash|exec|exec_command|apply_patch|spawn_agent|Agent|send_input|send_message|followup_task|wait_agent)$'
+    assert hooks['PreToolUse'][1]['matcher'] == '.*(Bash|exec|exec_command|apply_patch|spawn_agent|Agent|send_input|send_message|followup_task)$'
     assert [h['command'] for h in hooks['PreToolUse'][1]['hooks']] == [reminder_command]
     expected_commands = {
         'SessionStart': [routing_command],

@@ -399,14 +399,16 @@ class FixedRoutingTests(unittest.TestCase):
     def test_default_hook_and_skill_are_short_and_preserve_early_action(self):
         context = routing.hook_payload(event='SessionStart', source='startup',
             codex_home=self.home, cwd=self.home)['hookSpecificOutput']['additionalContext']
-        self.assertLess(len(context.encode('utf-8')), 3000)
+        normalized = context.replace(str(self.home), '<home>').replace(str(routing.PLUGIN_ROOT), '<plugin-root>')
+        self.assertLess(len(normalized.encode('utf-8')), 3000)
         for phrase in ('Before substantial investigation', 'call the actual delegation tool',
                        'A plan is not delegation', 'concrete reason once', 'user prohibitions', 'host restrictions',
                        'Keep implementation, builds, offline tests, diagnosis, fixes and retests with that owner from the start'):
             self.assertIn(phrase, context)
         child = routing.hook_payload(event='SubagentStart', source='startup',
             codex_home=self.home, cwd=self.home)['hookSpecificOutput']['additionalContext']
-        self.assertLess(len(child.encode('utf-8')), 2500)
+        normalized_child = child.replace(str(self.home), '<home>').replace(str(routing.PLUGIN_ROOT), '<plugin-root>')
+        self.assertLess(len(normalized_child.encode('utf-8')), 2500)
         skill = routing.PLUGIN_ROOT / 'skills/task-routing/SKILL.md'
         self.assertLess(len(skill.read_bytes()), 3500)
         policy = routing.load_policy(codex_home=self.home)
