@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 import unittest
+from unittest.mock import patch
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -310,6 +311,168 @@ class ParentGuardTests(unittest.TestCase):
         self.assertEqual(result['state'], 'recorded')
         self.assertEqual(result['reminders'], 0)
         self.assertIn('unknown', result['note'])
+
+    def test_first_edit_reminds_before_threshold_and_shares_turn_budget(self):
+        self.send('UserPromptSubmit')
+        self.assertIsNone(self.work('inspect'))
+        out = self.send('PreToolUse', tool_name='functions.apply_patch', tool_use_id='edit',
+                        tool_input={'patch': 'private-edit-patch'})
+        self.assertEqual(out['hookSpecificOutput'], {
+            'hookEventName': 'PreToolUse', 'additionalContext': guard.EDIT_REMINDER})
+        self.assertIn('effective custom policy', guard.EDIT_REMINDER)
+        self.assertIn('not a requirement to delegate', guard.EDIT_REMINDER)
+        self.assertIsNone(self.send('PreToolUse', tool_name='functions.apply_patch', tool_use_id='edit'))
+        for i in range(guard.THRESHOLD + 1):
+            self.assertIsNone(self.work('after-' + str(i)))
+        content = (self.home / 'codex-task-routing/parent-guard/state.sqlite3').read_bytes()
+        self.assertNotIn(b'private-edit-patch', content)
+
+    def test_early_edit_respects_existing_owner_child_and_open_turn(self):
+        for mode in ('active', 'contact', 'child', 'closed', 'interrupted', 'unknown'):
+            with self.subTest(mode=mode):
+                session = 'edit-' + mode
+                if mode != 'unknown':
+                    self.send('UserPromptSubmit', session_id=session)
+                if mode == 'active':
+                    self.send('SubagentStart', session_id=session, agent_id='owner')
+                elif mode == 'contact':
+                    self.send('PreToolUse', session_id=session, tool_name='send_input', tool_use_id='contact')
+                elif mode in ('closed', 'interrupted'):
+                    self.send('Stop' if mode == 'closed' else 'Interrupt', session_id=session)
+                self.assertIsNone(self.send(
+                    'PreToolUse', session_id=session, tool_name='functions__apply_patch', tool_use_id='edit',
+                    agent_id='child' if mode == 'child' else None))
+
+    def test_resume_notice_prevents_following_edit_and_threshold_duplicates(self):
+        self.send('UserPromptSubmit', turn_id='first')
+        self.send('SubagentStart', agent_id='owner', turn_id='child-turn')
+        self.send('Stop', turn_id='first')
+        self.send('SubagentStop', agent_id='owner', turn_id='child-turn')
+        self.send('UserPromptSubmit')
+        out = self.send('PreToolUse', tool_name='apply_patch', tool_use_id='edit')
+        self.assertEqual(out['hookSpecificOutput']['additionalContext'], guard.RESUME_REMINDER)
+        self.assertIsNone(self.send('PreToolUse', tool_name='apply_patch', tool_use_id='edit'))
+        for i in range(guard.THRESHOLD + 1):
+            self.assertIsNone(self.work('after-' + str(i)))
+        self.assertEqual(self.delegated('session-a', 'turn-a'), 0)
+
+    def test_failed_resume_notice_rolls_back_stop_and_reminder(self):
+        self.send('UserPromptSubmit')
+        self.send('SubagentStart', agent_id='owner')
+        self.send('SubagentStop', agent_id='owner')
+        db = guard._database(self.home)
+        db.execute("CREATE TRIGGER fail_reminder BEFORE UPDATE OF reminded ON turns "
+                   "BEGIN SELECT RAISE(ABORT, 'synthetic failure'); END")
+        db.close()
+        payload = self.event('PreToolUse', tool_name='apply_patch', tool_use_id='edit')
+        result = subprocess.run([sys.executable, str(SCRIPT)], input=json.dumps(payload),
+                                text=True, capture_output=True, env=dict(os.environ, CODEX_HOME=str(self.home)))
+        self.assertEqual((result.returncode, result.stdout, result.stderr), (0, '', ''))
+        db = guard._database(self.home)
+        try:
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM stopped').fetchone()[0], 1)
+            self.assertEqual(db.execute('SELECT reminded FROM turns').fetchone()[0], 0)
+            db.execute('DROP TRIGGER fail_reminder')
+        finally:
+            db.close()
+        out = guard.handle(payload, self.home)
+        self.assertEqual(out['hookSpecificOutput']['additionalContext'], guard.RESUME_REMINDER)
+
+
+class ExecutionOwnerPolicyTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        script = ROOT / 'plugins/codex-task-routing/scripts/routing.py'
+        spec = importlib.util.spec_from_file_location('execution_owner_policy_test', script)
+        cls.routing = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = cls.routing
+        spec.loader.exec_module(cls.routing)
+
+    def setUp(self):
+        self.home = ROOT / 'tests/.tmp-runtime-tests' / ('execution-owner-' + uuid.uuid4().hex)
+        self.home.mkdir(parents=True)
+
+    def tearDown(self):
+        assert self.home.parent == ROOT / 'tests/.tmp-runtime-tests'
+        shutil.rmtree(self.home)
+
+    def override(self, *, principles, models=None):
+        value = {'schema_version': 1, 'principles': principles}
+        if models:
+            value['models'] = models
+        path = self.home / self.routing.OVERRIDE_RELATIVE
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(value, ensure_ascii=False), encoding='utf-8')
+        return path
+
+    def context(self, event):
+        # Do not inspect developer/user guidance while testing policy rendering.
+        with patch.object(self.routing, 'detect_routing_conflicts', return_value=[]):
+            result = self.routing.hook_payload(event=event, source='startup', codex_home=self.home)
+        return result
+
+    def test_default_checkpoint_reaches_documents_and_both_start_hooks(self):
+        policy = self.routing.load_policy(codex_home=self.home)
+        checkpoint = policy.resolve_token('principles.policy_execution_owner')
+        for text in ('Luna/max', 'Terra/high', 'Sol/high', 'Pro', '失敗診断', '再試験',
+                     '最小確認', '同時作業数・モデル別使用件数を目的にしない'):
+            self.assertIn(text, checkpoint)
+        for name in ('effective.md', 'model-routing-policy.md'):
+            self.assertEqual(policy.rendered_documents()[name].count(checkpoint), 1)
+        for event in ('SessionStart', 'SubagentStart'):
+            result = self.context(event)['hookSpecificOutput']
+            self.assertEqual(result['hookEventName'], event)
+            self.assertIn('execution-owner checkpoint in effective.md', result['additionalContext'])
+            self.assertLessEqual(len(result['additionalContext'].encode('utf-8')),
+                                 self.routing.MAX_ADDITIONAL_CONTEXT_BYTES)
+
+    def test_summary_override_keeps_update_visible_and_model_override_effective(self):
+        summary = '独自要約：この対象では親が継続し、委譲しない。'
+        path = self.override(principles={'summary': summary},
+                             models={'terra61': {'id': 'custom-terra', 'default_effort': 'max'}})
+        before = path.read_bytes()
+        policy = self.routing.load_policy(codex_home=self.home)
+        checkpoint = policy.resolve_token('principles.policy_execution_owner')
+        self.assertEqual(policy.config['principles']['summary'], summary)
+        self.assertIn('Terra/max', checkpoint)
+        self.assertIn('有効な原則overrideを優先', checkpoint)
+        self.assertIn('矛盾はrootへ返す', checkpoint)
+        effective = policy.rendered_documents()['effective.md']
+        self.assertIn(summary, effective)
+        self.assertIn(checkpoint, effective)
+        self.assertIn('custom-terra', effective)
+        for event in ('SessionStart', 'SubagentStart'):
+            context = self.context(event)['hookSpecificOutput']['additionalContext']
+            self.assertIn('execution-owner checkpoint in effective.md', context)
+            self.assertIn('custom-terra (max)', context)
+            self.assertIn('Custom routing principles preserved:', context)
+        self.assertEqual(path.read_bytes(), before)
+
+    def test_checkpoint_override_is_preserved_and_reviewed(self):
+        checkpoint = '独自担当確認：既存担当を継続し、不一致はrootへ返す。'
+        path = self.override(principles={'policy_execution_owner': checkpoint})
+        before = path.read_bytes()
+        policy = self.routing.load_policy(codex_home=self.home)
+        self.assertEqual(policy.resolve_token('principles.policy_execution_owner'), checkpoint)
+        self.assertIn('principles.policy_execution_owner', policy.applied_override_keys)
+        for name in ('effective.md', 'model-routing-policy.md'):
+            self.assertIn(checkpoint, policy.rendered_documents()[name])
+        for event in ('SessionStart', 'SubagentStart'):
+            context = self.context(event)['hookSpecificOutput']['additionalContext']
+            self.assertIn('execution-owner checkpoint in effective.md', context)
+            self.assertIn('Custom routing principles preserved:', context)
+            self.assertNotIn('### 実行担当のチェックポイント', context)
+        self.assertEqual(path.read_bytes(), before)
+
+    def test_large_checkpoint_is_referenced_without_inflating_hook(self):
+        path = self.override(principles={
+            'policy_execution_owner': 'x' * self.routing.MAX_ADDITIONAL_CONTEXT_BYTES})
+        before = path.read_bytes()
+        for event in ('SessionStart', 'SubagentStart'):
+            self.assertIn('execution-owner checkpoint in effective.md',
+                          self.context(event)['hookSpecificOutput']['additionalContext'])
+        self.assertEqual(path.read_bytes(), before)
+
 
 if __name__ == '__main__':
     unittest.main()

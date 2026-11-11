@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Best-effort, non-blocking reminder for sustained root work without delegation.
+"""Best-effort, non-blocking ownership reminders for observed root work.
 
 Only fixed metadata and SHA-256 identifiers are persisted; prompt, tool arguments,
 model names, paths, and transcripts are never stored or inspected.
@@ -54,10 +54,24 @@ PROMPT_REMINDER = (
     'materials, decisions, constraints, acceptance and authority. Check actual access, a useful '
     'independent parent task for parallel work or host permission and added value for serial work. '
     'Use the allowed delegation tool when suitable; if the parent continues, give a concrete reason. '
+    'Accepted Pro advice does not transfer execution ownership to the parent. Use the effective '
+    'execution-owner checkpoint before the next substantial execution unit. '
     'After necessary parent permission or environment decisions, return remaining ordinary checks, '
     'fixes and retests to the same suitable resumable owner where possible; otherwise state why. '
     'Continue a suitable delegated owner, answer short questions normally, and respect the effective '
     'custom policy, user prohibitions and host restrictions. Do not invent work or force delegation.'
+)
+
+EDIT_REMINDER = (
+    'Task Routing: before this parent edit, check the effective execution-owner checkpoint. '
+    'For a substantial transferable unit, accepted Pro advice does not transfer execution ownership. '
+    'Keep implementation, failure diagnosis, ordinary fixes and retesting with one suitable owner. '
+    'Use an allowed delegation tool when suitable, preserving the effective custom policy, actual '
+    'access and hierarchy. Parallel work needs useful independent parent work; serial specialist '
+    'delegation needs host permission and added value. Short work, genuine parent-only operations, '
+    'parent acceptance, an existing delegated owner, user prohibition and host restrictions can '
+    'justify continuing; this is not a requirement to delegate. Reuse valid approvals; hooks do not '
+    'dispatch work or establish that Pro advice was received or that implementation is unfinished.'
 )
 
 
@@ -164,6 +178,9 @@ def handle(payload, home):
                     db.execute('UPDATE turns SET owner_contact=1 WHERE session=? AND turn=?', (session, turn))
                 elif name in WORK_TOOLS and db.execute('SELECT 1 FROM stopped WHERE session=?', (session,)).fetchone() and not db.execute('SELECT 1 FROM active WHERE session=? LIMIT 1', (session,)).fetchone():
                     db.execute('DELETE FROM stopped WHERE session=?', (session,))
+                    # A resume notice also consumes this turn's ordinary-work reminder.
+                    # Commit both changes together; a failed write must retain the stop.
+                    db.execute('UPDATE turns SET reminded=1 WHERE session=? AND turn=?', (session, turn))
                     db.execute('COMMIT')
                     return {'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'additionalContext': RESUME_REMINDER}}
                 elif name in {'spawn_agent', 'Agent'}:
@@ -177,10 +194,15 @@ def handle(payload, home):
                         return None
                     db.execute('INSERT OR IGNORE INTO tools VALUES(?,?,?)', (session, turn, tool))
                     count = db.execute('SELECT COUNT(*) FROM tools WHERE session=? AND turn=?', (session, turn)).fetchone()[0]
-                    if count >= THRESHOLD:
+                    # Only a known edit in an explicitly observed open root turn gets the early hint.
+                    early_edit = name == 'apply_patch' and db.execute(
+                        'SELECT 1 FROM open_turn WHERE session=? AND turn=?', (session, turn)
+                    ).fetchone() is not None
+                    if early_edit or count >= THRESHOLD:
                         db.execute('UPDATE turns SET reminded=1 WHERE session=? AND turn=?', (session, turn))
                         db.execute('COMMIT')
-                        return {'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'additionalContext': REMINDER}}
+                        reminder = EDIT_REMINDER if early_edit else REMINDER
+                        return {'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'additionalContext': reminder}}
         db.execute('COMMIT')
     finally:
         db.close()
