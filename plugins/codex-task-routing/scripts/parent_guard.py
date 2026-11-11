@@ -174,9 +174,9 @@ def handle(payload, home):
                 if name in CONTACT_TOOLS:
                     db.execute('DELETE FROM stopped WHERE session=?', (session,))
                     db.execute('UPDATE turns SET owner_contact=1 WHERE session=? AND turn=?', (session, turn))
-                elif name in WORK_TOOLS and db.execute('SELECT 1 FROM stopped WHERE session=?', (session,)).fetchone() and not db.execute('SELECT 1 FROM active WHERE session=? LIMIT 1', (session,)).fetchone():
+                elif not row[2] and name in WORK_TOOLS and db.execute('SELECT 1 FROM stopped WHERE session=?', (session,)).fetchone() and not db.execute('SELECT 1 FROM active WHERE session=? LIMIT 1', (session,)).fetchone():
                     db.execute('DELETE FROM stopped WHERE session=?', (session,))
-                    # A resume notice also consumes this turn's ordinary-work reminder.
+                    # Share the turn budget with edit/threshold notices; defer a later stop.
                     # Commit both changes together; a failed write must retain the stop.
                     db.execute('UPDATE turns SET reminded=1 WHERE session=? AND turn=?', (session, turn))
                     db.execute('COMMIT')
