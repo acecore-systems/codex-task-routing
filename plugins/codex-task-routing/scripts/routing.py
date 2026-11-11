@@ -866,8 +866,8 @@ def hook_payload(
                     rendered_context,
                     f"Effective child defaults (do not change parent): {model_matrix}.",
                     "Before substantial investigation or implementation select an owner and, when suitable "
-                    "and allowed, call the actual delegation tool with a complete unit. For implementation, hand builds, offline tests, fixes and retests to one owner "
-                    "from the start. A plan is not delegation; "
+                    "and allowed, call the actual delegation tool with a complete unit. Keep implementation, builds, "
+                    "offline tests, diagnosis, fixes and retests with that owner from the start. A plan is not delegation; "
                     "do not solve the unit first just to classify it. If the parent continues, briefly give a "
                     "concrete reason once. Parent familiarity is not continuing ownership: hand off scope, materials, "
                     "decisions, constraints, acceptance and authority; count separation of future work as a benefit. "
