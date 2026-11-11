@@ -55,8 +55,9 @@ newlines to `innerText`. Do not blindly trim or remove newlines to force a
 match. Inspect the current editable DOM once; when it uses observed paragraph,
 text and `BR` nodes, serialize text nodes, preserve each `BR` as a newline,
 and preserve paragraph boundaries. The default helper accepts only the observed
-literal-paste spans and generated autolink span shape with matching link target
-and displayed text; unfamiliar markup blocks sending. Compare the exact prepared prompt plus only
+literal-paste spans and generated autolink roots with the observed exact attribute
+set and matching link target and text; descendant UI decoration is not traversed
+or activated. Other markup or a whole-prompt mismatch blocks sending. Compare the exact prepared prompt plus only
 the separately observed initial connector-chip prefix. Unknown structure or
 an actual mismatch blocks sending. No element IDs or DOM schema are guaranteed
 across Chat UI updates; reuse the supported controls observed in that session.

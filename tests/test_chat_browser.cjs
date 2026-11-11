@@ -142,8 +142,8 @@ test("long text attachment expands uniquely and matches only observed literal an
   const attrNames = ["rich-link-source-app-id", "class", "data-appearance", "data-layout",
     "data-font-weight", "data-tone", "data-underline-on-hover", "data-breakable-url",
     "text-link-href", "data-rich-text-generated-autolink"];
-  for (const kind of ["valid", "href-mismatch", "extra-attribute", "nested", "changed-body",
-    "ambiguous", "stale", "delayed", "reappeared", "preexisting", "destination-changed"]) {
+  for (const kind of ["valid", "observed-icon", "empty-decoration", "href-mismatch", "extra-attribute", "missing-attribute",
+    "changed-link", "changed-body", "ambiguous", "stale", "delayed", "reappeared", "preexisting", "destination-changed"]) {
     const state = { body: "", attachment: kind === "preexisting" ? 1 : 0, clicks: 0, expansions: 0,
       chatUrl: "https://chatgpt.com/?temporary-chat=true", expanded: false };
     const text = value => ({ nodeType: 3, textContent: value });
@@ -154,12 +154,19 @@ test("long text attachment expands uniquely and matches only observed literal an
       if (!state.expanded) return { tagName: "DIV", childNodes: [{ nodeType: 1, tagName: "P", textContent: "",
         childNodes: [br()] }], getAttribute: name => ({ class: "ProseMirror", contenteditable: "true" })[name] ?? null };
       if (kind === "reappeared") state.attachment = 1;
+      const linkText = kind === "changed-link" ? url + "!" : url;
+      const icon = { nodeType: 1, tagName: "SPAN", textContent: "", childNodes: [],
+        attributes: ["data-inline-url-icon", "class", "data-appearance", "data-layout", "data-font-weight",
+          "data-tone", "data-underline-on-hover", "aria-hidden", "contenteditable"].map(name => ({ name })) };
+      const nested = { nodeType: 1, tagName: "SPAN", attributes: [{ name: "data-prompt-literal-paste" }],
+        childNodes: [icon, text(linkText)] };
       const inner = { nodeType: 1, tagName: "SPAN", attributes: [{ name: "class" }],
         getAttribute: name => name === "class" ? "link" : null,
-        childNodes: kind === "nested" ? [{ nodeType: 1, tagName: "B" }] : [text(url)] };
-      const link = { nodeType: 1, tagName: "SPAN", textContent: url,
-        attributes: [...attrNames, ...(kind === "extra-attribute" ? ["unexpected"] : [])].map(name => ({ name })),
-        getAttribute: name => name === "text-link-href" ? (kind === "href-mismatch" ? url + "!" : url) : "x",
+        childNodes: kind === "observed-icon" ? [nested] : kind === "empty-decoration" ? [icon, text(linkText)] : [text(linkText)] };
+      const link = { nodeType: 1, tagName: "SPAN", textContent: linkText,
+        attributes: [...(kind === "missing-attribute" ? attrNames.slice(1) : attrNames),
+          ...(kind === "extra-attribute" ? ["unexpected"] : [])].map(name => ({ name })),
+        getAttribute: name => name === "text-link-href" ? (kind === "href-mismatch" ? linkText + "!" : linkText) : "x",
         childNodes: [inner] };
       return { tagName: "DIV", getAttribute: name => ({ class: "ProseMirror", contenteditable: "true" })[name] ?? null,
         childNodes: [{ nodeType: 1, tagName: "P", textContent: prompt, innerText: prompt + "\n",
@@ -193,10 +200,10 @@ test("long text attachment expands uniquely and matches only observed literal an
     else if (kind === "stale") await assert.rejects(handoff.send(args), /expansion timeout/);
     else {
       const result = await handoff.send(args);
-      assert.equal(result.event, ["valid", "delayed"].includes(kind) ? "send_clicked" : kind === "preexisting" ? "composer_not_ready" :
+      assert.equal(result.event, ["valid", "observed-icon", "empty-decoration", "delayed"].includes(kind) ? "send_clicked" : kind === "preexisting" ? "composer_not_ready" :
         ["ambiguous", "stale", "reappeared"].includes(kind) ? "attachment_expansion_unconfirmed" : "prompt_mismatch", kind);
     }
-    assert.equal(state.clicks, ["valid", "delayed"].includes(kind) ? 1 : 0, kind);
+    assert.equal(state.clicks, ["valid", "observed-icon", "empty-decoration", "delayed"].includes(kind) ? 1 : 0, kind);
     assert.equal(state.expansions, ["ambiguous", "preexisting", "destination-changed"].includes(kind) ? 0 : 1, kind);
   }
 });

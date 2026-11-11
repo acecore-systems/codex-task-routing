@@ -41,10 +41,10 @@ const proHandoff = (() => {
           "data-font-weight", "data-tone", "data-underline-on-hover", "data-breakable-url",
           "text-link-href", "data-rich-text-generated-autolink"];
         const names = Array.from(node.attributes, attribute => attribute?.name);
+        // Generated autolinks may contain changing UI decoration. Only their
+        // root shape and literal destination are checked. The whole prompt is
+        // still compared exactly before sending.
         if (names.length === linkAttributes.length && linkAttributes.every(name => names.includes(name)) &&
-            children.length === 1 && children[0].nodeType === 1 && children[0].tagName === "SPAN" &&
-            children[0].attributes.length === 1 && children[0].getAttribute("class") !== null &&
-            Array.from(children[0].childNodes).every(child => child.nodeType === 3) &&
             node.getAttribute("text-link-href") === node.textContent && node.textContent.length > 0) {
           return node.textContent;
         }
