@@ -39,8 +39,11 @@ read browser storage, session state or private application APIs to move data.
 If a long pasted prompt appears as a text attachment, use the observed
 "Show in text field" (「テキスト欄に表示」) control to expand it back into the
 composer before checking the exact body. Do not send based only on an
-attachment filename or thumbnail. If no supported expansion is available,
-stop and return the limitation.
+attachment filename or thumbnail. The default Browser helper expands only one
+visible control, after confirming no pre-existing attachment control and the
+same Temporary Chat. Multiple controls, a control that remains after expansion,
+or an unconfirmed destination stop the send. If no supported expansion is
+available, stop and return the limitation.
 
 If the Chat UI adds a connector chip while selecting an approved source, keep
 the prompt-text equality check separate from the chip's UI verification. UI
@@ -51,7 +54,9 @@ Some Chat composer versions convert source URLs to chips and add display-only
 newlines to `innerText`. Do not blindly trim or remove newlines to force a
 match. Inspect the current editable DOM once; when it uses observed paragraph,
 text and `BR` nodes, serialize text nodes, preserve each `BR` as a newline,
-and preserve paragraph boundaries. Compare the exact prepared prompt plus only
+and preserve paragraph boundaries. The default helper accepts only the observed
+literal-paste spans and generated autolink span shape with matching link target
+and displayed text; unfamiliar markup blocks sending. Compare the exact prepared prompt plus only
 the separately observed initial connector-chip prefix. Unknown structure or
 an actual mismatch blocks sending. No element IDs or DOM schema are guaranteed
 across Chat UI updates; reuse the supported controls observed in that session.
