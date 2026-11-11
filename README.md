@@ -304,9 +304,12 @@ codex plugin remove codex-task-routing@codex-task-routing
 
 ## 開発と検証
 
+開発用のBrowserスクリプト模擬テストにはNode.js 22を使用します。
+
 ```text
 python -m unittest discover -s tests -v
 python scripts/check_package.py
+node --test tests/test_chat_browser.cjs tests/test_chat_browser_run.cjs
 ```
 
 テストでは既定本文の再現、上書き・無効設定、開始イベント、既存指示との競合、ファイル保護を検証します。実際のフック信頼操作・通常会話の分担判断・他OSは別の確認対象です。検証実績は [docs/validation.md](docs/validation.md)、版ごとの変更は [docs/changelog.md](docs/changelog.md) を参照してください。
