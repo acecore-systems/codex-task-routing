@@ -106,6 +106,35 @@ test("ProseMirror paragraphs preserve exact prompt and reject unexpected content
   }
 });
 
+test("empty trailing-break sentinel accepts localized and cosmetic paragraph variations only", async () => {
+  for (const kind of ["valid", "english", "cosmetic-p-class", "missing-empty-flag", "extra-p-attribute",
+    "extra-br-attribute", "wrong-br-class", "extra-child", "not-empty", "extra-paragraph"]) {
+    const { newHandoff, state } = fixture();
+    let filled = false;
+    let clicks = 0;
+    const br = { nodeType: 1, tagName: "BR",
+      attributes: Array(kind === "extra-br-attribute" ? 2 : 1).fill({ name: "class" }),
+      getAttribute: name => name === "class" ? (kind === "wrong-br-class" ? "other" : "ProseMirror-trailingBreak") : null };
+    const attributes = { "data-empty-paragraph": kind === "missing-empty-flag" ? null : "true",
+      "data-placeholder": kind === "english" ? "Ask ChatGPT" : "ChatGPT に聞く",
+      class: kind === "cosmetic-p-class" ? "other-style" : "placeholder before:composer-placeholder" };
+    const paragraph = { nodeType: 1, tagName: "P", attributes: Array(kind === "extra-p-attribute" ? 4 : 3),
+      getAttribute: name => attributes[name] ?? null, textContent: kind === "not-empty" ? "x" : "",
+      childNodes: kind === "extra-child" ? [br, { nodeType: 3, textContent: "x" }] : [br] };
+    const initial = { tagName: "DIV", childNodes: kind === "extra-paragraph" ? [paragraph, paragraph] : [paragraph],
+      getAttribute: name => ({ class: "ProseMirror", contenteditable: "true" })[name] ?? null };
+    const composer = { evaluate: async read => read(filled ? proseMirror(state.composer) : initial),
+      fill: async text => { filled = true; state.composer = text; },
+      getByText: () => ({ filter: () => ({ or: () => ({ first: () => ({ waitFor: async () => {} }) }) }) }) };
+    const result = await newHandoff().send({ plan: dispatch, composer, temporaryChatUrl: state.chatUrl,
+      sendButton: { click: async () => { clicks++; } } });
+    const accepted = ["valid", "english", "cosmetic-p-class", "missing-empty-flag", "extra-p-attribute"].includes(kind);
+    assert.equal(result.event, accepted ? "send_clicked" : "composer_not_ready", kind);
+    assert.equal(filled, accepted, kind);
+    assert.equal(clicks, accepted ? 1 : 0, kind);
+  }
+});
+
 test("long text attachment expands uniquely and matches only observed literal and autolink nodes", async () => {
   const url = "https://example.org/pr/63\\nBase";
   const prefix = "Long " + "x".repeat(10374) + "\n";

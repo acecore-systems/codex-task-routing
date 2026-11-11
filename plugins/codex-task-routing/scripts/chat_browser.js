@@ -60,9 +60,14 @@ const proHandoff = (() => {
       for (const paragraph of paragraphs) {
         const children = Array.from(paragraph.childNodes);
         if (children.length === 1 && children[0].nodeType === 1 && children[0].tagName === "BR" &&
-            children[0].attributes.length === 0 && paragraph.textContent === "") {
-          lines.push("");
-          continue;
+            paragraph.textContent === "") {
+          const br = children[0];
+          const placeholder = br.attributes.length === 1 &&
+            br.getAttribute("class") === "ProseMirror-trailingBreak";
+          if (br.attributes.length === 0 || placeholder) {
+            lines.push("");
+            continue;
+          }
         }
         const parts = children.map(literal);
         if (parts.some(part => typeof part !== "string")) return null;
