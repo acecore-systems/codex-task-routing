@@ -698,7 +698,7 @@ def _read_hook_event() -> tuple[str, str, Path | None]:
         raise RoutingError("hook input is too large")
     try:
         payload = json.loads(raw.decode("utf-8-sig"), object_pairs_hook=_reject_duplicate_pairs)
-    except (UnicodeDecodeError, json.JSONDecodeError, DuplicateKeyError, RecursionError) as exc:
+    except (ValueError, DuplicateKeyError, RecursionError) as exc:
         raise RoutingError("hook input is not valid JSON") from exc
     if not isinstance(payload, dict):
         raise RoutingError("hook input must be an object")
