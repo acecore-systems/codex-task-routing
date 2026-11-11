@@ -120,7 +120,7 @@ def _load_json(path: Path, purpose: str, limit: int = MAX_JSON_BYTES) -> dict[st
     text = _read_limited_utf8(path, limit, purpose)
     try:
         value = json.loads(text, object_pairs_hook=_reject_duplicate_pairs)
-    except (json.JSONDecodeError, DuplicateKeyError, RecursionError) as exc:
+    except (ValueError, DuplicateKeyError, RecursionError) as exc:
         raise RoutingError(f"{purpose} is not valid JSON", code="invalid_json") from exc
     if not isinstance(value, dict):
         raise RoutingError(f"{purpose} must be a JSON object", code="invalid_json")

@@ -10,7 +10,7 @@ import sys
 import tempfile
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -260,6 +260,82 @@ class UpdaterTest(unittest.TestCase):
         self.assertTrue(ready.exists(), "child fixture must start before testing containment")
         time.sleep(1)
         self.assertFalse(marker.exists())
+
+    @unittest.skipIf(os.name == "nt", "POSIX process groups")
+    def test_root_exit_and_pipe_eof_do_not_skip_group_kill(self) -> None:
+        process = Mock(pid=12345)
+        with (
+            patch.object(updater.os, "killpg") as killpg,
+            patch.object(updater, "_wait_for_command_stop", return_value=True),
+        ):
+            self.assertTrue(updater._terminate_process_tree(process))
+        self.assertEqual([call.args for call in killpg.call_args_list], [
+            (process.pid, updater.signal.SIGTERM),
+            (process.pid, updater.signal.SIGKILL),
+        ])
+
+    @unittest.skipIf(os.name == "nt", "POSIX process groups")
+    def test_group_exit_is_distinct_from_unconfirmed_termination(self) -> None:
+        for errors, stopped, expected in (
+            ([ProcessLookupError()], True, True),
+            ([ProcessLookupError()], False, False),
+            ([None, ProcessLookupError()], True, True),
+            ([PermissionError()], True, False),
+            ([None, PermissionError()], True, False),
+        ):
+            with (
+                self.subTest(errors=errors, stopped=stopped),
+                patch.object(updater.os, "killpg", side_effect=errors),
+                patch.object(updater, "_wait_for_command_stop", return_value=stopped),
+            ):
+                self.assertEqual(updater._terminate_process_tree(Mock(pid=12345)), expected)
+
+    @unittest.skipIf(os.name == "nt", "POSIX process groups")
+    def test_timeout_kills_term_ignoring_child_with_closed_pipes(self) -> None:
+        self.state_dir.mkdir(parents=True)
+        ready, release, marker, parent_pid = [
+            self.base / name for name in ("ready", "release", "late", "parent")
+        ]
+        child = "\n".join([
+            "import signal,sys,time",
+            "from pathlib import Path",
+            "signal.signal(signal.SIGTERM, signal.SIG_IGN)",
+            "Path(sys.argv[1]).write_text('ready')",
+            "deadline = time.monotonic() + 15",
+            "while not Path(sys.argv[2]).exists():",
+            "    if time.monotonic() >= deadline: raise SystemExit(0)",
+            "    time.sleep(.01)",
+            "Path(sys.argv[3]).write_text('late')",
+        ])
+        parent = "\n".join([
+            "import os,subprocess,sys,time",
+            "from pathlib import Path",
+            "Path(sys.argv[4]).write_text(str(os.getpid()))",
+            "subprocess.Popen([sys.executable,'-c'," + repr(child) + ",*sys.argv[1:4]],"
+            "stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)",
+            "time.sleep(20)",
+        ])
+        try:
+            result = updater._run_command(
+                [sys.executable, "-c", parent, str(ready), str(release), str(marker), str(parent_pid)],
+                self.state_dir, timeout=2,
+            )
+            self.assertTrue(ready.exists(), "child fixture must install its signal handler")
+            release.write_text("released", encoding="utf-8")
+            deadline = time.monotonic() + 1
+            while not marker.exists() and time.monotonic() < deadline:
+                time.sleep(.01)
+            self.assertTrue(result.timed_out)
+            self.assertFalse(result.containment_failed)
+            self.assertFalse(marker.exists(), "child ran after containment returned")
+        finally:
+            # Bound fixture lifetime even when testing an unfixed implementation.
+            release.write_text("released", encoding="utf-8")
+            if parent_pid.exists():
+                try:
+                    os.killpg(int(parent_pid.read_text(encoding="utf-8")), updater.signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
 
     def test_scratch_path_has_no_link_ancestors(self) -> None:
         self.assertEqual(self.base, self.base.resolve())

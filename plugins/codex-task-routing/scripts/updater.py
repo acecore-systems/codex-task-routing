@@ -461,16 +461,19 @@ def _terminate_process_tree(process: subprocess.Popen[str], job: WindowsJob | No
             return False
         return _wait_for_command_stop(process)
 
-    # The root may already have exited while a child holds stdout/stderr open.
-    # Its process group still identifies every child created by this command.
+    # Root exit and pipe EOF do not prove that the process group is empty:
+    # a child can ignore SIGTERM and redirect its own stdout/stderr.
     try:
         os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return _wait_for_command_stop(process)
     except OSError:
         return False
-    if _wait_for_command_stop(process):
-        return True
+    _wait_for_command_stop(process)
     try:
         os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass  # The group already exited during the grace period.
     except OSError:
         return False
     return _wait_for_command_stop(process)
