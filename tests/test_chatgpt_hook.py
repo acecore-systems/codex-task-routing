@@ -52,6 +52,9 @@ class ChatHookTests(unittest.TestCase):
         child = self.payload("SubagentStart")["hookSpecificOutput"]["additionalContext"]
         self.assertIn("Only a root-direct Sol child with confirmed role/depth", child)
         self.assertIn("other children and grandchildren cannot", child)
+        for context in (parent, child):
+            self.assertIn("Positively observe Temporary Chat before selecting Pro and sending", context)
+            self.assertIn("Never use a history-bearing chat", context)
         self.assertLessEqual(len(child.encode("utf-8")), routing.MAX_ADDITIONAL_CONTEXT_BYTES)
 
     def test_installed_long_path_keeps_enabled_chat_within_hook_limit(self):
@@ -76,9 +79,11 @@ class ChatHookTests(unittest.TestCase):
                                      routing.MAX_ADDITIONAL_CONTEXT_BYTES)
                 self.assertEqual('Opt-in ChatGPT' in child['hookSpecificOutput']['additionalContext'],
                                  transport == 'browser-temporary')
-                for phrase in ('Opt-in ChatGPT Chat route is enabled', 'retain a suitable owner',
-                               'unknown authorization blocks dispatch', 'No active observation campaign',
-                               'local_auth_status', 'Work or a model API'):
+                common = ('No active observation campaign', 'local_auth_status')
+                route = (('Opt-in ChatGPT Chat route is enabled', 'retain a suitable owner',
+                          'unknown authorization blocks dispatch', 'Work or a model API')
+                         if transport == 'browser-temporary' else ('new dispatch is disabled',))
+                for phrase in common + route:
                     self.assertIn(phrase, context)
 
     def test_active_long_campaign_with_chat_fits_hook_limit(self):
@@ -160,7 +165,9 @@ class ChatHookTests(unittest.TestCase):
                     self.assertEqual(context.count(cache_namespace), 1)
                     self.assertIn('<plugin-root>/skills/task-routing/references/local-auth.md', context)
                     self.assertEqual('Opt-in ChatGPT' in context,
-                                     event == 'SessionStart' or transport == 'browser-temporary')
+                                     transport == 'browser-temporary')
+                    self.assertEqual('new dispatch is disabled' in context,
+                                     event == 'SessionStart' and transport == 'codex-app-tools')
 
     def test_invalid_route_does_not_disable_standard_policy_or_echo_values(self):
         self.settings({"schema_version": 1, "enabled": True, "required_model": "secret-value", "transport": "api"})
@@ -199,8 +206,8 @@ class ChatHookTests(unittest.TestCase):
     def test_explicit_legacy_transport_remains_available_but_is_not_temporary(self):
         self.settings({"schema_version": 1, "enabled": True, "required_model": "6 Pro", "transport": "codex-app-tools"})
         context = self.payload()["hookSpecificOutput"]["additionalContext"]
-        self.assertIn("transport: codex-app-tools (legacy)", context)
-        self.assertIn("legacy transport stays root-only", context)
+        self.assertIn("new dispatch is disabled", context)
+        self.assertIn("reconcile an existing request without sending", context)
 
 
 if __name__ == "__main__":

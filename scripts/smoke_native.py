@@ -127,9 +127,8 @@ def main():
         assert context["hookEventName"] == event
         assert payload.get("continue", True) and "policy hash" in context["additionalContext"]
         assert 'Private authentication:' in context['additionalContext']
-        assert ("Opt-in ChatGPT Chat route is enabled" in context["additionalContext"]) == (event == "SessionStart")
-        if event == "SessionStart":
-            assert "transport: codex-app-tools (legacy)" in context["additionalContext"]
+        assert "Opt-in ChatGPT Chat route is enabled" not in context["additionalContext"]
+        assert ("new dispatch is disabled" in context["additionalContext"]) == (event == "SessionStart")
         assert sol_context in context['additionalContext']
         assert "systemMessage" not in payload, payload.get("systemMessage")
     results.append("installed hook commands produced the official event-specific output for both events")

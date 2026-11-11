@@ -41,12 +41,13 @@
     "0.28.0 intentional policy change: parent familiarity is not delegated ownership; include future-work context separation in handoff value, preserve delegated owner continuity and host gates; compatible explicit parent-owner recommendation facts",
     "0.29.0 intentional policy change: root may select opt-in Haiku text-only proposals for ordinary same-goal work with explicit adapter, authorization, host and delegation conditions; preserve suitable owners, Cloud/Pro priority, parent edit/test ownership and existing overrides",
     "0.30.0 intentional policy change: recommend Sol/max parent without changing actual settings; Luna/max investigation, Terra/high ordinary implementation, Sol/high difficult execution, consultation prefers eligible Pro, Astra/xhigh only as needed; Cloud and authorization boundaries preserved",
-    "Unreleased intentional policy change: execution-owner checkpoint before substantial work and after advice or parent-only intervention; preserve suitable owners, custom principles, host limits and model/effort defaults; advisory reminders only; historical source hashes retained"
+    "Unreleased intentional policy change: execution-owner checkpoint before substantial work and after advice or parent-only intervention; preserve suitable owners, custom principles, host limits and model/effort defaults; advisory reminders only; historical source hashes retained",
+    "0.30.14 intentional transport restriction: all new Pro dispatch requires an observed Browser Temporary Chat; legacy settings and read-only collection remain compatible; model and effort defaults, overrides, and approval boundaries preserved"
   ],
   "source_policy_revision": "2026-09-14",
   "rendered_sha256": {
-    "model-routing-policy.md": "49d5956493e160cf8d214aba8860fc88b47bcf8f1e98e91161631940b33160b3",
-    "model-routing-catalog.md": "cfe1f925a8cb4f4863c45e7ed61357116d501748369bb1e09a951e6d60573ee3",
-    "model-routing-handoff.md": "a8ce8f6ccc06ca066a825c8648bbf22d1ead862424038beedb6978c6f5b41169"
+    "model-routing-policy.md": "bb7c0a1945277394e01f53864b46ae67626ac4ad9cd917f471d96554be21e38e",
+    "model-routing-catalog.md": "05e8bc49ce7327fe4f0853a815d81c93c149b2d21cffbf80e642a9e1f46e79e7",
+    "model-routing-handoff.md": "36ad9da1d2571ea05f001d4228ec355f453d40d65ce3628e930b57e25209fa7a"
   }
 }

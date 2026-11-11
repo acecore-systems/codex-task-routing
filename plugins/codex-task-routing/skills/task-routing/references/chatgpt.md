@@ -5,9 +5,9 @@
 必要な選択表示は`Pro`です。旧`6 Pro`/`GPT-6 Pro`も受理します。設定は希望条件であり、送信前後のモデル選択欄の観測とは別です。契約バッジ・回答の自己申告は観測にせず、特定backend IDは不明のまま扱います。別名間の表記変更だけで利用不能と判定しません。
 
 
-この経路は利用者が `chatgpt.json` で有効にした場合にだけ、rootまたはroot直下のSol子が通常Chatへまとまった専門工程を渡す明示的な別経路です。経路所有者は準備・一度の送信・回収・内容受入・承認済み実装修正まで担当し、rootは重要な判断と例外へ集中します。子はbrowser-temporaryのみ、Astra/Terra/Luna子・孫からChat不可、legacyはroot専用です。役割/深さ不明はrootへ返します。これは標準Codex孫と別経路で、上位指示や現在のホスト制限を変更しません。既定のCodexサブエージェント方針、親のモデル・effort、承認境界は維持します。フックは経路を知らせるだけで、AIやネットワークを呼び出しません。
+この経路は利用者が `chatgpt.json` で有効にした場合にだけ、rootまたはroot直下のSol子が通常Chatへまとまった専門工程を渡す明示的な別経路です。経路所有者は準備・一度の送信・回収・内容受入・承認済み実装修正まで担当し、rootは重要な判断と例外へ集中します。新規送信はbrowser-temporaryのみ、Astra/Terra/Luna子・孫からChat不可、legacyはrootの非送信回収のみです。役割/深さ不明はrootへ返します。これは標準Codex孫と別経路で、上位指示や現在のホスト制限を変更しません。既定のCodexサブエージェント方針、親のモデル・effort、承認境界は維持します。フックは経路を知らせるだけで、AIやネットワークを呼び出しません。
 
-既定の `browser-temporary` は、通常Chatの一時Chatを1依頼ごとに開く方式です。作業はChatの利用枠で行い、ChatGPT Work、モデルAPI、CLIモデル呼出しへ切り替えません。利用枠の上限、未ログイン、モデル不明、サポートされたBrowser操作の欠如は、依頼送信の停止理由です。許可されたBrowser確認は`--phase inspect`で分けて進めます。別経路へ替える場合は理由と使用枠を利用者へ伝え、既存の承認と指示に従います。
+既定の `browser-temporary` は、通常Chatの一時Chatを1依頼ごとに開く方式です。作業はChatの利用枠で行い、ChatGPT Work、モデルAPI、CLIモデル呼出しへ切り替えません。利用枠の上限、未ログイン、モデル不明、サポートされたBrowser操作の欠如は、依頼送信の停止理由です。許可されたBrowser確認は`--phase inspect`で分けて進めます。一時Chatを確認できない場合、履歴付きChatへ切り替えて送信しません。別の承認済み作業方法を検討する場合は、理由と使用枠を利用者へ伝え、既存の承認と指示に従います。
 
 ## 選定
 
@@ -99,7 +99,7 @@ python <plugin-root>/scripts/chatgpt_route.py validate --request bundle.json --r
 
 ## 既存 `codex-app-tools` 設定
 
-既に `"transport": "codex-app-tools"` を明示した設定は自動で書き換えず、legacyとして受理します。これは従来の直接スレッド送受信との互換性だけを保つ設定で、一時Chatを作成・操作する方式ではありません。一時Chatを使う仕事でこのtransportを選ばず、`send_message_to_thread` を代替手段にしません。
+既存の `"transport": "codex-app-tools"` 設定は自動で書き換えません。通常Chatへの新規送信は停止し、rootによる送信済み依頼の非送信回収・照合のみ、現在の権限を確認して行います。未確定の依頼を別transportで再送しません。新規依頼は一時Chatの表示を確認できた `browser-temporary` に限ります。
 
 `handoff` の型は、required_information・source_requirements・stop_conditionsが非空の文字列配列、allowed_toolsが空でもよい文字列配列、freshness・return_formatが非空文字列です。指定時は6項目を全て含め、未知キーは拒否します。配列は最大16件、各項目と単独文字列は4,096文字、allowed_toolsの各項目は256文字、handoff全体は正規化したUTF-8 JSONで32KiBまでです。細かい制約が不要な依頼では短く記述します。
 
@@ -117,4 +117,4 @@ python <plugin-root>/scripts/chatgpt_route.py validate --request bundle.json --r
 
 経路所有者と実行担当、割当て役割、rootからの深さ、現在のホスト許可を既存の短い引継ぎに明示します。Sol子用live.actorの例は[実行者確認](chat-capabilities.md)を参照してください。SubagentStartやモデルIDから役割・深さを推測せず、不明ならrootへ返します。ホスト確認は追加の本人承認要求ではなく、既存の有効な承認を再利用した現在条件の確認です。
 
-送信済みのbundle、同じタブ/依頼ID/input hash、回収済みか未受入かを引き継ぎ、担当交代やローカルフォーム期限切れで依頼を再送しません。rootへの回収引継ぎは既存依頼の状態回収で、新規生成ではありません。子は所有者一致と適合条件内で進め、必要な権限・ツール・役割・深さを確認できなければ不足と到達点をrootへ返します。legacy経路はroot専用のままです。
+送信済みのbundle、同じタブ/依頼ID/input hash、回収済みか未受入かを引き継ぎ、担当交代やローカルフォーム期限切れで依頼を再送しません。rootへの回収引継ぎは既存依頼の状態回収で、新規生成ではありません。子は所有者一致と適合条件内で進め、必要な権限・ツール・役割・深さを確認できなければ不足と到達点をrootへ返します。legacy経路はrootによる非送信回収のみです。

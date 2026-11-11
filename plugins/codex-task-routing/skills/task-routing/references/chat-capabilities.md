@@ -106,7 +106,7 @@ CLIの終了コード0は分類処理の成功です。`chat_candidate` も送�
 
 `quota_state`は`unknown`／`no_limit_notice`／`exhausted`。no_limit_noticeは現在のPro選択と制限通知がないことの観測で、実残量や次の回答の保証ではありません。上限不明・選択不明・通知未確認はunknownとして必要な確認を行います。未来または2分超の観測は再確認が必要です。回答後にもsurface/model/上限通知を確認します。
 
-`--live`なしは過去の分類呼出し互換用で、結果の`live_checked:false`を送信可能と扱いません。`true`も入力された観測の整合を検証しただけで、実UI・backendモデル・権限の機械的な証明ではありません。legacy `codex-app-tools`のsurfaceは`chat`であり、一時Chatを作成・操作しません。
+`--live`なしは過去の分類呼出し互換用で、結果の`live_checked:false`を送信可能と扱いません。`true`も入力された観測の整合を検証しただけで、実UI・backendモデル・権限の機械的な証明ではありません。legacy `codex-app-tools`は新規送信を拒否し、既存依頼の非送信回収に限ります。
 
 GitHubを必要とする新規 `browser-temporary` 送信では、上記liveに `"temporary_chat_mode": "personalized"` を追加します。その新しい空の一時ChatのUIで初回送信前に `Personalized`（「パーソナライズ」）の選択を観測できた場合だけ指定します。未観測は省略または `unknown`、非選択は `unpersonalized` とし、送信を止めます。選択の確認はGitHubの接続・操作・正確な対象権限や承認の確認に代わりません。送信済み依頼のreceive、ツール不要・他ツールの依頼およびlegacy入力の分類は従来どおりです。CLIは観測値の真実性を確認できません。
 

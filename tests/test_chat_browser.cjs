@@ -28,7 +28,7 @@ const receive = {
 function fixture() {
   const createHandoff = vm.runInNewContext(script + "\nproHandoff;", { URL });
   const prompt = "First line.\nSecond line.";
-  const state = { composer: "", submitted: "", saveClicks: 0, chatUrl: "https://chatgpt.com/?temporary-chat=true" };
+  const state = { composer: "", submitted: "", saveClicks: 0, temporary: true, chatUrl: "https://chatgpt.com/?temporary-chat=true" };
   const composer = {
     evaluate: async read => read({ value: state.composer }),
     fill: async text => { state.composer = text; },
@@ -47,17 +47,30 @@ function fixture() {
     },
   };
   const newHandoff = () => createHandoff({
-    chatTab: { url: async () => state.chatUrl }, transferTab, listening,
+    chatTab: { url: async () => state.chatUrl, playwright: { getByRole: (_role, { name }) => ({
+      filter: () => ({ count: async () => name.test("一時チャットをオフにする") ? Number(state.temporary) : 0 }),
+    }) } }, transferTab, listening,
   });
   return { newHandoff, composer, state };
 }
+
+test("temporary indicator lost after filling blocks send even if URL is unchanged", async () => {
+  const { newHandoff, composer, state } = fixture();
+  let clicks = 0;
+  await assert.rejects(newHandoff().send({ plan: dispatch, composer, temporaryChatUrl: state.chatUrl,
+    fillPrompt: async text => { await composer.fill(text); state.temporary = false; },
+    sendButton: { click: async () => { clicks++; } },
+  }), /Temporary Chat destination/);
+  assert.equal(clicks, 0);
+});
 
 function proseMirror(text, { chip = false, split = false, span = false, decorated = false, marker = false } = {}) {
   const paragraph = value => ({ nodeType: 1, tagName: "P", innerText: value || "\n", textContent: value,
     childNodes: span ? [{ nodeType: 1, tagName: "SPAN", attributes: { length: decorated && marker ? 2 : decorated || marker ? 1 : 0 },
       getAttribute: name => marker && name === "data-prompt-literal-paste" ? "" : null,
-      childNodes: [{ nodeType: 3 }, { nodeType: 1, tagName: "BR" }, { nodeType: 3 }] }] :
-      value ? [{ nodeType: 3 }] : [{ nodeType: 1, tagName: "BR" }] });
+      childNodes: value.split("\n").flatMap((part, i) => i ? [{ nodeType: 1, tagName: "BR", attributes: [] },
+        { nodeType: 3, textContent: part }] : [{ nodeType: 3, textContent: part }]) }] :
+      value ? [{ nodeType: 3, textContent: value }] : [{ nodeType: 1, tagName: "BR", attributes: [] }] });
   const childNodes = (split ? text.split("\n") : [text]).map(paragraph);
   if (chip) childNodes.push({ nodeType: 1, tagName: "SPAN", innerText: "chip" });
   return { tagName: "DIV", value: "", innerText: "", childNodes,
@@ -77,12 +90,12 @@ test("ProseMirror paragraphs preserve exact prompt and reject unexpected content
         decorated: ["decorated", "marked-extra"].includes(kind), marker: ["marked", "marked-extra"].includes(kind),
       })),
       fill: async text => { filled = true; state.composer = kind === "mismatch" ? text + "!" : text; },
-      getByText: (line, options) => ({ first: () => ({ waitFor: async wait => {
+      getByText: (line, options) => ({ filter: () => ({ or: () => ({ first: () => ({ waitFor: async wait => {
         assert.equal(line, "First line.");
         assert.equal(options.exact, false);
         assert.equal(wait.state, "visible");
         waited = true;
-      } }) }),
+      } }) }) }) }),
     };
     const result = await newHandoff().send({ plan: dispatch, composer, temporaryChatUrl: state.chatUrl,
       sendButton: { click: async () => { clicks++; } } });
@@ -90,6 +103,108 @@ test("ProseMirror paragraphs preserve exact prompt and reject unexpected content
       ["mismatch", "chip-after", "decorated", "marked-extra"].includes(kind) ? "prompt_mismatch" : "send_clicked");
     assert.equal(clicks, ["single", "paragraphs", "span", "marked"].includes(kind) ? 1 : 0);
     assert.equal(waited, kind !== "chip-before");
+  }
+});
+
+test("empty trailing-break sentinel accepts localized and cosmetic paragraph variations only", async () => {
+  for (const kind of ["valid", "english", "cosmetic-p-class", "missing-empty-flag", "extra-p-attribute",
+    "extra-br-attribute", "wrong-br-class", "extra-child", "not-empty", "extra-paragraph"]) {
+    const { newHandoff, state } = fixture();
+    let filled = false;
+    let clicks = 0;
+    const br = { nodeType: 1, tagName: "BR",
+      attributes: Array(kind === "extra-br-attribute" ? 2 : 1).fill({ name: "class" }),
+      getAttribute: name => name === "class" ? (kind === "wrong-br-class" ? "other" : "ProseMirror-trailingBreak") : null };
+    const attributes = { "data-empty-paragraph": kind === "missing-empty-flag" ? null : "true",
+      "data-placeholder": kind === "english" ? "Ask ChatGPT" : "ChatGPT に聞く",
+      class: kind === "cosmetic-p-class" ? "other-style" : "placeholder before:composer-placeholder" };
+    const paragraph = { nodeType: 1, tagName: "P", attributes: Array(kind === "extra-p-attribute" ? 4 : 3),
+      getAttribute: name => attributes[name] ?? null, textContent: kind === "not-empty" ? "x" : "",
+      childNodes: kind === "extra-child" ? [br, { nodeType: 3, textContent: "x" }] : [br] };
+    const initial = { tagName: "DIV", childNodes: kind === "extra-paragraph" ? [paragraph, paragraph] : [paragraph],
+      getAttribute: name => ({ class: "ProseMirror", contenteditable: "true" })[name] ?? null };
+    const composer = { evaluate: async read => read(filled ? proseMirror(state.composer) : initial),
+      fill: async text => { filled = true; state.composer = text; },
+      getByText: () => ({ filter: () => ({ or: () => ({ first: () => ({ waitFor: async () => {} }) }) }) }) };
+    const result = await newHandoff().send({ plan: dispatch, composer, temporaryChatUrl: state.chatUrl,
+      sendButton: { click: async () => { clicks++; } } });
+    const accepted = ["valid", "english", "cosmetic-p-class", "missing-empty-flag", "extra-p-attribute"].includes(kind);
+    assert.equal(result.event, accepted ? "send_clicked" : "composer_not_ready", kind);
+    assert.equal(filled, accepted, kind);
+    assert.equal(clicks, accepted ? 1 : 0, kind);
+  }
+});
+
+test("long text attachment expands uniquely and matches only observed literal and autolink nodes", async () => {
+  const url = "https://example.org/pr/63\\nBase";
+  const prefix = "Long " + "x".repeat(10374) + "\n";
+  const prompt = prefix + url + "\nEnd";
+  const attrNames = ["rich-link-source-app-id", "class", "data-appearance", "data-layout",
+    "data-font-weight", "data-tone", "data-underline-on-hover", "data-breakable-url",
+    "text-link-href", "data-rich-text-generated-autolink"];
+  for (const kind of ["valid", "observed-icon", "empty-decoration", "href-mismatch", "extra-attribute", "missing-attribute",
+    "changed-link", "changed-body", "ambiguous", "stale", "delayed", "reappeared", "preexisting", "destination-changed"]) {
+    const state = { body: "", attachment: kind === "preexisting" ? 1 : 0, clicks: 0, expansions: 0,
+      chatUrl: "https://chatgpt.com/?temporary-chat=true", expanded: false };
+    const text = value => ({ nodeType: 3, textContent: value });
+    const br = () => ({ nodeType: 1, tagName: "BR", attributes: [] });
+    const span = nodes => ({ nodeType: 1, tagName: "SPAN", attributes: [{ name: "data-prompt-literal-paste" }],
+      getAttribute: name => name === "data-prompt-literal-paste" ? "" : null, childNodes: nodes });
+    const editor = () => {
+      if (!state.expanded) return { tagName: "DIV", childNodes: [{ nodeType: 1, tagName: "P", textContent: "",
+        childNodes: [br()] }], getAttribute: name => ({ class: "ProseMirror", contenteditable: "true" })[name] ?? null };
+      if (kind === "reappeared") state.attachment = 1;
+      const linkText = kind === "changed-link" ? url + "!" : url;
+      const icon = { nodeType: 1, tagName: "SPAN", textContent: "", childNodes: [],
+        attributes: ["data-inline-url-icon", "class", "data-appearance", "data-layout", "data-font-weight",
+          "data-tone", "data-underline-on-hover", "aria-hidden", "contenteditable"].map(name => ({ name })) };
+      const nested = { nodeType: 1, tagName: "SPAN", attributes: [{ name: "data-prompt-literal-paste" }],
+        childNodes: [icon, text(linkText)] };
+      const inner = { nodeType: 1, tagName: "SPAN", attributes: [{ name: "class" }],
+        getAttribute: name => name === "class" ? "link" : null,
+        childNodes: kind === "observed-icon" ? [nested] : kind === "empty-decoration" ? [icon, text(linkText)] : [text(linkText)] };
+      const link = { nodeType: 1, tagName: "SPAN", textContent: linkText,
+        attributes: [...(kind === "missing-attribute" ? attrNames.slice(1) : attrNames),
+          ...(kind === "extra-attribute" ? ["unexpected"] : [])].map(name => ({ name })),
+        getAttribute: name => name === "text-link-href" ? (kind === "href-mismatch" ? linkText + "!" : linkText) : "x",
+        childNodes: [inner] };
+      return { tagName: "DIV", getAttribute: name => ({ class: "ProseMirror", contenteditable: "true" })[name] ?? null,
+        childNodes: [{ nodeType: 1, tagName: "P", textContent: prompt, innerText: prompt + "\n",
+          childNodes: [span([text(prefix.slice(0, -1)), br()]), link,
+            span([br(), text(kind === "changed-body" ? "changed" : "End")])] }] };
+    };
+    const composer = { evaluate: async read => read(editor()), fill: async value => {
+      assert.equal(value, prompt);
+      state.attachment = kind === "ambiguous" ? 2 : kind === "delayed" ? 0 : 1;
+      if (kind === "destination-changed") state.chatUrl = "https://chatgpt.com/";
+    }, getByText: () => ({ filter: () => ({
+      or: () => ({ first: () => ({ waitFor: async () => { if (kind === "delayed") state.attachment = 1; } }) }),
+      first: () => ({ waitFor: async () => { assert.equal(state.expanded, true); } }),
+    }) }) };
+    const chatTab = { url: async () => state.chatUrl, playwright: { getByRole: (_role, { name }) => ({ filter: () => ({
+      count: async () => name.test("一時チャットをオフにする") ? 1 : state.attachment,
+      click: async () => { state.expansions++; if (kind !== "stale" && kind !== "delayed") { state.attachment = 0; state.expanded = true; } },
+      waitFor: async ({ state: desired }) => { assert.equal(desired, "hidden");
+        if (kind === "stale") throw new Error("expansion timeout");
+        if (kind === "delayed") { state.attachment = 0; state.expanded = true; }
+      },
+    }) }) } };
+    const transferTab = { url: async () => listening.url, playwright: { getByLabel: () => ({
+      evaluate: async read => read({ value: prompt }),
+    }) } };
+    const createHandoff = vm.runInNewContext(script + "\nproHandoff;", { URL });
+    const handoff = createHandoff({ chatTab, transferTab, listening });
+    const args = { plan: dispatch, composer, temporaryChatUrl: "https://chatgpt.com/?temporary-chat=true",
+      sendButton: { click: async () => { state.clicks++; } } };
+    if (kind === "destination-changed") await assert.rejects(handoff.send(args), /destination/);
+    else if (kind === "stale") await assert.rejects(handoff.send(args), /expansion timeout/);
+    else {
+      const result = await handoff.send(args);
+      assert.equal(result.event, ["valid", "observed-icon", "empty-decoration", "delayed"].includes(kind) ? "send_clicked" : kind === "preexisting" ? "composer_not_ready" :
+        ["ambiguous", "stale", "reappeared"].includes(kind) ? "attachment_expansion_unconfirmed" : "prompt_mismatch", kind);
+    }
+    assert.equal(state.clicks, ["valid", "observed-icon", "empty-decoration", "delayed"].includes(kind) ? 1 : 0, kind);
+    assert.equal(state.expansions, ["ambiguous", "preexisting", "destination-changed"].includes(kind) ? 0 : 1, kind);
   }
 });
 

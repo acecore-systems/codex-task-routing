@@ -32,18 +32,48 @@ const proHandoff = (() => {
     if (editable === "true" || editable === "plaintext-only" || element.isContentEditable || prosemirror) {
       if (editable !== "true" || element.tagName !== "DIV" || !prosemirror) return null;
       const paragraphs = Array.from(element.childNodes);
-      const textOrBreak = node => node.nodeType === 3 || (node.nodeType === 1 && node.tagName === "BR");
-      const plainSpan = node => node.nodeType === 1 && node.tagName === "SPAN" &&
-        (node.attributes.length === 0 || (node.attributes.length === 1 &&
-          node.getAttribute("data-prompt-literal-paste") !== null)) &&
-        Array.from(node.childNodes).every(textOrBreak);
+      const literal = node => {
+        if (node.nodeType === 3) return node.textContent;
+        if (node.nodeType === 1 && node.tagName === "BR" && node.attributes.length === 0) return "\n";
+        if (node.nodeType !== 1 || node.tagName !== "SPAN") return null;
+        const children = Array.from(node.childNodes);
+        const linkAttributes = ["rich-link-source-app-id", "class", "data-appearance", "data-layout",
+          "data-font-weight", "data-tone", "data-underline-on-hover", "data-breakable-url",
+          "text-link-href", "data-rich-text-generated-autolink"];
+        const names = Array.from(node.attributes, attribute => attribute?.name);
+        // Generated autolinks may contain changing UI decoration. Only their
+        // root shape and literal destination are checked. The whole prompt is
+        // still compared exactly before sending.
+        if (names.length === linkAttributes.length && linkAttributes.every(name => names.includes(name)) &&
+            node.getAttribute("text-link-href") === node.textContent && node.textContent.length > 0) {
+          return node.textContent;
+        }
+        if (!(node.attributes.length === 0 || (node.attributes.length === 1 &&
+              node.getAttribute("data-prompt-literal-paste") !== null))) return null;
+        if (children.some(child => !(child.nodeType === 3 ||
+            (child.nodeType === 1 && child.tagName === "BR" && child.attributes.length === 0)))) return null;
+        return children.map(child => child.nodeType === 3 ? child.textContent : "\n").join("");
+      };
       if (!paragraphs.length || paragraphs.some(paragraph => paragraph.nodeType !== 1 ||
-          paragraph.tagName !== "P" || Array.from(paragraph.childNodes).some(node =>
-            !textOrBreak(node) && !plainSpan(node)))) return null;
-      if (paragraphs.length === 1 && paragraphs[0].childNodes.length === 1 &&
-          paragraphs[0].childNodes[0].nodeType === 1 && paragraphs[0].childNodes[0].tagName === "BR" &&
-          paragraphs[0].textContent === "") return "";
-      return paragraphs.map(paragraph => paragraph.innerText).join("\n");
+          paragraph.tagName !== "P")) return null;
+      const lines = [];
+      for (const paragraph of paragraphs) {
+        const children = Array.from(paragraph.childNodes);
+        if (children.length === 1 && children[0].nodeType === 1 && children[0].tagName === "BR" &&
+            paragraph.textContent === "") {
+          const br = children[0];
+          const placeholder = br.attributes.length === 1 &&
+            br.getAttribute("class") === "ProseMirror-trailingBreak";
+          if (br.attributes.length === 0 || placeholder) {
+            lines.push("");
+            continue;
+          }
+        }
+        const parts = children.map(literal);
+        if (parts.some(part => typeof part !== "string")) return null;
+        lines.push(parts.join(""));
+      }
+      return lines.join("\n");
     }
     return element.value ?? element.innerText;
   });
@@ -86,7 +116,10 @@ const proHandoff = (() => {
     }
 
     async function checkDestination(expected) {
-      if (!isProTemporaryDestination(expected) || await chatTab.url() !== expected) {
+      const temporaryOn = /^(?:一時チャットをオフにする|Turn off temporary chat)$/i;
+      if (!isProTemporaryDestination(expected) || await chatTab.url() !== expected ||
+          await visible(chatTab.playwright.getByRole("button", { name: temporaryOn })).count() !== 1 ||
+          await chatTab.url() !== expected) {
         throw new Error("The observed new Temporary Chat destination is unavailable or changed.");
       }
     }
@@ -108,7 +141,10 @@ const proHandoff = (() => {
         }
         await checkTransfer();
         const prompt = await readEditor(form.getByLabel("Request prompt", { exact: true }));
-        if (!prompt || await readComposer(composer) !== "") {
+        const expand = visible(chatTab.playwright.getByRole("button", {
+          name: /^(?:テキスト欄に表示|Show in text field)$/i,
+        }));
+        if (!prompt || await expand.count() !== 0 || await readComposer(composer) !== "") {
           return signal("composer_not_ready");
         }
         await checkDestination(temporaryChatUrl);
@@ -118,13 +154,25 @@ const proHandoff = (() => {
           await composer.fill(prompt);
           if (await isProseMirrorEditor(composer)) {
             const line = prompt.split("\n").find(part => part.length > 0);
-            if (line) await composer.getByText(line, { exact: false }).first()
-              .waitFor({ state: "visible", timeoutMs: 15_000 });
+            if (!line) return signal("prompt_mismatch");
+            const textReady = visible(composer.getByText(line, { exact: false }));
+            // Fill and expansion can settle after their calls return. Wait for
+            // an observed outcome, never refill or repeat an uncertain click.
+            await textReady.or(expand).first().waitFor({ state: "visible", timeoutMs: 15_000 });
+            const expansionCount = await expand.count();
+            if (expansionCount > 1) return signal("attachment_expansion_unconfirmed");
+            if (expansionCount === 1) {
+              await checkDestination(temporaryChatUrl);
+              await expand.click();
+              await expand.waitFor({ state: "hidden", timeoutMs: 15_000 });
+              await textReady.first().waitFor({ state: "visible", timeoutMs: 15_000 });
+            }
           }
         }
         if (await readComposer(composer) !== prompt) {
           return signal("prompt_mismatch");
         }
+        if (await expand.count() !== 0) return signal("attachment_expansion_unconfirmed");
         if (needsGitHub && await verifyGitHubSelection() !== true) {
           return signal("github_selection_unconfirmed");
         }
@@ -375,6 +423,7 @@ const runProHandoff = (() => {
     }
     const picker = button(pw, pickerName);
     await picker.waitFor({ state: "visible", timeoutMs: uiTimeout });
+    if (!await temporaryChatContext(tab, { phase })) return { reason: "temporary_chat_unconfirmed" };
     if (await picker.getAttribute("aria-expanded") !== "true") {
       await (await observedButton(pw, picker)).click({ timeoutMs: uiTimeout });
     }
@@ -386,6 +435,7 @@ const runProHandoff = (() => {
     if (select && Number.isSafeInteger(original) && Number.isSafeInteger(menu.maximum) &&
         menu.maximum - original <= 8) {
       while (!pro.test(menu.model ?? "") && menu.powerFocused && menu.current < menu.maximum) {
+        if (!await temporaryChatContext(tab, { phase })) return { reason: "temporary_chat_unconfirmed" };
         const previous = menu.current;
         await tab.pressKey(null, "Right");
         menu = await menuState(pw);
@@ -398,6 +448,7 @@ const runProHandoff = (() => {
     if (reason && select && Number.isSafeInteger(original)) {
       // Put the picker back if exploring from a different Power reached a lock.
       while (menu?.powerFocused && menu.current > original) {
+        if (!await temporaryChatContext(tab, { phase })) return { reason: "temporary_chat_unconfirmed" };
         const previous = menu.current;
         await tab.pressKey(null, "Left");
         menu = await menuState(pw);

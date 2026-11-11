@@ -91,9 +91,12 @@ class ChatAuthorizationTests(unittest.TestCase):
                     self.assertFalse(status['model_selection_observed'])
                     self.assertEqual(status['backend_model'], 'unknown')
                     context = routing._chatgpt_context(self.home, routing.PLUGIN_ROOT)
-                    self.assertIn('required UI model: Pro', context)
-                    self.assertIn('6 Pro / GPT-6 Pro', context)
-                    self.assertIn('transport_evidence is optional', context)
+                    if transport == 'browser-temporary':
+                        self.assertIn('required UI model: Pro', context)
+                        self.assertIn('6 Pro / GPT-6 Pro', context)
+                        self.assertIn('transport_evidence is optional', context)
+                    else:
+                        self.assertIn('new dispatch is disabled', context)
                     self.assertEqual(path.read_bytes(), before)
 
     def test_confirmed_transport_needs_no_second_evidence_object(self):

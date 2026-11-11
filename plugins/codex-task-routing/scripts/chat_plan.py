@@ -321,6 +321,10 @@ def check_live(live, *, now, phase="dispatch"):
     for name in ("route_enabled", "actions_authorized"):
         if not live[name]:
             return {"route": "not_ready", "reason": name + "_not_established"}
+    # Existing ordinary-chat requests may be reconciled, but never start or
+    # continue generation there. Config compatibility is not send authority.
+    if phase == "dispatch" and live["transport"] == "codex-app-tools":
+        return {"route": "not_ready", "reason": "legacy_transport_dispatch_disabled"}
     expected_surface = {"browser-temporary": "chat-temporary", "codex-app-tools": "chat"}.get(live["transport"])
     if expected_surface is None or live["surface"] != expected_surface:
         return {"route": "not_ready", "reason": "wrong_surface_or_transport"}

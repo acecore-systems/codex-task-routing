@@ -751,18 +751,24 @@ def _chatgpt_context(home: Path, plugin_root: Path, *, for_child: bool = False) 
     )
     _read_limited_utf8(reference, MAX_TEMPLATE_BYTES, "ChatGPT route instructions")
     transport = settings["transport"]
-    legacy_suffix = " (legacy)" if transport == "codex-app-tools" else ""
+    if transport == "codex-app-tools":
+        return ("ChatGPT legacy transport is configured; new dispatch is disabled. "
+                "Do not create or send to an ordinary chat. Root may reconcile an existing "
+                "request without sending, subject to current permission. Do not resend or "
+                "switch transport to bypass an uncertain outcome. Read "
+                "<plugin-root>/skills/task-routing/references/chatgpt.md.")
     eligibility = (
         "Only a root-direct Sol child with confirmed role/depth may use browser-temporary; "
         "other children and grandchildren cannot. " if for_child else
-        "Root or a root-direct Sol child may use browser-temporary; legacy transport stays root-only. "
+        "Root or a root-direct Sol child may use browser-temporary. "
     )
     return (
-        f"Opt-in ChatGPT Chat route is enabled (required UI model: Pro; legacy labels 6 Pro / GPT-6 Pro; transport: {transport}{legacy_suffix}). "
+        f"Opt-in ChatGPT Chat route is enabled (required UI model: Pro; legacy labels 6 Pro / GPT-6 Pro; transport: {transport}). "
         + eligibility
         + "Host restrictions and authorization apply. Choose suitable Cloud before Pro for independent repo work; "
         "follow the effective policy and overrides for consultation and other roles; retain a suitable owner. "
         "Before use read <plugin-root>/skills/task-routing/references/chatgpt.md and chat-authorization.md; "
+        "Positively observe Temporary Chat before selecting Pro and sending; stop if unconfirmed. Never use a history-bearing chat. "
         "unknown authorization blocks dispatch. Reuse valid approvals; transport_evidence is optional. Keep secrets local, one owner and one request; "
         "never resend on uncertainty, use Work or a model API."
     )
@@ -869,9 +875,9 @@ def hook_payload(
                      "Distinguish local-resource needs from a standard child's actual access and suitability; "
                      "apply the effective principles and host limits when deciding. "
                      "Return unresolved contradictions to root." if review else
-                     "Delegate with scope, authority, tests, acceptance and return conditions. Parent owns priorities, "
-                     "architecture, acceptance and important exceptions; Luna is the default for investigation, Terra for ordinary "
-                     "implementation and fixes, and Sol for difficult execution. Consult Pro when eligible and use Astra only when needed. Keep the owner through ordinary fixes and tests. "
+                     "Delegate scope, authority, tests, acceptance and return conditions. Parent owns priorities, "
+                     "architecture, acceptance and important exceptions. Default to Luna for investigation, Terra for ordinary "
+                     "implementation and fixes, and Sol for difficult execution. Consult eligible Pro; use Astra only when needed. Keep the owner for ordinary fixes and tests. "
                      "Parallel work needs useful independent parent work; serial specialist delegation needs host "
                      "permission and added value. Local-resource needs alone do not rule out a suitable child. "
                      "Do not retain ordinary implementation merely to create independent parent work. "
