@@ -43,7 +43,7 @@ REMINDER = (
 )
 OWNER_REMINDER = (
     'Task Routing: check the possible existing owner scope and actual access. If ordinary work remains '
-    'within a suitable owner scope, consider returning it to the same owner. Parent-only work, '
+    'within a suitable owner scope, return it to the same owner using an allowed resume or handoff. Parent-only work, '
     'acceptance, useful independent work, user prohibitions, custom policy and host restrictions remain valid. '
     'This non-blocking reminder does not establish call content or ownership.'
 )
@@ -197,13 +197,15 @@ def handle(payload, home):
                         db.execute('UPDATE turns SET reminded=1 WHERE session=? AND turn=?', (session, turn))
                         db.execute('COMMIT')
                         return {'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'additionalContext': EDIT_REMINDER}}
-                    active = db.execute('SELECT 1 FROM active WHERE session=? LIMIT 1', (session,)).fetchone()
                     db.execute('INSERT OR IGNORE INTO tools VALUES(?,?,?)', (session, turn, tool))
                     count = db.execute('SELECT COUNT(*) FROM tools WHERE session=? AND turn=?', (session, turn)).fetchone()[0]
                     if count >= THRESHOLD:
+                        owner_observed = row[0] or row[1] or db.execute(
+                            'SELECT 1 FROM active WHERE session=? LIMIT 1', (session,)
+                        ).fetchone()
                         db.execute('UPDATE turns SET reminded=1 WHERE session=? AND turn=?', (session, turn))
                         db.execute('COMMIT')
-                        reminder = OWNER_REMINDER if row[0] or row[1] or active else REMINDER
+                        reminder = OWNER_REMINDER if owner_observed else REMINDER
                         return {'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'additionalContext': reminder}}
         db.execute('COMMIT')
     finally:

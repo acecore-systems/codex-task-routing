@@ -117,7 +117,7 @@ class ParentGuardTests(unittest.TestCase):
         out = self.work('last')
         context = out['hookSpecificOutput']['additionalContext']
         self.assertEqual(context, guard.OWNER_REMINDER)
-        for phrase in ('scope', 'actual access', 'same owner', 'Parent-only', 'acceptance',
+        for phrase in ('scope', 'actual access', 'same owner', 'allowed resume or handoff', 'Parent-only', 'acceptance',
                        'user prohibitions', 'custom policy', 'host restrictions', 'non-blocking'):
             self.assertIn(phrase, context)
         self.assertIsNone(self.work('last'))
