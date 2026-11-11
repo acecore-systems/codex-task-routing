@@ -39,7 +39,7 @@ class ParentGuardTests(unittest.TestCase):
         self.assertEqual(result['hookSpecificOutput']['hookEventName'], 'UserPromptSubmit')
         context = result['hookSpecificOutput']['additionalContext']
         for phrase in ('substantial work', 'acceptance criteria', 'not the request label', 'one suitable execution owner',
-                       'failure diagnosis', 'separate pure evidence', 'effective policy',
+                       'failure diagnosis', 'builds, offline tests', 'from the start', 'separate pure evidence', 'effective policy',
                        'internal coupling and parent familiarity', 'Continue a suitable delegated owner',
                        'answer short questions normally', 'host permission', 'custom policy',
                        'same suitable resumable owner', 'Do not invent work or force delegation'):
@@ -417,7 +417,7 @@ class ExecutionOwnerPolicyTests(unittest.TestCase):
         for text in ('Luna/max', 'Terra/high', 'Sol/high', 'Pro', '失敗診断', '再試験',
                      '最小確認', '同時作業数・モデル別使用件数を目的にしない',
                      '現在の実model・effort', '有効な明示override', '完了成果と副作用',
-                     '未完了単位だけ', '文章指示を実際のeffort変更と扱わず',
+                     '未完了単位だけ', '文章指示を実際のeffort変更と扱わず', '親が先取りする前に',
                      'クライアントとnative hostの部品境界'):
             self.assertIn(text, checkpoint)
         for name in ('effective.md', 'model-routing-policy.md'):
