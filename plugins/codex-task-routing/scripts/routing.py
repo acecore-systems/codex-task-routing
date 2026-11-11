@@ -97,6 +97,7 @@ ROUTING_PRINCIPLE_KEYS = frozenset({
     "summary", "policy_intro", "policy_effort", "policy_classification",
     "policy_test_image", "policy_originals", "policy_retrieval", "policy_escalation",
     "policy_handoff", "policy_reasoning", "policy_parent", "policy_hierarchy", "policy_observation",
+    "policy_execution_owner",
 })
 SAFE_MODEL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 SAFE_TOKEN = re.compile(
@@ -936,6 +937,9 @@ def hook_payload(
         context += ("\nUse this single effective policy set. Use standard Codex agents for child delegation; "
                     "separately enabled routes require actual host permission and higher-priority instructions. "
                     "Hooks do not dispatch work; do not change the parent model or effort.")
+        context += ("\nAfter advice or parent-only action, "
+                    "check the execution-owner checkpoint in effective.md; return ordinary "
+                    "work to the suitable owner when allowed; honor custom policy and host limits.")
         if route_context:
             context += "\nUser-enabled conditional Chat route; current host instructions still apply: " + route_context
         if len(context.encode("utf-8")) > MAX_ADDITIONAL_CONTEXT_BYTES:
