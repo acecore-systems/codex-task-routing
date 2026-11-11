@@ -25,7 +25,6 @@ THRESHOLD = 4
 TTL_SECONDS = 7 * 86400
 MAX_ROWS = 512
 WORK_TOOLS = frozenset({'Bash', 'exec', 'exec_command', 'apply_patch'})
-OWNER_TOOLS = frozenset({'send_input', 'followup_task', 'wait_agent'})
 CONTACT_TOOLS = frozenset({'send_input', 'followup_task', 'send_message'})
 RESUME_REMINDER = (
     'Task Routing: a delegated owner stopped. If their unit still needs ordinary verification, '
@@ -41,6 +40,12 @@ REMINDER = (
     'reuse existing checks. '
     'Short work, parent-only operations, acceptance, user prohibitions and host limits remain valid. '
     'This is non-blocking and does not establish what the calls did.'
+)
+OWNER_REMINDER = (
+    'Task Routing: check the possible existing owner scope and actual access. If ordinary work remains '
+    'within a suitable owner scope, return it to the same owner using an allowed resume or handoff. Parent-only work, '
+    'acceptance, useful independent work, user prohibitions, custom policy and host restrictions remain valid. '
+    'This non-blocking reminder does not establish call content or ownership.'
 )
 PROMPT_REMINDER = (
     'Task Routing: retain only purpose, important decisions, permissions and acceptance as needed. '
@@ -121,7 +126,7 @@ def handle(payload, home):
             return None
         name = name.rsplit('.', 1)[-1].rsplit('__', 1)[-1]
         tool = _identifier(payload.get('tool_use_id'))
-        if tool is None or name not in WORK_TOOLS | OWNER_TOOLS | CONTACT_TOOLS | {'spawn_agent', 'Agent'}:
+        if tool is None or name not in WORK_TOOLS | CONTACT_TOOLS | {'spawn_agent', 'Agent'}:
             return None
     db = _database(home)
     try:
@@ -183,8 +188,6 @@ def handle(payload, home):
                     return {'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'additionalContext': RESUME_REMINDER}}
                 elif name in {'spawn_agent', 'Agent'}:
                     pass  # an attempted spawn is not a started child
-                elif name in OWNER_TOOLS:
-                    db.execute('UPDATE turns SET owner_contact=1 WHERE session=? AND turn=?', (session, turn))
                 elif not row[2]:
                     # Editing is an explicit operation; child start or contact cannot establish its scope.
                     early_edit = name == 'apply_patch' and db.execute(
@@ -194,19 +197,15 @@ def handle(payload, home):
                         db.execute('UPDATE turns SET reminded=1 WHERE session=? AND turn=?', (session, turn))
                         db.execute('COMMIT')
                         return {'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'additionalContext': EDIT_REMINDER}}
-                    if row[0] or row[1]:
-                        db.execute('COMMIT')
-                        return None
-                    active = db.execute('SELECT 1 FROM active WHERE session=? LIMIT 1', (session,)).fetchone()
-                    if active is not None:
-                        db.execute('COMMIT')
-                        return None
                     db.execute('INSERT OR IGNORE INTO tools VALUES(?,?,?)', (session, turn, tool))
                     count = db.execute('SELECT COUNT(*) FROM tools WHERE session=? AND turn=?', (session, turn)).fetchone()[0]
                     if count >= THRESHOLD:
+                        owner_observed = row[0] or row[1] or db.execute(
+                            'SELECT 1 FROM active WHERE session=? LIMIT 1', (session,)
+                        ).fetchone()
                         db.execute('UPDATE turns SET reminded=1 WHERE session=? AND turn=?', (session, turn))
                         db.execute('COMMIT')
-                        reminder = REMINDER
+                        reminder = OWNER_REMINDER if owner_observed else REMINDER
                         return {'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'additionalContext': reminder}}
         db.execute('COMMIT')
     finally:

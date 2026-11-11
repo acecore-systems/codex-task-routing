@@ -130,7 +130,7 @@
         ]
       },
       {
-        "matcher": ".*(Bash|exec|exec_command|apply_patch|spawn_agent|Agent|send_input|send_message|followup_task|wait_agent)$",
+        "matcher": ".*(Bash|exec|exec_command|apply_patch|spawn_agent|Agent|send_input|send_message|followup_task)$",
         "hooks": [
           {
             "type": "command",
