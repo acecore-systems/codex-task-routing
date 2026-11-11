@@ -72,7 +72,7 @@ class ParentGuardTests(unittest.TestCase):
         out = self.work(guard.THRESHOLD - 1)
         self.assertEqual(set(out['hookSpecificOutput']), {'hookEventName', 'additionalContext'})
         text = out['hookSpecificOutput']['additionalContext']
-        for phrase in ('Short work', 'parent-only operations', 'parent acceptance', 'existing delegated owner', 'user prohibition', 'host restrictions', 'not a requirement'):
+        for phrase in ('Short work', 'parent-only operations', 'acceptance', 'if unassigned delegate a complete unit', 'user prohibitions', 'host limits', 'non-blocking'):
             self.assertIn(phrase, text)
         self.assertIsNone(self.work(100))
         content = (self.home / 'codex-task-routing/parent-guard/state.sqlite3').read_bytes()
@@ -328,20 +328,41 @@ class ParentGuardTests(unittest.TestCase):
         self.assertNotIn(b'private-edit-patch', content)
 
     def test_early_edit_respects_existing_owner_child_and_open_turn(self):
-        for mode in ('active', 'contact', 'child', 'closed', 'interrupted', 'unknown'):
+        for mode in ('child', 'closed', 'interrupted', 'unknown'):
             with self.subTest(mode=mode):
                 session = 'edit-' + mode
                 if mode != 'unknown':
                     self.send('UserPromptSubmit', session_id=session)
-                if mode == 'active':
-                    self.send('SubagentStart', session_id=session, agent_id='owner')
-                elif mode == 'contact':
-                    self.send('PreToolUse', session_id=session, tool_name='send_input', tool_use_id='contact')
-                elif mode in ('closed', 'interrupted'):
+                if mode in ('closed', 'interrupted'):
                     self.send('Stop' if mode == 'closed' else 'Interrupt', session_id=session)
                 self.assertIsNone(self.send(
                     'PreToolUse', session_id=session, tool_name='functions__apply_patch', tool_use_id='edit',
                     agent_id='child' if mode == 'child' else None))
+
+    def test_edit_after_child_start_or_contact_checks_scope_once(self):
+        for mode in ('active', 'contact', 'stopped-contact'):
+            with self.subTest(mode=mode):
+                session = 'scope-' + mode
+                self.send('UserPromptSubmit', session_id=session)
+                if mode != 'contact':
+                    self.send('SubagentStart', session_id=session, agent_id='evidence-child')
+                if mode == 'stopped-contact':
+                    self.send('SubagentStop', session_id=session, agent_id='evidence-child')
+                if mode != 'active':
+                    self.send('PreToolUse', session_id=session, tool_name='send_message', tool_use_id='contact')
+                out = self.send('PreToolUse', session_id=session, tool_name='apply_patch', tool_use_id='edit')
+                self.assertEqual(out['hookSpecificOutput']['additionalContext'], guard.EDIT_REMINDER)
+                self.assertIn('existing owner and their scope', guard.EDIT_REMINDER)
+                self.assertIsNone(self.send('PreToolUse', session_id=session, tool_name='apply_patch', tool_use_id='edit'))
+
+    def test_short_checks_and_waits_do_not_trigger(self):
+        self.send('UserPromptSubmit')
+        for i in range(20):
+            self.assertIsNone(self.send('PreToolUse', tool_name='write_stdin', tool_use_id='wait-' + str(i)))
+        self.assertIsNone(self.work('check-1'))
+        self.assertIsNone(self.work('check-2'))
+        self.assertIsNone(self.work('check-3'))
+        self.assertIsNotNone(self.work('check-4'))
 
     def test_resume_notice_prevents_following_edit_and_threshold_duplicates(self):
         self.send('UserPromptSubmit', turn_id='first')
@@ -415,7 +436,7 @@ class ExecutionOwnerPolicyTests(unittest.TestCase):
         policy = self.routing.load_policy(codex_home=self.home)
         checkpoint = policy.resolve_token('principles.policy_execution_owner')
         for text in ('Luna/max', 'Terra/high', 'Sol/high', 'Pro', '失敗診断', '再試験',
-                     '最小確認', '同時作業数・モデル別使用件数を目的にしない',
+                     '最小確認', '分離できる通常の調査も先取りせず担当へ渡す', '同時作業数・モデル別使用件数を目的にしない',
                      '現在の実model・effort', '有効な明示override', '完了成果と副作用',
                      '未完了単位だけ', '文章指示を実際のeffort変更と扱わず', '親が先取りする前に',
                      'クライアントとnative hostの部品境界'):

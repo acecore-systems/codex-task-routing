@@ -21,10 +21,10 @@ if SCRIPT not in sys.path:
 from routing_core.common import RoutingError, _absolute, _assert_safe_ancestors, _is_link_or_reparse, _safe_mkdir, _reject_duplicate_pairs
 
 LIMIT = 512 * 1024
-THRESHOLD = 8
+THRESHOLD = 4
 TTL_SECONDS = 7 * 86400
 MAX_ROWS = 512
-WORK_TOOLS = frozenset({'Bash', 'exec', 'exec_command', 'apply_patch', 'write_stdin'})
+WORK_TOOLS = frozenset({'Bash', 'exec', 'exec_command', 'apply_patch'})
 OWNER_TOOLS = frozenset({'send_input', 'followup_task', 'wait_agent'})
 CONTACT_TOOLS = frozenset({'send_input', 'followup_task', 'send_message'})
 RESUME_REMINDER = (
@@ -36,15 +36,15 @@ RESUME_REMINDER = (
     'and approvals remain valid; do not force delegation or automate execution.'
 )
 REMINDER = (
-    'Task Routing: sustained local work without an observed delegate. Consider handing a complete '
-    'unit to an existing delegated owner or an allowed suitable child. Parent familiarity alone '
-    'is not a reason to retain future work: give a concise handoff and consider separation of '
-    'future editing, trials and tests. Short work, genuine parent-only operations, parent acceptance, '
-    'an existing delegated owner, user prohibition and host restrictions can justify continuing; '
-    'this is not a requirement to delegate.'
+    'Task Routing: check the suitable execution owner before continuing substantial work. '
+    'Resume a suitable owner, or if unassigned delegate a complete unit to an allowed suitable owner; '
+    'reuse existing checks. '
+    'Short work, parent-only operations, acceptance, user prohibitions and host limits remain valid. '
+    'This is non-blocking and does not establish what the calls did.'
 )
 PROMPT_REMINDER = (
-    'Task Routing: before substantial work, use the effective execution-owner checkpoint and '
+    'Task Routing: retain only purpose, important decisions, permissions and acceptance as needed. '
+    'Before substantial work, use the effective execution-owner checkpoint and '
     'acceptance criteria, not the request label. Continue a suitable delegated owner under the '
     'effective policy and custom policy; preserve parent model/effort and overrides. Keep implementation, '
     'builds, offline tests, failure diagnosis, fixes and retests with one suitable execution owner from the start; '
@@ -61,6 +61,7 @@ PROMPT_REMINDER = (
 
 EDIT_REMINDER = (
     'Task Routing: before this parent edit, check the effective execution-owner checkpoint. '
+    'Check the existing owner and their scope: a child start or contact alone does not establish ownership of this edit. '
     'For a substantial transferable unit, accepted Pro advice does not transfer execution ownership. '
     'Keep implementation, failure diagnosis, ordinary fixes and retesting with one suitable owner. '
     'Use an allowed delegation tool when suitable, preserving the effective custom policy, actual '
@@ -173,9 +174,9 @@ def handle(payload, home):
                 if name in CONTACT_TOOLS:
                     db.execute('DELETE FROM stopped WHERE session=?', (session,))
                     db.execute('UPDATE turns SET owner_contact=1 WHERE session=? AND turn=?', (session, turn))
-                elif name in WORK_TOOLS and db.execute('SELECT 1 FROM stopped WHERE session=?', (session,)).fetchone() and not db.execute('SELECT 1 FROM active WHERE session=? LIMIT 1', (session,)).fetchone():
+                elif not row[2] and name in WORK_TOOLS and db.execute('SELECT 1 FROM stopped WHERE session=?', (session,)).fetchone() and not db.execute('SELECT 1 FROM active WHERE session=? LIMIT 1', (session,)).fetchone():
                     db.execute('DELETE FROM stopped WHERE session=?', (session,))
-                    # A resume notice also consumes this turn's ordinary-work reminder.
+                    # Share the turn budget with edit/threshold notices; defer a later stop.
                     # Commit both changes together; a failed write must retain the stop.
                     db.execute('UPDATE turns SET reminded=1 WHERE session=? AND turn=?', (session, turn))
                     db.execute('COMMIT')
@@ -184,21 +185,28 @@ def handle(payload, home):
                     pass  # an attempted spawn is not a started child
                 elif name in OWNER_TOOLS:
                     db.execute('UPDATE turns SET owner_contact=1 WHERE session=? AND turn=?', (session, turn))
-                elif not row[0] and not row[1] and not row[2]:
+                elif not row[2]:
+                    # Editing is an explicit operation; child start or contact cannot establish its scope.
+                    early_edit = name == 'apply_patch' and db.execute(
+                        'SELECT 1 FROM open_turn WHERE session=? AND turn=?', (session, turn)
+                    ).fetchone() is not None
+                    if early_edit:
+                        db.execute('UPDATE turns SET reminded=1 WHERE session=? AND turn=?', (session, turn))
+                        db.execute('COMMIT')
+                        return {'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'additionalContext': EDIT_REMINDER}}
+                    if row[0] or row[1]:
+                        db.execute('COMMIT')
+                        return None
                     active = db.execute('SELECT 1 FROM active WHERE session=? LIMIT 1', (session,)).fetchone()
                     if active is not None:
                         db.execute('COMMIT')
                         return None
                     db.execute('INSERT OR IGNORE INTO tools VALUES(?,?,?)', (session, turn, tool))
                     count = db.execute('SELECT COUNT(*) FROM tools WHERE session=? AND turn=?', (session, turn)).fetchone()[0]
-                    # Only a known edit in an explicitly observed open root turn gets the early hint.
-                    early_edit = name == 'apply_patch' and db.execute(
-                        'SELECT 1 FROM open_turn WHERE session=? AND turn=?', (session, turn)
-                    ).fetchone() is not None
-                    if early_edit or count >= THRESHOLD:
+                    if count >= THRESHOLD:
                         db.execute('UPDATE turns SET reminded=1 WHERE session=? AND turn=?', (session, turn))
                         db.execute('COMMIT')
-                        reminder = EDIT_REMINDER if early_edit else REMINDER
+                        reminder = REMINDER
                         return {'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'additionalContext': reminder}}
         db.execute('COMMIT')
     finally:
