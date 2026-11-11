@@ -97,9 +97,9 @@ class FixedRoutingTests(unittest.TestCase):
         facts['needs'] = [read]
         legacy_live = {**self.live, 'surface': 'chat', 'transport': 'codex-app-tools',
                        'transport_evidence': {**self.live['transport_evidence'], 'transport': 'codex-app-tools'}}
-        self.assertEqual(cp.plan(facts, inventory, now=self.now, live=legacy_live)['reason'], 'capability_surface_mismatch')
+        self.assertEqual(cp.plan(facts, inventory, now=self.now, live=legacy_live)['reason'], 'legacy_transport_dispatch_disabled')
         inventory['surface'] = 'chat'
-        self.assertEqual(cp.plan(facts, inventory, now=self.now, live=legacy_live)['route'], 'chat_candidate')
+        self.assertEqual(cp.plan(facts, inventory, now=self.now, live=legacy_live)['reason'], 'legacy_transport_dispatch_disabled')
 
     def test_cli_preserves_inputs_and_marks_old_call_unchecked(self):
         facts = {**self.facts, 'delegation': self.serial}

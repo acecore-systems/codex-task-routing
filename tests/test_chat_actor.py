@@ -118,7 +118,7 @@ class ChatActorTests(unittest.TestCase):
             self.assertEqual(result['reason'], 'child_requires_browser_temporary')
         root = {k: v for k, v in live.items() if k != 'actor'}
         root['is_root'] = True
-        self.assertEqual(self.evaluate('dispatch', root)['next_action'], 'send_once')
+        self.assertEqual(self.evaluate('dispatch', root)['reason'], 'legacy_transport_dispatch_disabled')
         self.assertEqual(self.evaluate('receive', root)['next_action'], 'collect_reply')
 
     def test_child_retains_existing_permission_model_and_freshness_gates(self):

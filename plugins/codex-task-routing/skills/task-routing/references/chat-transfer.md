@@ -181,8 +181,9 @@ Set `temporaryChatUrl` to the URL observed in that new empty temporary Chat.
 The observed UI used `https://chatgpt.com/?temporary-chat=true`. This version
 requires HTTPS ChatGPT, the root path and exactly one `temporary-chat=true`
 parameter, allowing other observed query parameters. It compares the complete
-observed tab URL at entry, immediately before filling and before clicking.
-If the observed URL differs or changes, stop and inspect the original tab.
+observed tab URL and visible Temporary Chat on-indicator at entry, immediately
+before filling and before clicking. If either is absent or changes, stop and
+inspect the original tab; a URL alone does not establish Temporary Chat.
 After a send attempt, use wait and collect for the existing request in the
 same tab. The post-send conversation path may differ from the preflight URL.
 

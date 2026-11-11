@@ -86,7 +86,10 @@ const proHandoff = (() => {
     }
 
     async function checkDestination(expected) {
-      if (!isProTemporaryDestination(expected) || await chatTab.url() !== expected) {
+      const temporaryOn = /^(?:一時チャットをオフにする|Turn off temporary chat)$/i;
+      if (!isProTemporaryDestination(expected) || await chatTab.url() !== expected ||
+          await visible(chatTab.playwright.getByRole("button", { name: temporaryOn })).count() !== 1 ||
+          await chatTab.url() !== expected) {
         throw new Error("The observed new Temporary Chat destination is unavailable or changed.");
       }
     }
@@ -375,6 +378,7 @@ const runProHandoff = (() => {
     }
     const picker = button(pw, pickerName);
     await picker.waitFor({ state: "visible", timeoutMs: uiTimeout });
+    if (!await temporaryChatContext(tab, { phase })) return { reason: "temporary_chat_unconfirmed" };
     if (await picker.getAttribute("aria-expanded") !== "true") {
       await (await observedButton(pw, picker)).click({ timeoutMs: uiTimeout });
     }
@@ -386,6 +390,7 @@ const runProHandoff = (() => {
     if (select && Number.isSafeInteger(original) && Number.isSafeInteger(menu.maximum) &&
         menu.maximum - original <= 8) {
       while (!pro.test(menu.model ?? "") && menu.powerFocused && menu.current < menu.maximum) {
+        if (!await temporaryChatContext(tab, { phase })) return { reason: "temporary_chat_unconfirmed" };
         const previous = menu.current;
         await tab.pressKey(null, "Right");
         menu = await menuState(pw);
@@ -398,6 +403,7 @@ const runProHandoff = (() => {
     if (reason && select && Number.isSafeInteger(original)) {
       // Put the picker back if exploring from a different Power reached a lock.
       while (menu?.powerFocused && menu.current > original) {
+        if (!await temporaryChatContext(tab, { phase })) return { reason: "temporary_chat_unconfirmed" };
         const previous = menu.current;
         await tab.pressKey(null, "Left");
         menu = await menuState(pw);

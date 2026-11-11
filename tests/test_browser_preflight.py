@@ -132,8 +132,8 @@ class BrowserPreflightTests(unittest.TestCase):
     def test_inspection_is_not_silently_applied_to_other_transports(self):
         result = cp.inspection_plan({**self.live, 'transport': 'codex-app-tools'})
         self.assertEqual(result['reason'], 'inspection_requires_browser_temporary')
-        with self.assertRaises(cp.ChatRouteError):
-            self.evaluate(surface='chat', transport='codex-app-tools')
+        self.assertEqual(self.evaluate(surface='chat', transport='codex-app-tools')['reason'],
+                         'legacy_transport_dispatch_disabled')
 
     def test_malformed_browser_observations_are_not_truthy_permissions(self):
         for value in (None, True, [], {'unexpected': 'verified'}, {'send': True},

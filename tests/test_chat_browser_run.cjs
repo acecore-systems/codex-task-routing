@@ -65,7 +65,8 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
   timeoutMs = 1_000, waitTimeouts = 0, stopWaitTimeouts = 0, waitDenied = false,
   github = false, otherTool = false, legacy = false, mode = "personalized", selectionFails = false, revert = false,
   ambiguousMode = false, nav = "normal", receiveNav = nav, hideTemporaryAfterSend = false,
-  sentUrl = "https://chatgpt.com/c/fixture", changedDestination = false } = {}) {
+  sentUrl = "https://chatgpt.com/c/fixture", changedDestination = false,
+  loseTemporaryAtPicker = false } = {}) {
   let now = 0;
   class FixtureDate extends Date {
     static now() { return now; }
@@ -76,6 +77,7 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
     waits: 0, saved: null, handoff: false, phases: [], quotas: [], opened: [], closed: [],
     replyWaits: [], stopWaits: [], generationEnded: false,
     mode, modeMenu: false, modeClicks: 0, prepared: 0, modeObservedAfterDispatch: false,
+    pickerWaits: 0,
   };
   const model = () => state.power === 4 && !(changedModel && state.sent) ? "Pro" : "Extra High";
   const quotaVisible = () => (quotaAfterReply && state.ready) || (quotaBeforeReply && state.sent > 0);
@@ -93,6 +95,7 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
     "パーソナライズなし": control({ present: () => state.mode === "unpersonalized", click: () => { state.modeMenu = true; } }),
     "ChatGPT モデルを選択": control({
       text: model, attribute: () => String(state.menu), click: () => { state.menu = true; },
+      wait: () => { state.pickerWaits++; if (loseTemporaryAtPicker && state.pickerWaits === 2) state.temporary = false; },
     }),
     Stop: control({
       present: () => (runningAtQuota && state.sent > 0 && !state.ready) ||
@@ -257,6 +260,15 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
   } : otherTool ? async () => { state.prepared++; return {}; } : undefined;
   return { run: () => run({ cua, listening: input, timeoutMs, prepareTools }), state };
 }
+
+test("temporary mode lost before model selection blocks selection and send", async () => {
+  const { run, state } = fixture({ loseTemporaryAtPicker: true });
+  const result = await run();
+  assert.equal(result.reason, "temporary_chat_unconfirmed");
+  assert.equal(state.power, 3);
+  assert.equal(state.sent, 0);
+  assert.equal(state.menu, false);
+});
 
 test("both switches may disappear only after explicit Chat and temporary selection", async () => {
   const { run, state } = fixture({ switches: s => s.temporary ? "absent" : "chat" });

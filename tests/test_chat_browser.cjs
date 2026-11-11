@@ -28,7 +28,7 @@ const receive = {
 function fixture() {
   const createHandoff = vm.runInNewContext(script + "\nproHandoff;", { URL });
   const prompt = "First line.\nSecond line.";
-  const state = { composer: "", submitted: "", saveClicks: 0, chatUrl: "https://chatgpt.com/?temporary-chat=true" };
+  const state = { composer: "", submitted: "", saveClicks: 0, temporary: true, chatUrl: "https://chatgpt.com/?temporary-chat=true" };
   const composer = {
     evaluate: async read => read({ value: state.composer }),
     fill: async text => { state.composer = text; },
@@ -47,10 +47,22 @@ function fixture() {
     },
   };
   const newHandoff = () => createHandoff({
-    chatTab: { url: async () => state.chatUrl }, transferTab, listening,
+    chatTab: { url: async () => state.chatUrl, playwright: { getByRole: () => ({
+      filter: () => ({ count: async () => Number(state.temporary) }),
+    }) } }, transferTab, listening,
   });
   return { newHandoff, composer, state };
 }
+
+test("temporary indicator lost after filling blocks send even if URL is unchanged", async () => {
+  const { newHandoff, composer, state } = fixture();
+  let clicks = 0;
+  await assert.rejects(newHandoff().send({ plan: dispatch, composer, temporaryChatUrl: state.chatUrl,
+    fillPrompt: async text => { await composer.fill(text); state.temporary = false; },
+    sendButton: { click: async () => { clicks++; } },
+  }), /Temporary Chat destination/);
+  assert.equal(clicks, 0);
+});
 
 function proseMirror(text, { chip = false, split = false, span = false, decorated = false, marker = false } = {}) {
   const paragraph = value => ({ nodeType: 1, tagName: "P", innerText: value || "\n", textContent: value,

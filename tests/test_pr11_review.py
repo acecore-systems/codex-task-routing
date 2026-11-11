@@ -142,7 +142,7 @@ class FirstUseCapabilityTests(unittest.TestCase):
         self.assertEqual(self.evaluate(surface='chat', transport='codex-app-tools',
                                        transport_evidence={**self.live['transport_evidence'],
                                                            'transport': 'codex-app-tools'})['reason'],
-                         'capability_surface_mismatch')
+                         'legacy_transport_dispatch_disabled')
         self.capability['expires_at'] = self.now.isoformat()
         self.capability['observed_at'] = (self.now - timedelta(hours=1)).isoformat()
         self.assertEqual(self.evaluate()['route'], 'preflight_needed')
