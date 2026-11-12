@@ -54,17 +54,12 @@ MCPが必要な仕事では、この依頼に必要な対応だけを整理し�
 
 対応する内蔵Browser REPLでは、[一回実行の手順](chat-transfer.md#one-browser-call)を使います。ローカルで依頼と承認済みの操作条件を準備した後、一回のブラウザ呼び出しで新しい一時チャットの確認から回答の保存・返却まで進めます。以下の確認条件は一回実行でも同じです。個別の工程を扱う場合は[各工程のスクリプト](chat-transfer.md#browser-script-and-completion-signal)を使います。
 
-1. [Browserの実条件と解消手順](chat-authorization.md)に従い、補助CLIの `status` で経路が有効でtransportが`browser-temporary`であることを確認します。具体的な操作と既存承認を整理します。転送が未確認でも、許可された契約読取り・新規空ChatのUI確認を先に行えます。`--phase inspect`は送信を行わず、不足する確認の担当・場所・内容を返します。スコープ、材料、合格条件、許可操作は実送信前にそろえます。非公開資料はデータと送信先の承認を確認し、秘密や無関係な履歴を含めません。
-2. サポートされたBrowser操作で `https://chatgpt.com/` を開き、Chatが選択されWorkが未選択であることを確認して、新しい一時Chatを作成します。既存の下書きがある入力欄を使わず、ログイン入力は利用者に任せます。切替ボタンが一時Chatで消える場合は、同じ新規タブのURLと一時Chat表示で送信先を再確認します。切替ボタンが表示される場合は、Chat選択も再確認します。送信直前にUIのモデル表示が `Pro` であることを確認します。選択・確認できなければ送信しません。
-   GitHub操作が実際に必要な場合は初回送信前にその一時Chatで `Personalized`（日本語UIでは「パーソナライズ」）を選び、選択状態を確認します。一回実行のBrowserスクリプトは新しいworkflow metadataでGitHubが必要と分かる場合、必要に応じて選択し再確認します。初期状態が「パーソナライズなし」の場合もあります。プラスメニューのプラグイン検索からGitHubを選び、現在の入力欄で選択を確認します。選択できない・状態が不明ならGitHub付き依頼を送信しません。初回送信後に選択を変えられると仮定せず、既存依頼は再送しません。GitHubを使わない依頼にはこの条件を追加しません。
-   選択やチップだけでは操作・repo権限は証明されません。対象Chatで必要な操作と正確な対象の権限を別途確認します。PRマージは対象操作が提供され、元の依頼がそのPRのマージを許可し、必要条件を満たす場合だけ候補です。Codexの接続や別操作の実績を代用しません。
-3. 必要なら一時Chatのプラスメニューで、既存の承認済みプラグインまたはMCPを選択します。新しい接続・権限・独自MCPサーバーの追加はこの設定では承認されません。接続は材料の受け渡し方法の選択肢であり、一時Chatの起動やモデル指定の手段ではありません。
-4. `python <plugin-root>/scripts/chatgpt_route.py prepare --input request.json` で依頼を1回だけ準備します。出力された `prompt` を初回の実依頼として送ります。接続確認だけのハンドシェイクは送りません。
-5. 現在のUIと承認を確認した新しいlive.jsonを使い、`chat_plan.py --facts facts.json --inventory capabilities.json --live live.json`を実行します。ツール不要ならinventoryを省略できます。`chat_candidate`/`live_checked:true`/`preflight_complete:true`/`next_action:send_once`なら、親が既に確認した承認を再要求せず、以下の一度の送信へ進みます。CLIが許可を発行する意味ではなく、実際のホスト確認は維持します。不足があれば担当・場所・具体的条件を解消し、未確認の値をtrueにしません。`prompt` が複数行なら、`typeText` で打ち込まず、サポートされた `paste({format:'text'})` または対応した `fill` で入力します。送信前に入力欄の本文が `prompt` と一致し、既存の文面が混ざっていないことを確認してから、送信ボタンを1回だけ使います。選択したプラグインのチップが入力欄に含まれるUIでは、観測済みのチップだけを本文とは別に確認し、本文を任意に削除・trimして照合しません。確認できない場合は送信しません。
-6. 対応するBrowserでは [Browserスクリプト](chat-transfer.md#browser-script-and-completion-signal) を使い、同じ一時Chatの現在の回答が終了したことを示すUIを1回のツール呼出しで待ちます。完了シグナル後、`chat_plan.py --phase receive --live receive-live.json --request bundle.json`で、新しいUIモデル観測と既存依頼の回収条件を照合します。別途許可された回収はsendの拒否や新規生成枠の不足だけでは止まりません。経路所有者が同じ回答を取得します。`send_message_to_thread` と `read_thread` は一時Chatに使いません。前者は内部で `isTemporaryChat: false` を固定するためです。待機が時間切れになった場合は、元の依頼を未確定のまま保持し、同じタブで待機またはサポートされたhandoffを続けます。回答待ちや取得失敗で同じ依頼を再送したり、処理中のタブを勝手に閉じたりしません。
-7. [Browserスクリプト](chat-transfer.md#browser-script-and-completion-signal) の `collect` でローカルフォームに回答を渡した場合は、`saved` イベントで保存結果を受け取ります。明示した作業場所の `reply.json` を `python <plugin-root>/scripts/chatgpt_route.py validate --request bundle.json --response reply.json` で検証し、`request_id` と `input_sha256` を照合します。`completed` なら経路所有者が合格条件、出典と対象範囲、重要な反例を確認します。`blocked` と `missing_input` は不足や停止理由を確認します。有効な根拠を再利用して必要な成果物だけを保存します。
-8. UIの `Pro` 表示を回答取得後にも確認します。モデル表示が不明・変化した場合や上限通知が出た場合は受入を止め、モデル未確認の結果として扱います。別モデルを観測した時だけその事実を記録します。バックエンドのモデルIDは不明のままにし、自己申告で補完しません。
-9. 修正が必要なら、閉じる前の同じ一時Chatで、新しい依頼IDと材料hashを使って修正を依頼できます。結果の受入と保存が完了したら、一時Chatを保存せず閉じます。会話URL、会話ID、認証情報、入力全文、実会話ログを公開repoに保存しません。閉じた後に追加作業が必要なら、必要最小限の材料を新しい一時Chatへ渡し、新しい `request_id` で依頼します。
+1. [Browserの実条件と解消手順](chat-authorization.md)で現在の機能と既存承認を確認し、`chat_plan.py --phase inspect` で送信せず不足を整理します。依頼の材料・範囲・合格条件を確定し、秘密を含めません。
+2. `chatgpt_route.py prepare` で `bundle.json` を準備し、対応する `workflow.json` を同じ非公開作業ディレクトリに置き、そこに `reply.json` の保存先を指定します。[一回実行の手順](chat-transfer.md#one-browser-call)の `chat_transfer.py --workflow` を起動し、その `listening` を使って同梱 `chat_browser.js` の `runProHandoff` を対応Browser REPLで実行します。必要な接続選択は同手順の `prepareTools` で行い、権限と対象は別途確認します。
+3. runner は一時Chatを確認してからProを選択し、dispatch条件と本文を照合して一度だけ送信します。同じBrowser呼出し内で完了まで待ち、同じタブで新しいUI観測とreceive条件を確認して回答を保存します。ホスト上限や具体的な障害のときだけ回収を再開します。`pending` は同じrunnerの `resume` で同一タブ・依頼ID・hashを引き継ぎます。送信が不確定な場合も再送しません。
+4. 保存された回答を `chatgpt_route.py validate --request bundle.json --response reply.json` で照合し、経路所有者が合格条件・根拠・範囲を受け入れます。UIでProを確認できない場合は受入を止めます。完了後はタブを閉じ、個別の観測・本人入力・承認が必要な場合は対応するホスト手順に従います。
+
+runnerや必要なBrowser操作が使えない場合は理由を報告してPro経路を停止し、手動送信へ暗黙に切り替えません。個別の障害切り分けには[下位スクリプト](chat-transfer.md#lower-level-script-for-diagnosis-and-recovery)を使えます。`send_message_to_thread` と `read_thread` は一時Chatに使いません。
 
 具体的な修正を渡しても同じ問題が続く時、根拠が取得できない時、範囲拡大・新しい承認・現物作業が必要になった時は親へ戻します。新情報のない再送や、権限・接続不足をモデル変更で解決する試行はしません。明示開始された有限campaignで、取得できるCodex利用量、準備・検収・手戻りと品質を扱います。節約率は比較基準と測定範囲がそろう場合だけ示し、Chat回数や全会話収集を新たな目標にしません。
 

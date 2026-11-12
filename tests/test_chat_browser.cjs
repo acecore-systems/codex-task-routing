@@ -25,10 +25,10 @@ const receive = {
   transport: "browser-temporary", request_id, input_sha256,
 };
 
-function fixture() {
+function fixture(inputPrompt = "First line.\nSecond line.") {
   const createHandoff = vm.runInNewContext(script + "\nproHandoff;", { URL });
-  const prompt = "First line.\nSecond line.";
-  const state = { composer: "", submitted: "", saveClicks: 0, temporary: true, chatUrl: "https://chatgpt.com/?temporary-chat=true" };
+  const prompt = inputPrompt;
+  const state = { composer: "", submitted: "", saveClicks: 0, temporary: true, attachment: false, chatUrl: "https://chatgpt.com/?temporary-chat=true" };
   const composer = {
     evaluate: async read => read({ value: state.composer }),
     fill: async text => { state.composer = text; },
@@ -48,7 +48,7 @@ function fixture() {
   };
   const newHandoff = () => createHandoff({
     chatTab: { url: async () => state.chatUrl, playwright: { getByRole: (_role, { name }) => ({
-      filter: () => ({ count: async () => name.test("一時チャットをオフにする") ? Number(state.temporary) : 0 }),
+      filter: () => ({ count: async () => name.test("一時チャットをオフにする") ? Number(state.temporary) : name.test("貼り付けたテキストの添付を削除") ? Number(state.attachment) : 0 }),
     }) } }, transferTab, listening,
   });
   return { newHandoff, composer, state };
@@ -386,4 +386,61 @@ test("collection rechecks the conversation after reading the displayed reply", a
   await assert.rejects(handoff.collect({ plan: receive, finished, answer }), /original Chat/);
   assert.equal(state.submitted, "");
   assert.equal(state.saveClicks, 0);
+});
+
+
+test("long prompt is pasted in surrogate-safe chunks and compared before one click", async () => {
+  const text = "x".repeat(6999) + "😀" + "y".repeat(7000);
+  const { newHandoff, composer, state } = fixture(text);
+  const parts = [];
+  let clicks = 0;
+  composer.press = async key => assert.equal(key, "Control+End");
+  const fill = composer.fill;
+  composer.fill = async part => { parts.push(part); await fill(part); };
+  const result = await newHandoff().send({ plan: dispatch, composer, temporaryChatUrl: state.chatUrl,
+    pasteText: async part => { parts.push(part); state.composer += part; },
+    sendButton: { click: async () => { clicks++; } } });
+  assert.equal(result.event, "send_clicked");
+  assert.equal(parts.join(""), text);
+  assert.ok(parts.every(part => part.length <= 7000));
+  assert.ok(parts.every(part => !/[\uD800-\uDBFF]$/.test(part)));
+  assert.equal(clicks, 1);
+});
+
+test("failed or corrupted segmented paste never clicks send", async () => {
+  for (const failure of ["throw", "corrupt"]) {
+    const text = "a".repeat(14001);
+    const { newHandoff, composer, state } = fixture(text);
+    let clicks = 0;
+    composer.press = async () => {};
+    const call = newHandoff().send({ plan: dispatch, composer, temporaryChatUrl: state.chatUrl,
+      pasteText: async part => { if (failure === "throw") throw Error("paste failed"); state.composer += part + "!"; },
+      sendButton: { click: async () => { clicks++; } } });
+    if (failure === "throw") await assert.rejects(call, /paste failed/);
+    else assert.equal((await call).event, "prompt_mismatch");
+    assert.equal(clicks, 0);
+  }
+});
+
+
+test("attachment appearing during segmented paste prevents send", async () => {
+  const { newHandoff, composer, state } = fixture("x".repeat(14001));
+  let clicks = 0;
+  composer.press = async () => {};
+  const result = await newHandoff().send({ plan: dispatch, composer, temporaryChatUrl: state.chatUrl,
+    pasteText: async part => { state.composer += part; state.attachment = true; },
+    sendButton: { click: async () => { clicks++; } } });
+  assert.equal(result.event, "attachment_expansion_unconfirmed");
+  assert.equal(clicks, 0);
+});
+
+
+test("destination lost while moving caret stops before paste and send", async () => {
+  const { newHandoff, composer, state } = fixture("x".repeat(7001));
+  let pastes = 0, clicks = 0;
+  composer.press = async () => { state.temporary = false; };
+  await assert.rejects(newHandoff().send({ plan: dispatch, composer, temporaryChatUrl: state.chatUrl,
+    pasteText: async () => { pastes++; }, sendButton: { click: async () => { clicks++; } } }), /Temporary Chat destination/);
+  assert.equal(pastes, 0);
+  assert.equal(clicks, 0);
 });

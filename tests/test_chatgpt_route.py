@@ -128,6 +128,7 @@ class ChatGptRouteTestCase(unittest.TestCase):
         self.assertIn("use missing_input", bundle["prompt"])
         self.assertIn("Separate facts, inferences, and unverified or not-collected information", bundle["prompt"])
         self.assertIn("An allowed_tools list is an allowlist only", bundle["prompt"])
+        self.assertIn("inside one Markdown JSON code fence", bundle["prompt"])
 
     def test_validate_accepts_prepared_bundle_and_does_not_echo_result_material(self) -> None:
         bundle = chatgpt_route.prepare_payload(self.request())
@@ -162,7 +163,8 @@ class ChatGptRouteTestCase(unittest.TestCase):
             "result": "result",
             "evidence": [],
         }
-        for bundle in (current_bundle, v2_bundle, legacy_bundle):
+        previous_bundle = {**current_bundle, "prompt": chatgpt_route._build_prompt_legacy(request, current_bundle["input_sha256"])}
+        for bundle in (current_bundle, previous_bundle, v2_bundle, legacy_bundle):
             with self.subTest(prompt=bundle["prompt"]):
                 self.assertEqual(chatgpt_route.validate_exchange(bundle, response)["status"], "completed")
         for bundle in (current_bundle, v2_bundle, legacy_bundle):

@@ -23,6 +23,13 @@ function isProConversationDestination(url) {
   }
 }
 
+function validTransferListening(listening) {
+  return listening?.event === "listening" && typeof listening.request_id === "string" &&
+    listening.request_id.length > 0 && typeof listening.input_sha256 === "string" &&
+    /^[a-f0-9]{64}$/.test(listening.input_sha256) && typeof listening.url === "string" &&
+    /^http:\/\/127\.0\.0\.1:[0-9]+\/transfer\/[\w-]+$/.test(listening.url);
+}
+
 const proHandoff = (() => {
   const attempted = new Set();
   const visible = locator => locator.filter({ visible: true });
@@ -88,10 +95,9 @@ const proHandoff = (() => {
     }
   }
 
-  return function ({ chatTab, transferTab, listening }) {
+  return function ({ chatTab, transferTab, listening, expectedChatUrl, acceptTransition }) {
     const { request_id, input_sha256, url } = listening;
-    if (listening.event !== "listening" || !request_id || !/^[a-f0-9]{64}$/.test(input_sha256) ||
-        !/^http:\/\/127\.0\.0\.1:[0-9]+\/transfer\/[\w-]+$/.test(url)) {
+    if (!validTransferListening(listening)) {
       throw new Error("Use the local transfer helper's listening event.");
     }
     const signal = event => ({ event, request_id, input_sha256 });
@@ -101,7 +107,12 @@ const proHandoff = (() => {
     async function checkChat() {
       const current = await chatTab.url();
       const conversation = isProConversationDestination(current);
+      if (expectedChatUrl && current !== expectedChatUrl &&
+          isProTemporaryDestination(expectedChatUrl) && conversation &&
+          typeof acceptTransition === "function" && await acceptTransition(current) &&
+          await chatTab.url() === current) expectedChatUrl = current;
       if ((!isProTemporaryDestination(current) && !conversation) ||
+          (expectedChatUrl && current !== expectedChatUrl) ||
           (conversationUrl && current !== conversationUrl)) {
         throw new Error("The original Chat destination is unavailable or changed.");
       }
@@ -125,7 +136,7 @@ const proHandoff = (() => {
     }
 
     return {
-      async send({ plan, composer, sendButton, temporaryChatUrl, readComposer = readEditor, fillPrompt, verifyGitHubSelection }) {
+      async send({ plan, composer, sendButton, temporaryChatUrl, readComposer = readEditor, fillPrompt, pasteText, verifyGitHubSelection }) {
         requirePlan(plan, "chat_candidate", "send_once");
         if (plan.live_checked !== true || attempted.has(request_id)) {
           throw new Error("Send requires fresh live checks and a request never attempted.");
@@ -144,12 +155,32 @@ const proHandoff = (() => {
         const expand = visible(chatTab.playwright.getByRole("button", {
           name: /^(?:テキスト欄に表示|Show in text field)$/i,
         }));
-        if (!prompt || await expand.count() !== 0 || await readComposer(composer) !== "") {
+        const attachment = visible(chatTab.playwright.getByRole("button", {
+          name: /^(?:貼り付けたテキストの添付を削除|Remove pasted text attachment)$/i,
+        }));
+        if (!prompt || await expand.count() !== 0 || await attachment.count() !== 0 || await readComposer(composer) !== "") {
           return signal("composer_not_ready");
         }
         await checkDestination(temporaryChatUrl);
         if (fillPrompt) {
           await fillPrompt(prompt);
+        } else if (prompt.length > 7000 && typeof pasteText === "function") {
+          let offset = 0;
+          while (offset < prompt.length) {
+            let end = Math.min(offset + 7000, prompt.length);
+            if (end < prompt.length && /[\uD800-\uDBFF]/.test(prompt[end - 1]) &&
+                /[\uDC00-\uDFFF]/.test(prompt[end])) end--;
+            const part = prompt.slice(offset, end);
+            await checkDestination(temporaryChatUrl);
+            if (offset === 0) await composer.fill(part);
+            else {
+              await composer.press("Control+End");
+              await checkDestination(temporaryChatUrl);
+              await pasteText(part);
+            }
+            if (await expand.count() !== 0 || await attachment.count() !== 0) return signal("attachment_expansion_unconfirmed");
+            offset = end;
+          }
         } else {
           await composer.fill(prompt);
           if (await isProseMirrorEditor(composer)) {
@@ -172,7 +203,7 @@ const proHandoff = (() => {
         if (await readComposer(composer) !== prompt) {
           return signal("prompt_mismatch");
         }
-        if (await expand.count() !== 0) return signal("attachment_expansion_unconfirmed");
+        if (await expand.count() !== 0 || await attachment.count() !== 0) return signal("attachment_expansion_unconfirmed");
         if (needsGitHub && await verifyGitHubSelection() !== true) {
           return signal("github_selection_unconfirmed");
         }
@@ -244,6 +275,7 @@ const proHandoff = (() => {
 // evaluates both plans and acknowledges saving.
 const runProHandoff = (() => {
   const started = new Set();
+  const retained = new Map();
   const chatUrl = "https://chatgpt.com/";
   const uiTimeout = 15_000;
   const pro = /^(?:Pro|6 Pro|GPT-6 Pro)$/i;
@@ -304,6 +336,22 @@ const runProHandoff = (() => {
     return /^\/c\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(parsed.pathname) &&
       modes.length === 1 && modes[0] === "true" && Array.from(parsed.searchParams).length === 1 && !parsed.hash &&
       await visible(pw.getByText("一時チャット", { exact: true })).count() === 1;
+  }
+
+  async function confirmsRequestTurn(tab, request_id, input_sha256) {
+    if (!await temporaryChatContext(tab, { phase: "receive" })) return false;
+    const pw = tab.playwright;
+    const expected = `Set request_id to ${request_id} and input_sha256 to ${input_sha256}.`;
+    const user = visible(pw.locator('[data-message-author-role="user"]'));
+    if (await user.count() === 1) {
+      return await user.evaluate((element, marker) => element.innerText.includes(marker), expected);
+    }
+    const heading = pw.getByRole("heading", { name: userHeading, exact: true });
+    if (await heading.count() !== 1) return false;
+    return await heading.evaluate((element, marker) => {
+      const sibling = element.nextElementSibling;
+      return sibling?.tagName === "DIV" && sibling.getClientRects().length > 0 && sibling.innerText.includes(marker);
+    }, expected);
   }
 
   async function modeInChat(tab, expectedUrl, { select = false } = {}) {
@@ -505,9 +553,9 @@ const runProHandoff = (() => {
     }
   }
 
-  return async function ({ cua, listening, timeoutMs = 270_000, prepareTools }) {
-    if (listening?.event !== "listening" || listening.workflow !== true ||
-        typeof listening.request_id !== "string" || typeof listening.needs_tools !== "boolean" ||
+  return async function ({ cua, agent, listening, timeoutMs = 270_000, prepareTools, resume }) {
+    if (!validTransferListening(listening) || listening.workflow !== true ||
+        typeof listening.needs_tools !== "boolean" ||
         (listening.needs_github !== undefined && typeof listening.needs_github !== "boolean") ||
         (listening.needs_github === true && !listening.needs_tools) ||
         !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 3_600_000) {
@@ -515,78 +563,129 @@ const runProHandoff = (() => {
     }
     const { request_id, input_sha256 } = listening;
     const result = (event, fields) => ({ event, request_id, input_sha256, ...fields });
-    if (listening.needs_tools && typeof prepareTools !== "function") {
+    if (resume && (resume.event !== "pending" || !resume.tab_id ||
+        resume.request_id !== request_id || resume.input_sha256 !== input_sha256 ||
+        typeof resume.chat_url !== "string" ||
+        !(isProTemporaryDestination(resume.chat_url) || isProConversationDestination(resume.chat_url)))) {
+      return result("blocked", { phase: "setup", reason: "invalid_resume" });
+    }
+    if (!resume && listening.needs_tools && typeof prepareTools !== "function") {
       return result("blocked", { phase: "setup", reason: "tool_selection_adapter_required" });
     }
-    if (started.has(request_id)) return result("blocked", { phase: "setup", reason: "already_started" });
+    if (!resume && started.has(request_id)) return result("blocked", { phase: "setup", reason: "already_started" });
     started.add(request_id);
     let chat;
     let transfer;
-    let attempted = false;
+    let attempted = Boolean(resume);
     let phase = "open";
+    let marked = false;
+    let binding = resume ? { tab_id: resume.tab_id, chat_url: resume.chat_url } : null;
     const stop = reason => result(attempted ? "pending" : "blocked", { phase, reason });
 
     async function exchange() {
-      chat = await cua.createBrowserTab("iab", "about:blank", { visible: false });
-      if (!await openTemporary(chat)) return stop("empty_temporary_chat_unconfirmed");
-      const temporaryChatUrl = await chat.url();
-      if (!isProTemporaryDestination(temporaryChatUrl)) return stop("temporary_chat_destination_unconfirmed");
-      phase = "model";
-      let observation = await observePro(chat, { select: true });
-      if (observation.reason) return stop(observation.reason);
-      if (listening.needs_github === true && !await modeInChat(chat, temporaryChatUrl, { select: true })) {
-        return stop("personalized_unconfirmed");
-      }
-      // Scope and connector authority are still checked by the existing plan.
-      // An adapter performs only the permitted UI actions inside this call.
-      const tools = listening.needs_tools ? await prepareTools(chat) : {};
-      if (!tools) return stop("tool_selection_unconfirmed");
-      if (listening.needs_github === true && !await modeInChat(chat, temporaryChatUrl)) {
-        return stop("personalized_unconfirmed");
-      }
-      if (listening.needs_tools) {
-        observation = await observePro(chat);
-        if (observation.reason) return stop(observation.reason);
-      }
-      const pw = chat.playwright;
-      const composer = pw.getByRole("textbox", { name: composerName });
-      await composer.waitFor({ state: "visible", timeoutMs: uiTimeout });
-      phase = "transfer";
-      transfer = await cua.createBrowserTab("iab", "about:blank", { visible: false });
-      const handoff = proHandoff({ chatTab: chat, transferTab: transfer, listening });
-      await transfer.goto(listening.url);
-      phase = "dispatch";
-      const dispatch = await planFor(transfer, listening, "dispatch", {
-        ...observation.live,
-        temporary_chat_mode: listening.needs_github === true ? "personalized" : tools.temporaryChatMode ?? "unknown",
-      });
-      if (dispatch.next_action !== "send_once") return stop(dispatch.reason ?? "dispatch_unconfirmed");
-      // Older listening events may only identify GitHub in the dispatch plan.
-      if (listening.needs_github !== true &&
-          dispatch.checks?.some(check => check.tool?.toLowerCase() === "github") &&
-          !await modeInChat(chat, temporaryChatUrl)) {
-        return stop("personalized_unconfirmed");
-      }
-      phase = "send";
-      const sent = await handoff.send({
-        plan: dispatch, composer, temporaryChatUrl,
-        sendButton: { click: async () => {
-          const send = await observedButton(pw, button(pw, sendName));
-          // Keep the original tab even if the outer REPL call is interrupted.
-          await chat.markHandoff();
-          const current = button(pw, pickerName);
-          if (!await temporaryChatContext(chat) ||
-              !pro.test((await current.innerText({ timeoutMs: uiTimeout })).trim()) ||
-              await chat.url() !== temporaryChatUrl) {
-            throw new Error("Pro selection changed before sending.");
+      if (resume) {
+        const cached = retained.get(request_id);
+        if (cached && (cached.tab.id !== resume.tab_id || cached.url !== resume.chat_url)) {
+          return stop("resume_binding_mismatch");
+        }
+        chat = cached ? cached.tab : await (await agent.browsers.get("iab")).tabs.get(resume.tab_id);
+        const currentUrl = await chat.url();
+        if (chat.id !== resume.tab_id) {
+          chat = null;
+          return stop("resume_binding_mismatch");
+        }
+        if (currentUrl !== resume.chat_url) {
+          // A click may have succeeded before its acknowledgement failed. Only
+          // this original temporary tab may advance once to its matching turn.
+          if (!isProTemporaryDestination(resume.chat_url) || !isProConversationDestination(currentUrl) ||
+              !await confirmsRequestTurn(chat, request_id, input_sha256) || await chat.url() !== currentUrl) {
+            chat = null;
+            return stop("resume_binding_mismatch");
           }
-          attempted = true;
-          await send.click({ timeoutMs: uiTimeout });
-        } },
-        readComposer: tools.readComposer, fillPrompt: tools.fillPrompt,
-        verifyGitHubSelection: tools.verifyGitHubSelection,
-      });
-      if (sent.event !== "send_clicked") return stop(sent.event);
+          binding = { tab_id: chat.id, chat_url: currentUrl };
+        }
+        // Handoff marks are scoped to the current host turn.
+        await chat.markHandoff();
+        marked = true;
+        transfer = await cua.createBrowserTab("iab", "about:blank", { visible: false });
+        await transfer.goto(listening.url);
+      } else {
+        chat = await cua.createBrowserTab("iab", "about:blank", { visible: false });
+        if (!await openTemporary(chat)) return stop("empty_temporary_chat_unconfirmed");
+        const temporaryChatUrl = await chat.url();
+        if (!isProTemporaryDestination(temporaryChatUrl)) return stop("temporary_chat_destination_unconfirmed");
+        phase = "model";
+        let observation = await observePro(chat, { select: true });
+        if (observation.reason) return stop(observation.reason);
+        if (listening.needs_github === true && !await modeInChat(chat, temporaryChatUrl, { select: true })) {
+          return stop("personalized_unconfirmed");
+        }
+        // Scope and connector authority are still checked by the existing plan.
+        // An adapter performs only the permitted UI actions inside this call.
+        const tools = listening.needs_tools ? await prepareTools(chat) : {};
+        if (!tools) return stop("tool_selection_unconfirmed");
+        if (listening.needs_github === true && !await modeInChat(chat, temporaryChatUrl)) {
+          return stop("personalized_unconfirmed");
+        }
+        if (listening.needs_tools) {
+          observation = await observePro(chat);
+          if (observation.reason) return stop(observation.reason);
+        }
+        const pw = chat.playwright;
+        const composer = pw.getByRole("textbox", { name: composerName });
+        await composer.waitFor({ state: "visible", timeoutMs: uiTimeout });
+        phase = "transfer";
+        transfer = await cua.createBrowserTab("iab", "about:blank", { visible: false });
+        const handoff = proHandoff({ chatTab: chat, transferTab: transfer, listening });
+        await transfer.goto(listening.url);
+        phase = "dispatch";
+        const dispatch = await planFor(transfer, listening, "dispatch", {
+          ...observation.live,
+          temporary_chat_mode: listening.needs_github === true ? "personalized" : tools.temporaryChatMode ?? "unknown",
+        });
+        if (dispatch.next_action !== "send_once") return stop(dispatch.reason ?? "dispatch_unconfirmed");
+        // Older listening events may only identify GitHub in the dispatch plan.
+        if (listening.needs_github !== true &&
+            dispatch.checks?.some(check => check.tool?.toLowerCase() === "github") &&
+            !await modeInChat(chat, temporaryChatUrl)) {
+          return stop("personalized_unconfirmed");
+        }
+        phase = "send";
+        const sent = await handoff.send({
+          plan: dispatch, composer, temporaryChatUrl,
+          sendButton: { click: async () => {
+            const send = await observedButton(pw, button(pw, sendName));
+            // Keep the original tab even if the outer REPL call is interrupted.
+            await chat.markHandoff();
+            marked = true;
+            const current = button(pw, pickerName);
+            if (!await temporaryChatContext(chat) ||
+                !pro.test((await current.innerText({ timeoutMs: uiTimeout })).trim()) ||
+                await chat.url() !== temporaryChatUrl) {
+              throw new Error("Pro selection changed before sending.");
+            }
+            attempted = true;
+            binding = { tab_id: chat.id, chat_url: temporaryChatUrl };
+            await send.click({ timeoutMs: uiTimeout });
+            const sentUrl = await chat.url();
+            if (isProTemporaryDestination(sentUrl) || isProConversationDestination(sentUrl)) {
+              binding = { tab_id: chat.id, chat_url: sentUrl };
+            }
+          } },
+          readComposer: tools.readComposer, fillPrompt: tools.fillPrompt,
+          pasteText: part => chat.paste(null, part, { format: "text" }),
+          verifyGitHubSelection: tools.verifyGitHubSelection,
+        });
+        if (sent.event !== "send_clicked") return stop(sent.event);
+      }
+      const handoff = proHandoff({ chatTab: chat, transferTab: transfer, listening,
+        expectedChatUrl: binding.chat_url,
+        acceptTransition: async current => {
+          if (!await confirmsRequestTurn(chat, request_id, input_sha256) || await chat.url() !== current) return false;
+          binding = { tab_id: chat.id, chat_url: current };
+          return true;
+        } });
+      const pw = chat.playwright;
       phase = "wait";
       const assistant = pw.locator("main article").filter({ has: pw.locator(answerSelector) });
       const legacyFinished = button(assistant, copyName);
@@ -620,31 +719,35 @@ const runProHandoff = (() => {
         await waitFor(generating.first(), { state: "hidden" });
       }
       phase = "receive";
-      observation = await observePro(chat, { phase });
+      const observation = await observePro(chat, { phase });
       if (observation.reason) return stop(observation.reason);
+      if (!await confirmsRequestTurn(chat, request_id, input_sha256)) return stop("request_turn_unconfirmed");
       const receive = await planFor(transfer, listening, "receive", observation.live);
       if (receive.next_action !== "collect_reply") return stop(receive.reason ?? "receive_unconfirmed");
       const message = assistant.locator(answerSelector);
       const jsonBlock = visible(message.locator("pre code"));
       let answer;
       if (await visible(legacyFinished).count() === 1) {
-        answer = await jsonBlock.count() === 1 ? jsonBlock : message;
+        const blocks = await jsonBlock.count();
+        if (blocks > 1) return stop("multiple_json_blocks");
+        answer = blocks === 1 ? { filter() { return this; }, count: async () => 1,
+          innerText: () => jsonBlock.evaluate(element => element.textContent) } : message;
       } else {
         const heading = pw.getByRole("heading", { name: assistantHeading, exact: true });
         const user = pw.getByRole("heading", { name: userHeading, exact: true });
         const readSibling = locator => locator.evaluate(element => {
           const sibling = element.nextElementSibling;
-          return sibling?.tagName === "DIV" && sibling.getClientRects().length ? sibling.innerText : null;
+          if (sibling?.tagName !== "DIV" || !sibling.getClientRects().length) return null;
+          const blocks = Array.from(sibling.querySelectorAll("pre code")).filter(code => code.getClientRects().length);
+          if (blocks.length > 1) return null;
+          return blocks.length === 1 ? blocks[0].textContent : sibling.innerText;
         });
         answer = {
           filter() { return this; },
           async count() {
             if (await heading.count() !== 1 || await user.count() !== 1 ||
                 await visible(headingFinished).count() !== 1) return 0;
-            const userText = await readSibling(user);
-            return typeof userText === "string" &&
-              userText.includes(`Set request_id to ${request_id} and input_sha256 to ${input_sha256}.`) &&
-              await readSibling(heading) !== null ? 1 : 0;
+            return await readSibling(heading) !== null ? 1 : 0;
           },
           innerText: () => readSibling(heading),
         };
@@ -669,7 +772,22 @@ const runProHandoff = (() => {
       outcome = stop(error instanceof WaitTimeoutError ? "wait_timeout" : "browser_operation_unconfirmed");
     }
     const retainChat = outcome.event === "pending";
+    if (retainChat && chat && marked) {
+      try {
+        const url = await chat.url();
+        if ((!binding || binding.chat_url === url) &&
+            (isProTemporaryDestination(url) || isProConversationDestination(url))) {
+          binding = { tab_id: chat.id, chat_url: url };
+        }
+        if (binding && binding.tab_id === chat.id) {
+          retained.set(request_id, { tab: chat, url: binding.chat_url });
+        }
+      } catch { /* Leave the request unresolved without a new binding. */ }
+    }
     const cleanup = await disposeTabs(cua, chat, transfer, retainChat);
-    return { ...outcome, ...(cleanup.handoff_marked && cleanup.chat_closed === false && { tab_id: chat.id }), cleanup };
+    cleanup.handoff_marked = retainChat && marked;
+    if (!retainChat) retained.delete(request_id);
+    return { ...outcome, ...(retainChat && chat && marked && { tab_id: chat.id }),
+      ...(binding && retainChat && { ...binding }), cleanup };
   };
 })();

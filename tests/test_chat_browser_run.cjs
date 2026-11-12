@@ -15,7 +15,7 @@ const listening = {
 };
 const reply = {
   request_id: listening.request_id, input_sha256: listening.input_sha256,
-  status: "completed", result: "Verified answer", evidence: [],
+  status: "completed", result: "Nested JSON: {\"path\":\"C:\\\\tmp\"}\nSecond line", evidence: [],
 };
 
 function control({ present = () => true, text = () => "", attribute = () => null,
@@ -24,10 +24,10 @@ function control({ present = () => true, text = () => "", attribute = () => null
     count: async () => Number(present()),
     innerText: async () => text(),
     getAttribute: async name => attribute(name),
-    evaluate: async read => read({
-      value: text(), innerText: text(),
+    evaluate: async (read, arg) => read({
+      value: text(), innerText: text(), textContent: text(),
       getAttribute: key => key === "aria-label" ? locator.name : attribute(key),
-    }),
+    }, arg),
     async waitFor(options = {}) {
       if (wait) await wait(options);
       assert.equal(present(), options.state !== "hidden");
@@ -66,18 +66,19 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
   github = false, otherTool = false, legacy = false, mode = "personalized", selectionFails = false, revert = false,
   ambiguousMode = false, nav = "normal", receiveNav = nav, hideTemporaryAfterSend = false,
   sentUrl = "https://chatgpt.com/c/fixture", changedDestination = false,
-  loseTemporaryAtPicker = false } = {}) {
+  loseTemporaryAtPicker = false, transitionDuringWait = false, codeBlocks = 0, longUser = false } = {}) {
   let now = 0;
   class FixtureDate extends Date {
     static now() { return now; }
   }
-  const run = vm.runInNewContext(source + "\nrunProHandoff;", { URL, Date: FixtureDate });
+  const makeRunner = () => vm.runInNewContext(source + "\nrunProHandoff;", { URL, Date: FixtureDate });
+  let run = makeRunner();
   const state = {
     temporary: false, menu: false, power: 3, composer: "", sent: 0, ready: false,
     waits: 0, saved: null, handoff: false, phases: [], quotas: [], opened: [], closed: [],
     replyWaits: [], stopWaits: [], generationEnded: false,
     mode, modeMenu: false, modeClicks: 0, prepared: 0, modeObservedAfterDispatch: false,
-    pickerWaits: 0,
+    pickerWaits: 0, marks: 0, gotos: [], forceUrl: null,
   };
   const model = () => state.power === 4 && !(changedModel && state.sent) ? "Pro" : "Extra High";
   const quotaVisible = () => (quotaAfterReply && state.ready) || (quotaBeforeReply && state.sent > 0);
@@ -123,6 +124,7 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
   const waitForReply = ({ timeoutMs }) => {
     assert.equal(state.sent, 1);
     state.waits++;
+    if (transitionDuringWait) state.forceUrl = sentUrl;
     state.replyWaits.push(timeoutMs);
     if (waitDenied) throw new Error("Browser permission denied");
     if (state.waits <= waitTimeouts) {
@@ -136,7 +138,10 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
   final.waitFor = async options => { await waitForReply(options); };
   const newFinal = control({ present: () => state.ready && newMarkup, wait: waitForReply });
   const message = control({ present: () => state.ready, text: () => JSON.stringify(reply) });
-  message.locator = () => control({ present: () => false });
+  message.locator = () => ({
+    filter: () => ({ count: async () => codeBlocks,
+      evaluate: async read => read({ textContent: JSON.stringify(reply) }) }),
+  });
   const article = control({ present: () => state.ready && !newMarkup });
   article.getByRole = () => final;
   article.locator = () => message;
@@ -147,6 +152,13 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
       locked: quotaVisible() && model() === "Pro",
     }),
     locator: selector => {
+      if (selector === '[data-message-author-role="user"]') {
+        const user = control({ present: () => state.sent > 0 && !newMarkup,
+          text: () => `${longUser ? "x".repeat(131000) : ""}Set request_id to ${listening.request_id} and input_sha256 to ${wrongUserHash ? "0".repeat(64) : listening.input_sha256}.`,
+        });
+        if (longUser) user.innerText = async () => { throw Error("user text must remain in browser"); };
+        return user;
+      }
       if (selector === "main article") return article;
       if (selector === ".turn-action-controls") return { getByRole: () => newFinal };
       const absent = control({ present: () => false });
@@ -166,11 +178,13 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
       if (role === "menu") return control({ present: () => state.menu });
       if (role === "heading") {
         const heading = control({ present: () => oldHeading || (newMarkup && state.sent > 0) });
-        heading.evaluate = async read => read({ nextElementSibling: {
-          tagName: "DIV", getClientRects: () => [1], innerText: name === "あなたの発言:"
+        heading.evaluate = async (read, arg) => read({ nextElementSibling: {
+          tagName: "DIV", getClientRects: () => [1], querySelectorAll: () => Array.from({ length: codeBlocks }, () => ({
+            getClientRects: () => [1], textContent: JSON.stringify(reply),
+          })), innerText: name === "あなたの発言:"
             ? `Set request_id to ${listening.request_id} and input_sha256 to ${wrongUserHash ? "0".repeat(64) : listening.input_sha256}.`
             : JSON.stringify(wrongReplyHash ? { ...reply, input_sha256: "0".repeat(64) } : reply),
-        } });
+        } }, arg);
         return heading;
       }
       if (role === "alert") return { filter: ({ hasText }) => control({
@@ -225,7 +239,13 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
       envelope = { phase, request_id: reply.request_id, input_sha256: reply.input_sha256, plan };
     } }),
   };
+  const tabs = new Map();
   const cua = {
+    async getTab(id, options) {
+      assert.equal(options.browser, "iab");
+      if (!tabs.has(id) || state.closed.includes(id)) throw new Error("tab unavailable");
+      return tabs.get(id);
+    },
     async createBrowserTab(browser, target, options) {
       assert.equal(browser, "iab");
       assert.equal(target, "about:blank");
@@ -233,24 +253,33 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
       const id = String(state.opened.length + 1);
       state.opened.push(id);
       let url = target;
-      return {
+      const tab = {
         id, playwright: id === "1" ? chat : local,
         url: async () => id === "1" && state.temporary
-          ? (state.sent ? (changedDestination && state.ready ? "https://chatgpt.com/c/other" :
-            newMarkup ? conversationUrl : sentUrl) : temporaryUrl)
+          ? (state.forceUrl ?? (state.sent && !transitionDuringWait ? (changedDestination && state.ready ? "https://chatgpt.com/c/other" :
+            newMarkup ? conversationUrl : sentUrl) : temporaryUrl))
           : url,
-        goto: async next => { url = next; },
+        goto: async next => { state.gotos.push(next); url = next; },
         async pressKey(_, key) {
           assert.equal(state.menu, true);
           if (key === "Escape") state.menu = false;
           else state.power += key === "Right" ? 1 : -1;
         },
         close: async () => { state.closed.push(id); },
-        markHandoff: async () => { state.handoff = true; },
+        markHandoff: async () => { state.handoff = true; state.marks++; },
       };
+      tabs.set(id, tab);
+      return tab;
     },
     listTabs: async () => state.opened.filter(id => !state.closed.includes(id)).map(id => ({ id })),
   };
+  const agent = { browsers: { get: async browser => {
+    assert.equal(browser, "iab");
+    return { tabs: { get: async id => {
+      if (!tabs.has(id) || state.closed.includes(id)) throw new Error("tab unavailable");
+      return tabs.get(id);
+    } } };
+  } } };
   const input = { ...listening, needs_tools: github || otherTool };
   if (!legacy) input.needs_github = github;
   const prepareTools = github ? async () => {
@@ -258,7 +287,8 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
     if (revert) state.mode = "unpersonalized";
     return { temporaryChatMode: "personalized", verifyGitHubSelection: async () => true };
   } : otherTool ? async () => { state.prepared++; return {}; } : undefined;
-  return { run: () => run({ cua, listening: input, timeoutMs, prepareTools }), state };
+  return { run: (resume, override = {}) => run({ cua, agent, listening: { ...input, ...override }, timeoutMs, prepareTools, resume }),
+    restart: () => { run = makeRunner(); }, state };
 }
 
 test("temporary mode lost before model selection blocks selection and send", async () => {
@@ -316,7 +346,7 @@ test("heading-layout conversation with a different user request is never saved",
   const { run, state } = fixture({ newMarkup: true, wrongUserHash: true });
   const result = await run();
   assert.equal(result.event, "pending");
-  assert.equal(result.reason, "completion_unconfirmed");
+  assert.equal(result.reason, "request_turn_unconfirmed");
   assert.equal(state.saved, null);
 });
 
@@ -633,4 +663,112 @@ test("receive retains the original request when its context or destination chang
     assert.equal(state.modeObservedAfterDispatch, false);
     assert.equal((await run()).reason, "already_started");
   }
+});
+
+
+test("pending timeout resumes the same tab without a second dispatch", async () => {
+  const { run, state } = fixture({ timeoutMs: 1000, waitTimeouts: 1 });
+  const pending = await run();
+  assert.equal(pending.event, "pending");
+  assert.equal(pending.tab_id, "1");
+  const saved = await run(pending);
+  assert.equal(saved.event, "saved");
+  assert.equal(state.sent, 1);
+  assert.deepEqual(state.phases, ["dispatch", "receive"]);
+});
+
+test("resume rejects a different request hash without opening or sending", async () => {
+  const { run, state } = fixture({ timeoutMs: 1000, waitTimeouts: 1 });
+  const pending = await run();
+  assert.equal((await run({ ...pending, input_sha256: "0".repeat(64) })).reason, "invalid_resume");
+  assert.equal(state.sent, 1);
+  assert.deepEqual(state.opened, ["1", "2"]);
+});
+
+
+test("invalid transfer URL is rejected before any tab or navigation for both paths", async () => {
+  const { run, state } = fixture({ timeoutMs: 1000, waitTimeouts: 1 });
+  assert.equal((await run(undefined, { url: "https://example.com/transfer/x" })).reason, "invalid_workflow_input");
+  assert.deepEqual(state.opened, []);
+  const pending = await run();
+  const opened = state.opened.length, gotos = state.gotos.length;
+  assert.equal((await run(pending, { url: "http://evil.example/transfer/x" })).reason, "invalid_workflow_input");
+  assert.equal(state.opened.length, opened);
+  assert.equal(state.gotos.length, gotos);
+});
+
+test("resume rejects changed tab or URL before opening the form or reading the reply", async () => {
+  const { run, state } = fixture({ timeoutMs: 1000, waitTimeouts: 1 });
+  const pending = await run();
+  const opens = state.opened.length;
+  assert.equal((await run({ ...pending, tab_id: "2" })).reason, "resume_binding_mismatch");
+  state.forceUrl = "https://chatgpt.com/c/different";
+  assert.equal((await run(pending)).reason, "resume_binding_mismatch");
+  assert.equal(state.opened.length, opens);
+  assert.equal(state.saved, null);
+});
+
+test("restart rebinds without cua.getTab and marks each pending turn", async () => {
+  const { run, restart, state } = fixture({ timeoutMs: 1000, waitTimeouts: 2 });
+  const first = await run();
+  assert.equal(state.marks, 1);
+  restart();
+  const second = await run(first);
+  assert.equal(second.event, "pending");
+  assert.equal(state.marks, 2);
+  assert.equal((await run(second)).event, "saved");
+  assert.equal(state.marks, 3);
+  assert.equal(state.sent, 1);
+});
+
+
+test("ambiguous successful click resumes the same matching conversation without resending", async () => {
+  const { run, state } = fixture({ ambiguousClick: true });
+  const pending = await run();
+  assert.equal(pending.event, "pending");
+  assert.equal(pending.chat_url, "https://chatgpt.com/?temporary-chat=true");
+  assert.equal((await run(pending)).event, "saved");
+  assert.equal(state.sent, 1);
+});
+
+test("ambiguous click cannot bind a conversation with a different request marker", async () => {
+  const { run, state } = fixture({ ambiguousClick: true, wrongUserHash: true });
+  const pending = await run();
+  assert.equal((await run(pending)).reason, "resume_binding_mismatch");
+  assert.equal(state.saved, null);
+  assert.equal(state.sent, 1);
+});
+
+
+test("wait binds a matching root-to-conversation transition in one call", async () => {
+  const { run, state } = fixture({ transitionDuringWait: true });
+  assert.equal((await run()).event, "saved");
+  assert.equal(state.sent, 1);
+});
+
+test("both response layouts read a single code block and reject multiple", async () => {
+  for (const newMarkup of [false, true]) {
+    for (const codeBlocks of [1, 2]) {
+      const { run, state } = fixture({ newMarkup, codeBlocks });
+      const result = await run();
+      assert.equal(result.event, codeBlocks === 1 ? "saved" : "pending");
+      assert.equal(Boolean(state.saved), codeBlocks === 1);
+    }
+  }
+});
+
+
+test("long user marker is checked inside the browser as a boolean", async () => {
+  const { run, state } = fixture({ transitionDuringWait: true, longUser: true });
+  assert.equal((await run()).event, "saved");
+  assert.equal(state.sent, 1);
+});
+
+
+test("legacy layout rejects a different request marker before receive preflight", async () => {
+  const { run, state } = fixture({ wrongUserHash: true });
+  const result = await run();
+  assert.equal(result.reason, "request_turn_unconfirmed");
+  assert.deepEqual(state.phases, ["dispatch"]);
+  assert.equal(state.saved, null);
 });

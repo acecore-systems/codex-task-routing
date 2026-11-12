@@ -36,6 +36,11 @@ Keep the prompt and final answer in Browser-runtime variables; report only
 length, equality, selected model, and the save result to the parent. Never
 read browser storage, session state or private application APIs to move data.
 
+If the loopback form cannot be reached from IAB, check the host permission needed
+for the same local helper process (on some Windows sandbox configurations it may
+need an allowed elevation). Keep the helper bound to loopback; do not switch
+browsers or transports to bypass a denial.
+
 If a long pasted prompt appears as a text attachment, use the observed
 "Show in text field" (「テキスト欄に表示」) control to expand it back into the
 composer before checking the exact body. Do not send based only on an
@@ -109,19 +114,26 @@ python <plugin-root>/scripts/chat_transfer.py --bundle bundle.json --reply reply
 Place `bundle.json`, `workflow.json`, and the `reply.json` target in the same
 private job directory. The workflow requires this layout. The startup
 `listening` event supplies the loopback URL and the request identifiers.
-Once the host has initialized the in-app Browser REPL, send the trusted
-`<plugin-root>/scripts/chat_browser.js` definition and the invocation below
-together as one script. If the definition is already loaded, send only the
-invocation. Set the tool timeout to cover setup, generation, and saving, and
+In a fresh supported `cua_repl` session, first call only `await cua.getState()`
+and read the returned Browser documentation. Then copy the complete trusted
+`<plugin-root>/scripts/chat_browser.js` source literally into the next `cua_repl.js`
+`code` input, followed by the invocation below. Supply `listening` as the parsed
+startup JSON object (for example `const listening = { ... };` using the actual
+startup metadata), without emitting its URL or request contents. If the definition
+is already loaded in that session, send only the invocation. Do not use eval, CDP,
+an alternate browser driver, or an unsupported file-loading API. Set the tool timeout to cover setup, generation, and saving, and
 keep the local helper alive for the whole exchange. When the desktop Browser
 limits one tool call to 300 seconds, leave time for setup and saving within
-that limit. A longer model run can be recovered from the same tab.
+that limit. Set the `cua_repl.js` tool argument `timeout_ms: 300000` when supported; use the runner default `timeoutMs: 270_000` to leave time for setup and saving. Wait for completion in that one call; short locator waits remain inside the runner. Use receive-only recovery only after the host limit or a concrete failure, never for routine progress polling.
 
 ```js
-const handoffResult = await runProHandoff({ cua, listening, timeoutMs: 270_000 });
+const handoffResult = await runProHandoff({ cua, agent, listening, timeoutMs: 270_000 });
 // Include the reply only if it may appear in the caller's tool output.
 nodeRepl.write({
   event: handoffResult.event,
+  request_id: handoffResult.request_id,
+  input_sha256: handoffResult.input_sha256,
+  tab_id: handoffResult.tab_id,
   completion: handoffResult.completion,
   status: handoffResult.status,
   quota_state: handoffResult.quota_state,
@@ -134,7 +146,7 @@ nodeRepl.write({
 The runner uses the documented Browser actions with hidden tabs. It opens a
 new empty Temporary Chat, confirms the destination and the displayed Pro
 selection, dispatches once, waits for the current response, checks receive,
-and saves the correlated reply. It waits in short Browser intervals within the
+and saves the correlated reply. For ordinary long text it fills the first segment and pastes later segments of at most 7,000 UTF-16 units, preserving surrogate pairs, then checks the exact whole text and attachment indicators before sending. It waits in short Browser intervals within the
 same call and returns `pending` with `reason: "wait_timeout"` if the response
 wait expires. It returns `completion: "reply_ready"`,
 `event: "saved"`, and `reply` in the same result after the helper acknowledges
@@ -165,11 +177,45 @@ condition through the supported host.
 The helper refuses a dispatch if the reply path already exists and reserves
 the request ID before returning `send_once`. Continue in the original job
 directory and retain its reservation. A `pending` result after an attempted
-send can include the original tab for recovery. Use the existing receive
-procedure on that tab with the same bundle and output path.
+send includes `tab_id` when retention is confirmed. Keep that entire metadata
+object as `pending` and resume the same runner with the same `listening` (or a
+new listening event from a restarted helper using the same bundle, workflow and
+reply target):
+
+```js
+const pending = handoffResult; // Keep the whole object private in this REPL.
+const recovered = await runProHandoff({ cua, agent, listening, resume: pending, timeoutMs: 270_000 });
+nodeRepl.write({ event: recovered.event, reason: recovered.reason, phase: recovered.phase,
+  request_id: recovered.request_id, input_sha256: recovered.input_sha256,
+  tab_id: recovered.tab_id, status: recovered.status });
+```
+
+The pending object includes the private Chat URL: do not print it or store it in a
+public repository. Preserve the complete object across calls; after a REPL restart,
+restore it only from an authorized private handoff. The runner reuses its tab handle
+when available and otherwise binds it with `agent.browsers.get("iab").tabs.get(id)`;
+it does not use `cua.getTab`, which emits an initial accessibility snapshot. It checks
+the bound tab ID and URL before reading a reply and refreshes the handoff mark each
+turn. If recovery is still pending, retain the complete `recovered` object and pass
+it as `resume` on the next call. A root-to-conversation transition on the same original tab is accepted only after
+Temporary Chat and the request marker match. Any later conversation URL change
+stops automatic recovery for inspection of the original tab.
+
+This receive-only path selects the original IAB tab, verifies the request ID/hash,
+runs fresh receive preflight and cannot send. If the tab ID or original metadata
+is unavailable, stop and inspect the original handoff; do not create a replacement
+Chat or resend. Check the reply target before restarting a helper after an
+unconfirmed save.
 A timeout or an unknown click outcome leaves the request unresolved.
 
-## Browser script and completion signal
+<a id="browser-script-and-completion-signal"></a>
+
+## Lower-level script for diagnosis and recovery
+
+Use this lower-level interface only for individual diagnostics or an existing
+legacy handoff that the one-call runner cannot handle, with the same authorization
+and no resend. If the supported runner or required Browser operations are unavailable,
+stop and report the limitation; do not silently switch to manual transfer.
 
 With a Browser REPL that supports Playwright locators, load the definition in
 `<plugin-root>/scripts/chat_browser.js` once into that REPL. Run it explicitly
