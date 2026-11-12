@@ -18,6 +18,9 @@ class MusePilotTests(unittest.TestCase):
   for state in ('intent','unverified','completed','unknown'):
    self.assertFalse(pilot.prepare({**self.facts,'status':{**self.status,'state':state}})['ready'])
   self.assertFalse(pilot.prepare({**self.facts,'status':None})['ready'])
+ def test_prepare_rejects_unverified_status_with_failure_stage(self):
+  result=pilot.prepare({**self.facts,'status':{**self.status,'state':'unverified','failureStage':'response_shape'}})
+  self.assertFalse(result['ready']);self.assertNotIn('arguments',result)
  def test_scope_hash_and_bytes_fail_closed(self):
   for changes in ({'actor':'child'},{'data_class':'private'},{'prompt_sha256':'0'*64},{'host_authorized':1},{'prompt':'あ'*1366}):
    with self.subTest(changes=changes),self.assertRaises(ValueError):pilot.prepare({**self.facts,**changes})
@@ -26,5 +29,8 @@ class MusePilotTests(unittest.TestCase):
   verified=pilot.verify(dict(schema_version=1,prompt_sha256=self.digest,result=result));self.assertTrue(verified['verified']);self.assertFalse(verified['accepted']);self.assertTrue(verified['parent_acceptance_required'])
   for change in ({'state':'unverified'},{'model':'other'},{'inputSha256':'0'*64},{'text':''},{'outputTokens':True}):
    with self.subTest(change=change),self.assertRaises(ValueError):pilot.verify(dict(schema_version=1,prompt_sha256=self.digest,result={**result,**change}))
+ def test_verify_rejects_completed_without_text(self):
+  result=dict(state='completed',inputSha256=self.digest,model='muse-ember-1.0',effort=None,inputTokens=2,outputTokens=3,seconds=1.0,text=None)
+  with self.assertRaises(ValueError):pilot.verify(dict(schema_version=1,prompt_sha256=self.digest,result=result))
 
 if __name__=='__main__':unittest.main()
