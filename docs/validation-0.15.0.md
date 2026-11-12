@@ -60,7 +60,7 @@ receipt保存失敗、原依頼・cwd・revision照合、元taskの読取り回�
 
 CLI adapterは公式sourceの形式を実装するが、profileの指定だけでinstalled binary互換性や実権限を証明しない。
 差分bytesの保存と内容受入を分け、適用・commit・push・マージ・本番反映をrunnerから自動実行しない。
-詳細は[明示CLI transport](../plugins/codex-task-routing/skills/task-routing/references/cloud-transport.md)を参照。
+詳細は当時の明示CLI transport（`cloud-transport.md`、現在の配布物からは削除済み）を参照。
 
 追加実装の初回CI（commit `fb352c0`、[Checks #72](https://github.com/acecore-systems/codex-task-routing/actions/runs/39458937363)）は
 Windows/Python 3.11・3.13、Ubuntu/Python 3.11で成功したが、macOS/Python 3.11で失敗した。
