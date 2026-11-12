@@ -95,7 +95,7 @@ const proHandoff = (() => {
     }
   }
 
-  return function ({ chatTab, transferTab, listening, expectedChatUrl }) {
+  return function ({ chatTab, transferTab, listening, expectedChatUrl, acceptTransition }) {
     const { request_id, input_sha256, url } = listening;
     if (!validTransferListening(listening)) {
       throw new Error("Use the local transfer helper's listening event.");
@@ -107,6 +107,10 @@ const proHandoff = (() => {
     async function checkChat() {
       const current = await chatTab.url();
       const conversation = isProConversationDestination(current);
+      if (expectedChatUrl && current !== expectedChatUrl &&
+          isProTemporaryDestination(expectedChatUrl) && conversation &&
+          typeof acceptTransition === "function" && await acceptTransition(current) &&
+          await chatTab.url() === current) expectedChatUrl = current;
       if ((!isProTemporaryDestination(current) && !conversation) ||
           (expectedChatUrl && current !== expectedChatUrl) ||
           (conversationUrl && current !== conversationUrl)) {
@@ -132,7 +136,7 @@ const proHandoff = (() => {
     }
 
     return {
-      async send({ plan, composer, sendButton, temporaryChatUrl, readComposer = readEditor, fillPrompt, verifyGitHubSelection }) {
+      async send({ plan, composer, sendButton, temporaryChatUrl, readComposer = readEditor, fillPrompt, pasteText, verifyGitHubSelection }) {
         requirePlan(plan, "chat_candidate", "send_once");
         if (plan.live_checked !== true || attempted.has(request_id)) {
           throw new Error("Send requires fresh live checks and a request never attempted.");
@@ -151,12 +155,32 @@ const proHandoff = (() => {
         const expand = visible(chatTab.playwright.getByRole("button", {
           name: /^(?:テキスト欄に表示|Show in text field)$/i,
         }));
-        if (!prompt || await expand.count() !== 0 || await readComposer(composer) !== "") {
+        const attachment = visible(chatTab.playwright.getByRole("button", {
+          name: /^(?:貼り付けたテキストの添付を削除|Remove pasted text attachment)$/i,
+        }));
+        if (!prompt || await expand.count() !== 0 || await attachment.count() !== 0 || await readComposer(composer) !== "") {
           return signal("composer_not_ready");
         }
         await checkDestination(temporaryChatUrl);
         if (fillPrompt) {
           await fillPrompt(prompt);
+        } else if (prompt.length > 7000 && typeof pasteText === "function") {
+          let offset = 0;
+          while (offset < prompt.length) {
+            let end = Math.min(offset + 7000, prompt.length);
+            if (end < prompt.length && /[\uD800-\uDBFF]/.test(prompt[end - 1]) &&
+                /[\uDC00-\uDFFF]/.test(prompt[end])) end--;
+            const part = prompt.slice(offset, end);
+            await checkDestination(temporaryChatUrl);
+            if (offset === 0) await composer.fill(part);
+            else {
+              await composer.press("Control+End");
+              await checkDestination(temporaryChatUrl);
+              await pasteText(part);
+            }
+            if (await expand.count() !== 0 || await attachment.count() !== 0) return signal("attachment_expansion_unconfirmed");
+            offset = end;
+          }
         } else {
           await composer.fill(prompt);
           if (await isProseMirrorEditor(composer)) {
@@ -179,7 +203,7 @@ const proHandoff = (() => {
         if (await readComposer(composer) !== prompt) {
           return signal("prompt_mismatch");
         }
-        if (await expand.count() !== 0) return signal("attachment_expansion_unconfirmed");
+        if (await expand.count() !== 0 || await attachment.count() !== 0) return signal("attachment_expansion_unconfirmed");
         if (needsGitHub && await verifyGitHubSelection() !== true) {
           return signal("github_selection_unconfirmed");
         }
@@ -320,15 +344,14 @@ const runProHandoff = (() => {
     const expected = `Set request_id to ${request_id} and input_sha256 to ${input_sha256}.`;
     const user = visible(pw.locator('[data-message-author-role="user"]'));
     if (await user.count() === 1) {
-      return (await user.innerText({ timeoutMs: uiTimeout })).includes(expected);
+      return await user.evaluate((element, marker) => element.innerText.includes(marker), expected);
     }
     const heading = pw.getByRole("heading", { name: userHeading, exact: true });
     if (await heading.count() !== 1) return false;
-    const body = await heading.evaluate(element => {
+    return await heading.evaluate((element, marker) => {
       const sibling = element.nextElementSibling;
-      return sibling?.tagName === "DIV" && sibling.getClientRects().length ? sibling.innerText : null;
-    });
-    return typeof body === "string" && body.includes(expected);
+      return sibling?.tagName === "DIV" && sibling.getClientRects().length > 0 && sibling.innerText.includes(marker);
+    }, expected);
   }
 
   async function modeInChat(tab, expectedUrl, { select = false } = {}) {
@@ -650,12 +673,18 @@ const runProHandoff = (() => {
             }
           } },
           readComposer: tools.readComposer, fillPrompt: tools.fillPrompt,
+          pasteText: part => chat.paste(null, part, { format: "text" }),
           verifyGitHubSelection: tools.verifyGitHubSelection,
         });
         if (sent.event !== "send_clicked") return stop(sent.event);
       }
       const handoff = proHandoff({ chatTab: chat, transferTab: transfer, listening,
-        expectedChatUrl: resume ? binding.chat_url : undefined });
+        expectedChatUrl: binding.chat_url,
+        acceptTransition: async current => {
+          if (!await confirmsRequestTurn(chat, request_id, input_sha256) || await chat.url() !== current) return false;
+          binding = { tab_id: chat.id, chat_url: current };
+          return true;
+        } });
       const pw = chat.playwright;
       phase = "wait";
       const assistant = pw.locator("main article").filter({ has: pw.locator(answerSelector) });
@@ -692,29 +721,33 @@ const runProHandoff = (() => {
       phase = "receive";
       const observation = await observePro(chat, { phase });
       if (observation.reason) return stop(observation.reason);
+      if (!await confirmsRequestTurn(chat, request_id, input_sha256)) return stop("request_turn_unconfirmed");
       const receive = await planFor(transfer, listening, "receive", observation.live);
       if (receive.next_action !== "collect_reply") return stop(receive.reason ?? "receive_unconfirmed");
       const message = assistant.locator(answerSelector);
       const jsonBlock = visible(message.locator("pre code"));
       let answer;
       if (await visible(legacyFinished).count() === 1) {
-        answer = await jsonBlock.count() === 1 ? jsonBlock : message;
+        const blocks = await jsonBlock.count();
+        if (blocks > 1) return stop("multiple_json_blocks");
+        answer = blocks === 1 ? { filter() { return this; }, count: async () => 1,
+          innerText: () => jsonBlock.evaluate(element => element.textContent) } : message;
       } else {
         const heading = pw.getByRole("heading", { name: assistantHeading, exact: true });
         const user = pw.getByRole("heading", { name: userHeading, exact: true });
         const readSibling = locator => locator.evaluate(element => {
           const sibling = element.nextElementSibling;
-          return sibling?.tagName === "DIV" && sibling.getClientRects().length ? sibling.innerText : null;
+          if (sibling?.tagName !== "DIV" || !sibling.getClientRects().length) return null;
+          const blocks = Array.from(sibling.querySelectorAll("pre code")).filter(code => code.getClientRects().length);
+          if (blocks.length > 1) return null;
+          return blocks.length === 1 ? blocks[0].textContent : sibling.innerText;
         });
         answer = {
           filter() { return this; },
           async count() {
             if (await heading.count() !== 1 || await user.count() !== 1 ||
                 await visible(headingFinished).count() !== 1) return 0;
-            const userText = await readSibling(user);
-            return typeof userText === "string" &&
-              userText.includes(`Set request_id to ${request_id} and input_sha256 to ${input_sha256}.`) &&
-              await readSibling(heading) !== null ? 1 : 0;
+            return await readSibling(heading) !== null ? 1 : 0;
           },
           innerText: () => readSibling(heading),
         };

@@ -124,7 +124,7 @@ is already loaded in that session, send only the invocation. Do not use eval, CD
 an alternate browser driver, or an unsupported file-loading API. Set the tool timeout to cover setup, generation, and saving, and
 keep the local helper alive for the whole exchange. When the desktop Browser
 limits one tool call to 300 seconds, leave time for setup and saving within
-that limit. A longer model run can be recovered from the same tab.
+that limit. Set the `cua_repl.js` tool argument `timeout_ms: 300000` when supported; use the runner default `timeoutMs: 270_000` to leave time for setup and saving. Wait for completion in that one call; short locator waits remain inside the runner. Use receive-only recovery only after the host limit or a concrete failure, never for routine progress polling.
 
 ```js
 const handoffResult = await runProHandoff({ cua, agent, listening, timeoutMs: 270_000 });
@@ -146,7 +146,7 @@ nodeRepl.write({
 The runner uses the documented Browser actions with hidden tabs. It opens a
 new empty Temporary Chat, confirms the destination and the displayed Pro
 selection, dispatches once, waits for the current response, checks receive,
-and saves the correlated reply. It waits in short Browser intervals within the
+and saves the correlated reply. For ordinary long text it fills the first segment and pastes later segments of at most 7,000 UTF-16 units, preserving surrogate pairs, then checks the exact whole text and attachment indicators before sending. It waits in short Browser intervals within the
 same call and returns `pending` with `reason: "wait_timeout"` if the response
 wait expires. It returns `completion: "reply_ready"`,
 `event: "saved"`, and `reply` in the same result after the helper acknowledges

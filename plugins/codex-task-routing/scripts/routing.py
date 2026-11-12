@@ -768,6 +768,7 @@ def _chatgpt_context(home: Path, plugin_root: Path, *, for_child: bool = False) 
         + "Host restrictions and authorization apply. Choose suitable Cloud before Pro for independent repo work; "
         "follow the effective policy and overrides for consultation and other roles; retain a suitable owner. "
         "For approved dispatch and recovery use <plugin-root>/scripts/chat_browser.js runProHandoff via the supported Browser REPL; see <plugin-root>/skills/task-routing/references/chat-transfer.md. "
+        "Wait through completion and save in one Browser call; resume only on host timeout or failure. "
         "Before use read <plugin-root>/skills/task-routing/references/chatgpt.md and chat-authorization.md; "
         "Positively observe Temporary Chat before selecting Pro and sending; stop if unconfirmed. Never use a history-bearing chat. "
         "unknown authorization blocks dispatch. Reuse valid approvals; transport_evidence is optional. Keep secrets local, one owner and one request; "
