@@ -71,13 +71,14 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
   class FixtureDate extends Date {
     static now() { return now; }
   }
-  const run = vm.runInNewContext(source + "\nrunProHandoff;", { URL, Date: FixtureDate });
+  const makeRunner = () => vm.runInNewContext(source + "\nrunProHandoff;", { URL, Date: FixtureDate });
+  let run = makeRunner();
   const state = {
     temporary: false, menu: false, power: 3, composer: "", sent: 0, ready: false,
     waits: 0, saved: null, handoff: false, phases: [], quotas: [], opened: [], closed: [],
     replyWaits: [], stopWaits: [], generationEnded: false,
     mode, modeMenu: false, modeClicks: 0, prepared: 0, modeObservedAfterDispatch: false,
-    pickerWaits: 0,
+    pickerWaits: 0, marks: 0, gotos: [], forceUrl: null,
   };
   const model = () => state.power === 4 && !(changedModel && state.sent) ? "Pro" : "Extra High";
   const quotaVisible = () => (quotaAfterReply && state.ready) || (quotaBeforeReply && state.sent > 0);
@@ -147,6 +148,10 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
       locked: quotaVisible() && model() === "Pro",
     }),
     locator: selector => {
+      if (selector === '[data-message-author-role="user"]') return control({
+        present: () => state.sent > 0 && !newMarkup,
+        text: () => `Set request_id to ${listening.request_id} and input_sha256 to ${wrongUserHash ? "0".repeat(64) : listening.input_sha256}.`,
+      });
       if (selector === "main article") return article;
       if (selector === ".turn-action-controls") return { getByRole: () => newFinal };
       const absent = control({ present: () => false });
@@ -225,7 +230,13 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
       envelope = { phase, request_id: reply.request_id, input_sha256: reply.input_sha256, plan };
     } }),
   };
+  const tabs = new Map();
   const cua = {
+    async getTab(id, options) {
+      assert.equal(options.browser, "iab");
+      if (!tabs.has(id) || state.closed.includes(id)) throw new Error("tab unavailable");
+      return tabs.get(id);
+    },
     async createBrowserTab(browser, target, options) {
       assert.equal(browser, "iab");
       assert.equal(target, "about:blank");
@@ -233,24 +244,33 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
       const id = String(state.opened.length + 1);
       state.opened.push(id);
       let url = target;
-      return {
+      const tab = {
         id, playwright: id === "1" ? chat : local,
         url: async () => id === "1" && state.temporary
-          ? (state.sent ? (changedDestination && state.ready ? "https://chatgpt.com/c/other" :
-            newMarkup ? conversationUrl : sentUrl) : temporaryUrl)
+          ? (state.forceUrl ?? (state.sent ? (changedDestination && state.ready ? "https://chatgpt.com/c/other" :
+            newMarkup ? conversationUrl : sentUrl) : temporaryUrl))
           : url,
-        goto: async next => { url = next; },
+        goto: async next => { state.gotos.push(next); url = next; },
         async pressKey(_, key) {
           assert.equal(state.menu, true);
           if (key === "Escape") state.menu = false;
           else state.power += key === "Right" ? 1 : -1;
         },
         close: async () => { state.closed.push(id); },
-        markHandoff: async () => { state.handoff = true; },
+        markHandoff: async () => { state.handoff = true; state.marks++; },
       };
+      tabs.set(id, tab);
+      return tab;
     },
     listTabs: async () => state.opened.filter(id => !state.closed.includes(id)).map(id => ({ id })),
   };
+  const agent = { browsers: { get: async browser => {
+    assert.equal(browser, "iab");
+    return { tabs: { get: async id => {
+      if (!tabs.has(id) || state.closed.includes(id)) throw new Error("tab unavailable");
+      return tabs.get(id);
+    } } };
+  } } };
   const input = { ...listening, needs_tools: github || otherTool };
   if (!legacy) input.needs_github = github;
   const prepareTools = github ? async () => {
@@ -258,7 +278,8 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
     if (revert) state.mode = "unpersonalized";
     return { temporaryChatMode: "personalized", verifyGitHubSelection: async () => true };
   } : otherTool ? async () => { state.prepared++; return {}; } : undefined;
-  return { run: () => run({ cua, listening: input, timeoutMs, prepareTools }), state };
+  return { run: (resume, override = {}) => run({ cua, agent, listening: { ...input, ...override }, timeoutMs, prepareTools, resume }),
+    restart: () => { run = makeRunner(); }, state };
 }
 
 test("temporary mode lost before model selection blocks selection and send", async () => {
@@ -633,4 +654,78 @@ test("receive retains the original request when its context or destination chang
     assert.equal(state.modeObservedAfterDispatch, false);
     assert.equal((await run()).reason, "already_started");
   }
+});
+
+
+test("pending timeout resumes the same tab without a second dispatch", async () => {
+  const { run, state } = fixture({ timeoutMs: 1000, waitTimeouts: 1 });
+  const pending = await run();
+  assert.equal(pending.event, "pending");
+  assert.equal(pending.tab_id, "1");
+  const saved = await run(pending);
+  assert.equal(saved.event, "saved");
+  assert.equal(state.sent, 1);
+  assert.deepEqual(state.phases, ["dispatch", "receive"]);
+});
+
+test("resume rejects a different request hash without opening or sending", async () => {
+  const { run, state } = fixture({ timeoutMs: 1000, waitTimeouts: 1 });
+  const pending = await run();
+  assert.equal((await run({ ...pending, input_sha256: "0".repeat(64) })).reason, "invalid_resume");
+  assert.equal(state.sent, 1);
+  assert.deepEqual(state.opened, ["1", "2"]);
+});
+
+
+test("invalid transfer URL is rejected before any tab or navigation for both paths", async () => {
+  const { run, state } = fixture({ timeoutMs: 1000, waitTimeouts: 1 });
+  assert.equal((await run(undefined, { url: "https://example.com/transfer/x" })).reason, "invalid_workflow_input");
+  assert.deepEqual(state.opened, []);
+  const pending = await run();
+  const opened = state.opened.length, gotos = state.gotos.length;
+  assert.equal((await run(pending, { url: "http://evil.example/transfer/x" })).reason, "invalid_workflow_input");
+  assert.equal(state.opened.length, opened);
+  assert.equal(state.gotos.length, gotos);
+});
+
+test("resume rejects changed tab or URL before opening the form or reading the reply", async () => {
+  const { run, state } = fixture({ timeoutMs: 1000, waitTimeouts: 1 });
+  const pending = await run();
+  const opens = state.opened.length;
+  assert.equal((await run({ ...pending, tab_id: "2" })).reason, "resume_binding_mismatch");
+  state.forceUrl = "https://chatgpt.com/c/different";
+  assert.equal((await run(pending)).reason, "resume_binding_mismatch");
+  assert.equal(state.opened.length, opens);
+  assert.equal(state.saved, null);
+});
+
+test("restart rebinds without cua.getTab and marks each pending turn", async () => {
+  const { run, restart, state } = fixture({ timeoutMs: 1000, waitTimeouts: 2 });
+  const first = await run();
+  assert.equal(state.marks, 1);
+  restart();
+  const second = await run(first);
+  assert.equal(second.event, "pending");
+  assert.equal(state.marks, 2);
+  assert.equal((await run(second)).event, "saved");
+  assert.equal(state.marks, 3);
+  assert.equal(state.sent, 1);
+});
+
+
+test("ambiguous successful click resumes the same matching conversation without resending", async () => {
+  const { run, state } = fixture({ ambiguousClick: true });
+  const pending = await run();
+  assert.equal(pending.event, "pending");
+  assert.equal(pending.chat_url, "https://chatgpt.com/?temporary-chat=true");
+  assert.equal((await run(pending)).event, "saved");
+  assert.equal(state.sent, 1);
+});
+
+test("ambiguous click cannot bind a conversation with a different request marker", async () => {
+  const { run, state } = fixture({ ambiguousClick: true, wrongUserHash: true });
+  const pending = await run();
+  assert.equal((await run(pending)).reason, "resume_binding_mismatch");
+  assert.equal(state.saved, null);
+  assert.equal(state.sent, 1);
 });

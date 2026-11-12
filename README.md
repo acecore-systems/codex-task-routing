@@ -146,7 +146,7 @@ helperは送信しません。rootが新方針と現在のホスト許可・対�
 通常Chat内の接続済みGitHubで、実際の権限と実行環境がそろえば、調査・修正・テスト・PR・CI確認・明示承認済みのマージをまとめて扱えます。この直接作業にCodexから別Chatへの転送許可は不要です。一方、Codexから別Chatへ送受信する場合の未確認許可を、ネイティブGitHub操作の成功で代用してはいけません。
 
 
-通常Chat経路は明示的に有効にした場合だけ使います。root直下Sol子はbrowser-temporaryで依頼の準備・送信・回収・内容受入・承認済み修正まで所有できます。Astra/Luna子と孫からChatは使えず、legacy経路はrootによる非送信回収専用です。SubagentStartだけで役割や深さを推測せず、元の引継ぎ・現在のホスト許可と照合します。Sol→Proは標準Codex孫と別経路です。所有者が変わっても同じタブ/依頼ID/input hashと送信済み状態を引き継ぎ、再送しません。確認済み接続の操作・範囲・有効期限をローカル台帳に保持し、`chat_plan.py` が必要な項目だけ機械照合します。分類専用のAI呼出しや全接続の再調査を避け、`chat_transfer.py` の一回限りのローカルフォームで、準備済み本文と最終回答をBrowser内の変数のまま受け渡せます。親のモデルへ全文を出力して再転記する必要を減らします。[接続と分類](plugins/codex-task-routing/skills/task-routing/references/chat-capabilities.md)、[転送補助](plugins/codex-task-routing/skills/task-routing/references/chat-transfer.md)。これらは明示実行の補助で、フックから起動・送信しません。
+通常Chat経路は明示的に有効にした場合だけ使います。root直下Sol子はbrowser-temporaryで依頼の準備・送信・回収・内容受入・承認済み修正まで所有できます。Astra/Luna子と孫からChatは使えず、legacy経路はrootによる非送信回収専用です。SubagentStartだけで役割や深さを推測せず、元の引継ぎ・現在のホスト許可と照合します。Sol→Proは標準Codex孫と別経路です。所有者が変わっても同じタブ/依頼ID/input hashと送信済み状態を引き継ぎ、再送しません。確認済み接続の操作・範囲・有効期限をローカル台帳に保持し、`chat_plan.py` が必要な項目だけ機械照合します。分類専用のAI呼出しや全接続の再調査を避け、通常の承認済み送受信は `chat_transfer.py` と同梱 `chat_browser.js` の `runProHandoff` を対応Browser REPLで実行し、準備済み本文と最終回答をBrowser内の変数のまま受け渡します。親のモデルへ全文を出力して再転記する必要を減らします。[接続と分類](plugins/codex-task-routing/skills/task-routing/references/chat-capabilities.md)、[転送補助](plugins/codex-task-routing/skills/task-routing/references/chat-transfer.md)。これらは明示実行の補助で、フックから起動・送信しません。
 
 通常ChatのProはWork/Codexと別枠ですが、親の準備・操作・検収はCodex側に残ります。Proには契約別の上限があり、無制限ではありません。モデルや残量は実際のUIで確認し、第三者ツール固有の料金まで無料と扱いません。[公式の利用枠](https://help.openai.com/en/articles/20001354)、[Work/Codexの共有枠](https://learn.chatgpt.com/docs/pricing)。
 
@@ -169,7 +169,7 @@ Pro $200の週次枠を積極活用する運用ですが、契約価格だけで
 
 新しいタスクのフックに `Opt-in ChatGPT Chat route is enabled` が表示されることを確認します。`enabled` を `false` にすると、この経路への新しい依頼を停止できます。切替後は新しいタスクから確認してください。進行中のChatを自動停止する設定ではありません。設定を有効にしただけでメッセージは送信されず、接続先の権限も増えません。
 
-この経路には、通常Chatへログイン済みのBrowserと、UIで選択・確認できる `Pro` が必要です。タスクごとに一時Chatを作り、Chatであること、一時Chatであること、`Pro` 表示を送信前後で確認します。準備済みの実依頼を一度だけ送信し、最終回答を依頼IDと材料hashで照合してから必要な結果だけを保存し、一時Chatは保存せず閉じます。複数行の本文は `paste({format:'text'})` またはサポートされた `fill` で入力し、全文一致を確認して送信ボタンを一回だけ使います。モデルAPIキーは使わず、WorkやモデルAPIへ暗黙に切り替えません。バックエンドのモデルIDは取得できないため、UI表示と実行メタデータを区別します。
+この経路には、通常Chatへログイン済みのBrowserと、UIで選択・確認できる `Pro` が必要です。タスクごとに一時Chatを作り、Chatであること、一時Chatであること、`Pro` 表示を送信前後で確認します。準備済みの実依頼を一度だけ送信し、最終回答を依頼IDと材料hashで照合してから必要な結果だけを保存し、一時Chatは保存せず閉じます。同梱runnerが本文の全文一致を確認し、送信は一回だけ行います。待機が続く場合は同じタブと依頼の情報で受信のみ再開します。モデルAPIキーは使わず、WorkやモデルAPIへ暗黙に切り替えません。バックエンドのモデルIDは取得できないため、UI表示と実行メタデータを区別します。
 
 一時Chatでは `send_message_to_thread` を使いません。内部で `isTemporaryChat: false` となるためです。既存の `"transport": "codex-app-tools"` 設定は書き換えず、新規送信を停止し、rootによる既存依頼の非送信回収のみを残します。既存の承認済みMCPは材料の受け渡しに使えます。独自MCPサーバーの公開・書き戻し・自動ファイル添付は含みません。通常Chatの生成はChatの枠、親の処理はCodexの枠を使い、接続先サービスやサーバーの費用は別途確認します。[運用手順・制約](plugins/codex-task-routing/skills/task-routing/references/chatgpt.md) と [browser不要化の課題](docs/backlog.md) を参照してください。
 

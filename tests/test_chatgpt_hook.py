@@ -46,6 +46,7 @@ class ChatHookTests(unittest.TestCase):
         parent = self.payload()["hookSpecificOutput"]["additionalContext"]
         self.assertIn("Opt-in ChatGPT Chat route is enabled", parent)
         self.assertIn("transport: browser-temporary", parent)
+        self.assertIn("scripts/chat_browser.js runProHandoff", parent)
         for phrase in ("Choose suitable Cloud before Pro", "follow the effective policy and overrides", "unknown authorization blocks dispatch", "chatgpt.md", "chat-authorization.md", "never resend"):
             self.assertIn(phrase, parent)
         self.assertLessEqual(len(parent.encode("utf-8")), routing.MAX_ADDITIONAL_CONTEXT_BYTES)
@@ -53,6 +54,7 @@ class ChatHookTests(unittest.TestCase):
         self.assertIn("Only a root-direct Sol child with confirmed role/depth", child)
         self.assertIn("other children and grandchildren cannot", child)
         for context in (parent, child):
+            self.assertIn("scripts/chat_browser.js runProHandoff", context)
             self.assertIn("Positively observe Temporary Chat before selecting Pro and sending", context)
             self.assertIn("Never use a history-bearing chat", context)
         self.assertLessEqual(len(child.encode("utf-8")), routing.MAX_ADDITIONAL_CONTEXT_BYTES)
