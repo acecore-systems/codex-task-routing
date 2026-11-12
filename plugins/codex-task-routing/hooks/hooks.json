@@ -139,6 +139,17 @@
             "statusMessage": "Checking routing reminder"
           }
         ]
+      },
+      {
+        "matcher": ".*(Bash|exec|exec_command)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','large_read_guard.py'),run_name='__main__')\"",
+            "timeout": 5,
+            "statusMessage": "Checking large file read"
+          }
+        ]
       }
     ],
     "Interrupt": [
