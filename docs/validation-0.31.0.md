@@ -9,11 +9,11 @@
 
 ## 検証結果
 
-- 作業ツリー（ブランチ `claude/practical-galileo-5ies19`、基点 `11f3b1f`、変更は未コミット）、Python 3.13.18、Node.js 22.23.4 で実行しました。
+- 基点 `11f3b1f` からの変更を、Linux、Python 3.13.18、Node.js 22.23.4 で実行しました。
 - `python -m unittest discover -s tests -v` は終了コード0で、513件、OK、skip 5件でした。変更前は503件、OK、skip 5件で、増分は新規10件です。
 - `python scripts/check_package.py` は終了コード0で、Package checks passed でした。
 - `node --test tests/test_chat_browser.cjs tests/test_chat_browser_run.cjs` は終了コード0で、70件成功、失敗0、skip 0でした。
-- `RELEASE_BASE=11f3b1f591966602f798ebcd55c8648e56f8ba81 python scripts/check_release.py` は終了コード0で、Release version check passed でした。ただし変更が未コミットのため HEAD と基点は同じで、この検査は今回の差分を対象にしていません。補足として、作業ツリーの版 0.30.20 から 0.31.0 への変更は `needs_version_change` で要件を満たし、同じ版のままなら要件違反になることを確認しました。
+- `RELEASE_BASE=11f3b1f591966602f798ebcd55c8648e56f8ba81 python scripts/check_release.py` は終了コード0で、Release version check passed でした（変更をコミットした状態で実行）。
 - 移植元の `block-large-read.js`（v1.7.0）を Node.js で同じ入力に実行し、Bash 形式の62コマンドで判定を比べました。対象になったのは35件で、判定の不一致は0件でした。比較用の一時スクリプトはリポジトリに含めていません。
 - テストの子プロセスは `CODEX_HOME` を一時フォルダに向け、フックがそこへ何も書かないことを確認しています。
 
