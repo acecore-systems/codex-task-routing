@@ -15,6 +15,8 @@ Local resources do not rule out a child with access. Bundle related creative wor
 
 Before cloud model selection involving credentials, follow [local authentication](references/local-auth.md); children return authentication needs to their parent. Never move secrets or assume a queued handoff is authenticated. Read relevant references: [delegation](references/operating-guide.md#standard-delegation) and [handoff](references/operating-guide.md#handoff), [Cloud and session choice](references/session-routing.md), [Chat routing](references/chatgpt.md) and [authorization](references/chat-authorization.md), [observation](references/observation.md), or [configuration](references/configuration.md). Preserve custom principles, return contradictions to root, and never rewrite user configuration or trust settings.
 
-The opt-in [Haiku API route](references/haiku-api.md) is a root-owned candidate for ordinary or substantial work, subject to host and target permission. Use local-auth for approved, tool-free text proposals; the parent applies edits and tests. It is separate from Chat and native child models; hooks never start it.
+The opt-in [Haiku API route](references/haiku-api.md) provides root-owned, approved text proposals; the parent applies edits and tests.
 
-The opt-in [Muse Ember pilot](references/muse-pilot.md) is root-owned, single-use and text-only. Its planner never calls MCP; root verifies permission, status and results. No default routing change or uncertain retry.
+The opt-in [Muse Ember pilot](references/muse-pilot.md) is root-owned, single-use and text-only; root verifies permission, status and results.
+
+The separately opt-in [Muse Ember public-web research route](references/muse-web-research.md) is root-owned; use existing policy when unavailable before sending.
