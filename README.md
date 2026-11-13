@@ -113,6 +113,10 @@ Terraの個別設定は新キー`models.terra61`に指定します。`principles
 
 ## 任意機能
 
+### Drex に定型判定を割り当てる
+
+公開・合成テキストの分類、条件判定、基準付き採点を、親が Drex Max v1.1 に割り当てられます。既定は無効です。対応する Local Auth を用意し、[Drex の設定と実行手順](plugins/codex-task-routing/skills/task-routing/references/drex-decisions.md)に従って有効にします。
+
 ### 認証工程をローカルへ引き継ぐ
 
 パスワードやAPIキーの入力・保管・転送、OAuth JSONやCookieを扱う工程は、通常のモデル選定より先にローカル経路を確認します。開始・再開フックがこの方針を渡すため、各タスクに個別の引継ぎ文を貼る手間を減らせます。認証方式の公開仕様や秘密を含まないコードは、通常の分担で扱います。

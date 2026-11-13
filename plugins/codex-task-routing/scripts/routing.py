@@ -36,6 +36,7 @@ from routing_core.common import (
     _is_schema_version_one, _canonical_json, _safe_mkdir, _write_atomic,
 )
 from haiku_config import load_config as load_haiku_config
+from drex_decisions import load_config as load_drex_decisions_config
 from muse_web_config import load_config as load_muse_web_config
 from routing_core.observation_capture import export_capture, record_baseline, verify_capture, certify_capture
 from routing_core.observation import (
@@ -931,6 +932,16 @@ def hook_payload(
             except (RoutingError, OSError, ImportError, ValueError):
                 route_diagnostic = "ChatGPT route not applied: invalid configuration or unavailable helper. Run chatgpt_route.py status."
         if event == "SessionStart":
+            try:
+                if load_drex_decisions_config(home):
+                    context += ("\nFor new approved typed decisions on public or synthetic text, root selects Drex Max v1.1 "
+                                "when the effective policy allows it, no suitable owner is continuing and the Local Auth adapter is ready. "
+                                "Check status, scope and approvals. Use existing policy if unavailable before sending. "
+                                "Reconcile uncertain submissions by the same hash. Read "
+                                "<plugin-root>/skills/task-routing/references/drex-decisions.md.")
+            except (RoutingError, OSError, ValueError):
+                route_diagnostic = ((route_diagnostic + " ") if route_diagnostic else "") + (
+                    "Drex Decisions route not applied: invalid configuration. Run drex_decisions.py status.")
             try:
                 if load_muse_web_config(home)["enabled"]:
                     context += ("\nFor new approved public-web research with no suitable continuing owner, before starting Luna "
