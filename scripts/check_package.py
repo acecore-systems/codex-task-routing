@@ -20,7 +20,7 @@ def check():
     for name in ['LICENSE', 'scripts/routing.py', 'scripts/chatgpt_route.py', 'scripts/spawn_guard.py', 'scripts/parent_guard.py', 'scripts/updater.py', 'scripts/updater_entry.py', 'scripts/install_updater.py', 'hooks/hooks.json', 'defaults/config.json', 'skills/task-routing/SKILL.md', 'skills/task-routing/references/configuration.md', 'skills/task-routing/references/chatgpt.md', 'skills/task-routing/references/observation.md', 'skills/task-routing/references/chat-limits.md', 'skills/task-routing/references/observation-example.json']:
         assert (PLUGIN / name).is_file(), name
     hooks = json.loads((PLUGIN / 'hooks/hooks.json').read_text(encoding='utf-8'))['hooks']
-    for name in ['scripts/haiku_config.py', 'scripts/haiku_smoke_fixture.py', 'scripts/haiku_route.py', 'skills/task-routing/references/haiku-api.md', 'scripts/spawn_guard.py', 'scripts/capture_hook.py', 'scripts/routing_core/observation_capture.py', 'scripts/usage_snapshot.py', 'scripts/usage_interval.py', 'scripts/routing_core/usage_metadata.py', 'skills/task-routing/references/usage-enrollment-example.json', 'scripts/compare_observations.py', 'skills/task-routing/references/observation-comparison-example.json', 'scripts/routing_core/__init__.py', 'scripts/routing_core/common.py', 'scripts/routing_core/observation.py', 'scripts/chat_plan.py', 'scripts/session_plan.py', 'scripts/cloud_record.py', 'skills/task-routing/references/session-routing.md', 'scripts/chat_transfer.py', 'skills/task-routing/references/chat-capabilities.md', 'skills/task-routing/references/chat-transfer.md', 'skills/task-routing/references/local-auth.md', 'skills/task-routing/references/chat-authorization.md', 'skills/task-routing/references/operating-guide.md']:
+    for name in ['scripts/haiku_config.py', 'scripts/haiku_smoke_fixture.py', 'scripts/haiku_route.py', 'skills/task-routing/references/haiku-api.md', 'scripts/spawn_guard.py', 'scripts/large_read_guard.py', 'scripts/capture_hook.py', 'scripts/routing_core/observation_capture.py', 'scripts/usage_snapshot.py', 'scripts/usage_interval.py', 'scripts/routing_core/usage_metadata.py', 'skills/task-routing/references/usage-enrollment-example.json', 'scripts/compare_observations.py', 'skills/task-routing/references/observation-comparison-example.json', 'scripts/routing_core/__init__.py', 'scripts/routing_core/common.py', 'scripts/routing_core/observation.py', 'scripts/chat_plan.py', 'scripts/session_plan.py', 'scripts/cloud_record.py', 'skills/task-routing/references/session-routing.md', 'scripts/chat_transfer.py', 'skills/task-routing/references/chat-capabilities.md', 'skills/task-routing/references/chat-transfer.md', 'skills/task-routing/references/local-auth.md', 'skills/task-routing/references/chat-authorization.md', 'skills/task-routing/references/operating-guide.md']:
         assert (PLUGIN / name).is_file(), name
     for removed in ['scripts/cloud_run.py', 'skills/task-routing/references/cloud-transport.md']:
         assert not (PLUGIN / removed).exists(), removed
@@ -33,11 +33,14 @@ def check():
     guard_command = "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','spawn_guard.py'),run_name='__main__')\" hook"
     capture_command = "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','capture_hook.py'),run_name='__main__')\""
     reminder_command = "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','parent_guard.py'),run_name='__main__')\""
-    assert len(hooks['PreToolUse']) == 2
+    large_read_command = "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','large_read_guard.py'),run_name='__main__')\""
+    assert len(hooks['PreToolUse']) == 3
     assert hooks['PreToolUse'][0]['matcher'] == 'spawn_agent|Agent'
     assert [h['command'] for h in hooks['PreToolUse'][0]['hooks']] == [guard_command]
     assert hooks['PreToolUse'][1]['matcher'] == '.*(Bash|exec|exec_command|apply_patch|spawn_agent|Agent|send_input|send_message|followup_task)$'
     assert [h['command'] for h in hooks['PreToolUse'][1]['hooks']] == [reminder_command]
+    assert hooks['PreToolUse'][2]['matcher'] == '.*(Bash|exec|exec_command)$'
+    assert [h['command'] for h in hooks['PreToolUse'][2]['hooks']] == [large_read_command]
     expected_commands = {
         'SessionStart': [routing_command],
         'SubagentStart': [routing_command, capture_command, reminder_command],
