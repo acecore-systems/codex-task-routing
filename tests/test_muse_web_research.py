@@ -31,4 +31,24 @@ class ResearchTests(unittest.TestCase):
   for output in (self.output[1:],self.output[:1],[self.output[0],{**self.output[1],'annotations':[]}],[self.output[0],{**self.output[1],'annotations':[{**self.output[1]['annotations'][0],'url':'file:///secret'}]}]):
    with self.subTest(output=output),self.assertRaises(ValueError):web.verify({**facts,'result':{**facts['result'],'output':output}})
 
+ def test_invalid_citation_urls(self):
+  invalid=('https://example.com:invalid/', 'https://example.com:65536/',
+           'https://example.com:0/', 'https://example.com:-1/',
+           'https://exam\nple.com/', 'https://example.com/\tpath',
+           'https://exa mple.com/', ' https://example.com/',
+           'https://example.com/\x00', 'https://example.com/\x7f',
+           'https://example.com/\\path', 'https://@example.com/',
+           'https://:@example.com/')
+  for url in invalid:
+   output=[self.output[0],{**self.output[1],'annotations':[{**self.output[1]['annotations'][0],'url':url}]}]
+   facts=dict(schema_version=1,prompt_sha256=self.digest,result=dict(state='completed',inputSha256=self.digest,model='muse-ember-1.0',effort='max',inputTokens=None,outputTokens=None,output=output))
+   with self.subTest(url=url),self.assertRaises(ValueError):web.verify(facts)
+ def test_valid_citation_urls(self):
+  for url in ('https://example.com/', 'http://example.com:8080/source',
+              'https://example.com:443/日本語?q=public%20source',
+              'https://[2606:4700:4700::1111]:443/source'):
+   output=[self.output[0],{**self.output[1],'annotations':[{**self.output[1]['annotations'][0],'url':url}]}]
+   facts=dict(schema_version=1,prompt_sha256=self.digest,result=dict(state='completed',inputSha256=self.digest,model='muse-ember-1.0',effort='max',inputTokens=None,outputTokens=None,output=output))
+   with self.subTest(url=url):self.assertTrue(web.verify(facts)['verified'])
+
 if __name__=='__main__':unittest.main()

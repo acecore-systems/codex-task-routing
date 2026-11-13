@@ -73,8 +73,16 @@ def verify(data):
             for ann in item['annotations']:
                 if not isinstance(ann, dict) or set(ann) != {'type', 'url', 'title', 'start_index', 'end_index'} or ann['type'] != 'url_citation':
                     raise ValueError('citation')
-                u = urlsplit(ann['url']) if isinstance(ann['url'], str) else None
-                if not u or u.scheme not in ('http', 'https') or not u.hostname or u.username or u.password or len(ann['url']) > 2048:
+                url = ann['url']
+                if (not isinstance(url, str) or not 1 <= len(url) <= 2048 or '\\' in url
+                        or any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in url)):
+                    raise ValueError('url')
+                u = urlsplit(url)
+                # Parsing alone does not validate the port or reject empty userinfo.
+                port = u.port
+                if (u.scheme not in ('http', 'https') or not u.hostname
+                        or u.username is not None or u.password is not None
+                        or (port is not None and not 1 <= port <= 65535)):
                     raise ValueError('url')
                 if not isinstance(ann['title'], str) or len(ann['title']) > 512 or any(type(ann[k]) is not int for k in ('start_index', 'end_index')) or not 0 <= ann['start_index'] < ann['end_index'] <= len(text):
                     raise ValueError('citation span')
