@@ -130,6 +130,24 @@ class ChatGptRouteTestCase(unittest.TestCase):
         self.assertIn("An allowed_tools list is an allowlist only", bundle["prompt"])
         self.assertIn("inside one Markdown JSON code fence", bundle["prompt"])
 
+    def test_github_prompt_uses_the_authorized_operation_and_current_chat_evidence(self) -> None:
+        request = self.request()
+        request["task"] = "Create an authorized pull request in example/project."
+        request["handoff"] = {**self.handoff(), "allowed_tools": ["GitHub.create_pull_request"]}
+        bundle = chatgpt_route.prepare_payload(request)
+        instructions, _, request_json = bundle["prompt"].partition("\nRequest JSON:\n")
+        for criterion in (
+            "check the tools exposed in this chat for that operation and repository",
+            "Perform the operation when it is exposed and authorized for the task",
+            "General documentation, plugin listings, and previous reads are background only",
+            "tool absent from this chat, access denied, or specific tool error",
+            "Keep capability claims scoped to that operation and repository in this chat",
+            "as unverified when evidence is inconclusive",
+            "Reconcile uncertain write outcomes with an authorized read",
+        ):
+            self.assertIn(criterion, instructions)
+        self.assertEqual(json.loads(request_json)["handoff"]["allowed_tools"], ["GitHub.create_pull_request"])
+
     def test_validate_accepts_prepared_bundle_and_does_not_echo_result_material(self) -> None:
         bundle = chatgpt_route.prepare_payload(self.request())
         response = {
@@ -143,7 +161,7 @@ class ChatGptRouteTestCase(unittest.TestCase):
         self.assertEqual(result, {"ok": True, "request_id": bundle["request_id"], "status": "completed"})
         self.assertNotIn("sensitive result text", json.dumps(result))
 
-    def test_validate_accepts_current_and_in_flight_v2_or_v1_prepared_bundles(self) -> None:
+    def test_validate_accepts_current_and_in_flight_prepared_bundles(self) -> None:
         request = self.request(request_id=str(uuid.uuid4()))
         current_bundle = chatgpt_route.prepare_payload(request)
         v2_bundle = {
@@ -164,7 +182,15 @@ class ChatGptRouteTestCase(unittest.TestCase):
             "evidence": [],
         }
         previous_bundle = {**current_bundle, "prompt": chatgpt_route._build_prompt_legacy(request, current_bundle["input_sha256"])}
-        for bundle in (current_bundle, previous_bundle, v2_bundle, legacy_bundle):
+        fenced_bundle = {
+            **current_bundle,
+            "prompt": previous_bundle["prompt"].replace(
+                "Return exactly one JSON object, with no Markdown fence or surrounding prose.",
+                "Return exactly one JSON object inside one Markdown JSON code fence, with no surrounding prose.",
+                1,
+            ),
+        }
+        for bundle in (current_bundle, fenced_bundle, previous_bundle, v2_bundle, legacy_bundle):
             with self.subTest(prompt=bundle["prompt"]):
                 self.assertEqual(chatgpt_route.validate_exchange(bundle, response)["status"], "completed")
         for bundle in (current_bundle, v2_bundle, legacy_bundle):
