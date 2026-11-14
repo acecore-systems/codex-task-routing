@@ -465,12 +465,32 @@ def _build_prompt_legacy(request: Mapping[str, Any], input_sha256: str) -> str:
     )
 
 
-def _build_prompt(request: Mapping[str, Any], input_sha256: str) -> str:
+def _build_prompt_fenced(request: Mapping[str, Any], input_sha256: str) -> str:
+    """Preserve fenced bundles prepared before the GitHub instructions."""
+
     return _build_prompt_legacy(request, input_sha256).replace(
         "Return exactly one JSON object, with no Markdown fence or surrounding prose.",
         "Return exactly one JSON object inside one Markdown JSON code fence, with no surrounding prose.",
         1,
     )
+
+
+def _build_prompt(request: Mapping[str, Any], input_sha256: str) -> str:
+    instructions, marker, request_json = _build_prompt_fenced(request, input_sha256).partition(
+        "\nRequest JSON:\n"
+    )
+    github_instructions = (
+        "When the task requires a GitHub operation, check the tools exposed in this chat for that operation and repository. "
+        "Perform the operation when it is exposed and authorized for the task. "
+        "General documentation, plugin listings, and previous reads are background only.\n"
+        "In evidence, give the operation, repository, and result (with the returned GitHub link or ID if available) "
+        "or the observed blocker: tool absent from this chat, access denied, or specific tool error. "
+        "Keep capability claims scoped to that operation and repository in this chat. "
+        "Report an unverified operation or outcome as unverified when evidence is inconclusive. "
+        "Reconcile uncertain write outcomes with an authorized read before any retry. "
+        "If the outcome remains uncertain, report it to the caller and leave the write pending."
+    )
+    return f"{instructions}\n{github_instructions}{marker}{request_json}"
 
 
 def prepare_payload(value: Mapping[str, Any]) -> dict[str, str]:
@@ -517,7 +537,12 @@ def _expected_request(value: Mapping[str, Any]) -> tuple[str, str]:
             raise ChatRouteError("prepared bundle request_id does not match its prompt")
         if input_sha256 != expected_hash:
             raise ChatRouteError("prepared bundle input_sha256 does not match its prompt")
-        canonical_prompts = {_build_prompt(prompt_request, expected_hash), _build_prompt_legacy(prompt_request, expected_hash), _build_prompt_v3(prompt_request, expected_hash)}
+        canonical_prompts = {
+            _build_prompt(prompt_request, expected_hash),
+            _build_prompt_fenced(prompt_request, expected_hash),
+            _build_prompt_legacy(prompt_request, expected_hash),
+            _build_prompt_v3(prompt_request, expected_hash),
+        }
         if "handoff" not in prompt_request:
             canonical_prompts.update(
                 {

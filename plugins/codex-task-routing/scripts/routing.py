@@ -784,6 +784,7 @@ def _chatgpt_context(home: Path, plugin_root: Path, *, for_child: bool = False) 
         "Wait through completion and save in one Browser call; resume only on host timeout or failure. "
         "Before use read <plugin-root>/skills/task-routing/references/chatgpt.md and chat-authorization.md; "
         "Positively observe Temporary Chat before selecting Pro and sending; stop if unconfirmed. Never use a history-bearing chat. "
+        "Check GitHub per operation and repository in that Chat; report the observed blocker or unverified status. "
         "unknown authorization blocks dispatch. Reuse valid approvals; transport_evidence is optional. Keep secrets local, one owner and one request; "
         "never resend on uncertainty, use Work or a model API."
     )
