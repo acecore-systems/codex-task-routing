@@ -393,6 +393,25 @@ class RoutingTestCase(unittest.TestCase):
         self.assertNotIn("hookSpecificOutput", result)
         self.assertNotIn("edited cache", result["systemMessage"])
 
+    def test_drex_decisions_context_requires_root_opt_in(self) -> None:
+        def hook(event):
+            return routing.hook_payload(
+                event=event, source="startup", plugin_root=self.plugin, codex_home=self.home, cwd=self.base
+            )
+
+        def context(event):
+            return hook(event)["hookSpecificOutput"]["additionalContext"]
+
+        self.assertNotIn("Drex Max v1.1", context("SessionStart"))
+        config = self.home / "codex-task-routing" / "drex-decisions.json"
+        config.write_text('{"schema_version":1,"enabled":true}', encoding="utf-8")
+        self.assertIn("Drex Max v1.1", context("SessionStart"))
+        self.assertNotIn("Drex Max v1.1", context("SubagentStart"))
+        config.write_text('{"schema_version":1,"enabled":true,"enabled":false}', encoding="utf-8")
+        result = hook("SessionStart")
+        self.assertNotIn("Drex Max v1.1", result["hookSpecificOutput"]["additionalContext"])
+        self.assertIn("Drex Decisions route not applied", result["systemMessage"])
+
     @unittest.skipUnless(hasattr(os, "symlink"), "symlinks are unsupported")
     def test_symlink_output_is_rejected(self) -> None:
         policy = self.policy()

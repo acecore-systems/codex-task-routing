@@ -17,6 +17,4 @@ Before cloud model selection involving credentials, follow [local authentication
 
 The opt-in [Haiku API route](references/haiku-api.md) provides root-owned, approved text proposals; the parent applies edits and tests.
 
-The opt-in [Muse Ember pilot](references/muse-pilot.md) is root-owned, single-use and text-only; root verifies permission, status and results.
-
-The separately opt-in [Muse Ember public-web research route](references/muse-web-research.md) is root-owned; use existing policy when unavailable before sending.
+Root owns the opt-in routes for the [Muse pilot](references/muse-pilot.md), [Muse public-web research](references/muse-web-research.md), and [Drex Decisions](references/drex-decisions.md) for bounded text judgments.
