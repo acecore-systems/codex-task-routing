@@ -8,8 +8,8 @@
 
 1. 現在のホストで専用ツールが利用でき、Nace への送信、入力資料、費用が承認済みであることを確認します。同じ範囲の既存承認を再利用します。本文と設問には公開・合成テキストだけを使います。
 2. facts に `schema_version:1`、`actor:root`、`data_class:public_or_synthetic`、確認済みの `host_authorized`、`target_authorized`、`materials_authorized`、`cost_authorized`、および下記の `request` を指定し、`python <plugin-root>/scripts/drex_decisions.py prepare --facts <facts.json>` を実行します。helper が返した `status` 用の引数を専用ツールに渡し、結果を facts の `status` に追加して同じ prepare を実行します。
-3. `ready:true` なら、返された `run` の引数をそのまま同じツールに一度渡します。送信前に経路が利用できない場合は有効方針に従って進めます。送信後に結果が不明な間は、同じハッシュの `status` で照合します。実行履歴がある依頼はその結果を使います。
-4. 同じ `request` とツールから受け取った `result` を `drex_decisions.py verify --facts <facts.json>` に渡します。helper が完了状態、モデル、入力ハッシュ、設問と回答の一致を確認します。親は選択肢と数値の意味を元資料に照らして確認し、曖昧な判定を保留します。
+3. `ready:true` なら、返された `run` の引数をそのまま同じツールに一度渡します。未送信が確認でき、経路が利用できない場合は有効方針に従って進めます。結果不明、接続不可、worker 使用中、記録の不整合が返ったときは同じ runtime と vault で同じハッシュの `status` を確認します。それまでは依頼を保留します。回収した実行履歴を再利用します。
+4. 同じ `request` とツールから受け取った `result` を `drex_decisions.py verify --facts <facts.json>` に渡します。helper が完了状態、モデル、入力ハッシュ、設問と回答の一致、選択肢・確率分布・点数の範囲を確認します。親は判定を元資料に照らして受け入れ、曖昧な判定を保留します。
 
 ### 入力例
 
