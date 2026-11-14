@@ -57,7 +57,7 @@ MCPが必要な仕事では、この依頼に必要な対応だけを整理し�
 1. [Browserの実条件と解消手順](chat-authorization.md)で現在の機能と既存承認を確認し、`chat_plan.py --phase inspect` で送信せず不足を整理します。依頼の材料・範囲・合格条件を確定し、秘密を含めません。
 2. `chatgpt_route.py prepare` で `bundle.json` を準備し、対応する `workflow.json` を同じ非公開作業ディレクトリに置き、そこに `reply.json` の保存先を指定します。[一回実行の手順](chat-transfer.md#one-browser-call)の `chat_transfer.py --workflow` を起動し、その `listening` を使って同梱 `chat_browser.js` の `runProHandoff` を対応Browser REPLで実行します。必要な接続選択は同手順の `prepareTools` で行い、権限と対象は別途確認します。
 3. runner は一時Chatを確認してからProを選択し、dispatch条件と本文を照合して一度だけ送信します。同じBrowser呼出し内で完了まで待ち、同じタブで新しいUI観測とreceive条件を確認して回答を保存します。ホスト上限や具体的な障害のときだけ回収を再開します。`pending` は同じrunnerの `resume` で同一タブ・依頼ID・hashを引き継ぎます。送信が不確定な場合も再送しません。
-4. 保存された回答を `chatgpt_route.py validate --request bundle.json --response reply.json` で照合し、経路所有者が合格条件・根拠・範囲を受け入れます。UIでProを確認できない場合は受入を止めます。完了後はタブを閉じ、個別の観測・本人入力・承認が必要な場合は対応するホスト手順に従います。
+4. 保存された回答を `chatgpt_route.py validate --request bundle.json --response reply.json` で照合し、経路所有者が合格条件・根拠・範囲を受け入れます。GitHubの制約が返った場合は、操作・対象リポジトリ・観測結果を確認します。根拠のない「読み取り専用」は未確認として扱い、必要な操作を利用できる承認済みの経路で残作業を進めます。成否不明の書込みは読み取りで照合し、確認できた到達点から継続します。UIでProを確認できない場合は受入を止めます。完了後はタブを閉じ、個別の観測・本人入力・承認が必要な場合は対応するホスト手順に従います。
 
 runnerや必要なBrowser操作が使えない場合は理由を報告してPro経路を停止し、手動送信へ暗黙に切り替えません。個別の障害切り分けには[下位スクリプト](chat-transfer.md#lower-level-script-for-diagnosis-and-recovery)を使えます。`send_message_to_thread` と `read_thread` は一時Chatに使いません。
 

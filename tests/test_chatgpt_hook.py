@@ -57,6 +57,8 @@ class ChatHookTests(unittest.TestCase):
             self.assertIn("scripts/chat_browser.js runProHandoff", context)
             self.assertIn("Positively observe Temporary Chat before selecting Pro and sending", context)
             self.assertIn("Never use a history-bearing chat", context)
+            self.assertIn("Check GitHub per operation and repository in that Chat", context)
+            self.assertIn("report the observed blocker or unverified status", context)
         self.assertLessEqual(len(child.encode("utf-8")), routing.MAX_ADDITIONAL_CONTEXT_BYTES)
 
     def test_installed_long_path_keeps_enabled_chat_within_hook_limit(self):
