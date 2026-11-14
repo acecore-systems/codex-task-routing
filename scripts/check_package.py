@@ -26,6 +26,7 @@ def check():
         assert not (PLUGIN / removed).exists(), removed
     assert (PLUGIN / 'skills/task-routing/references/native-cloud.md').is_file()
     assert (PLUGIN / 'skills/task-routing/references/drex-decisions.md').is_file()
+    assert (PLUGIN / 'skills/task-routing/references/local-vl.md').is_file()
     assert (PLUGIN / 'scripts/drex_decisions.py').is_file()
     assert (PLUGIN / 'scripts/chat_browser.js').is_file()
     expected_events = {'SessionStart', 'SubagentStart', 'PreToolUse', 'PreModelRequest',

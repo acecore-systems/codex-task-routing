@@ -393,6 +393,27 @@ class RoutingTestCase(unittest.TestCase):
         self.assertNotIn("hookSpecificOutput", result)
         self.assertNotIn("edited cache", result["systemMessage"])
 
+    def test_local_vl_context_requires_root_opt_in(self) -> None:
+        def hook(event):
+            return routing.hook_payload(
+                event=event, source="startup", plugin_root=self.plugin, codex_home=self.home, cwd=self.base
+            )
+
+        def context(event):
+            return hook(event)["hookSpecificOutput"]["additionalContext"]
+
+        self.assertNotIn("local-vl.md", context("SessionStart"))
+        config = self.home / "codex-task-routing" / "local-vl.json"
+        config.write_text('{"schema_version":1,"enabled":true}', encoding="utf-8")
+        enabled = context("SessionStart")
+        self.assertIn("local-vl.md", enabled)
+        self.assertIn("select LFM3-VL", enabled)
+        self.assertNotIn("local-vl.md", context("SubagentStart"))
+        config.write_text('{"schema_version":1,"enabled":true,"enabled":false}', encoding="utf-8")
+        result = hook("SessionStart")
+        self.assertNotIn("local-vl.md", result["hookSpecificOutput"]["additionalContext"])
+        self.assertIn("LFM3-VL route not applied", result["systemMessage"])
+
     def test_drex_decisions_context_requires_root_opt_in(self) -> None:
         def hook(event):
             return routing.hook_payload(

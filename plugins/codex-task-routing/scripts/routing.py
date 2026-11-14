@@ -731,6 +731,17 @@ def _unapplied_hook_response() -> dict[str, Any]:
     }
 
 
+def _local_vl_enabled(home: Path) -> bool:
+    path = _assert_safe_ancestors(_absolute(home) / "codex-task-routing" / "local-vl.json")
+    if not os.path.lexists(path):
+        return False
+    config = _load_json(path, "LFM3-VL configuration", limit=4096)
+    if (set(config) != {"schema_version", "enabled"} or not _is_schema_version_one(config["schema_version"])
+            or type(config["enabled"]) is not bool):
+        raise RoutingError("invalid LFM3-VL configuration")
+    return config["enabled"]
+
+
 def _chatgpt_context(home: Path, plugin_root: Path, *, for_child: bool = False) -> str:
     """Expose opt-in instructions only; never start a chat from a hook."""
     config = _assert_safe_ancestors(home / "codex-task-routing" / "chatgpt.json")
@@ -933,6 +944,18 @@ def hook_payload(
             except (RoutingError, OSError, ImportError, ValueError):
                 route_diagnostic = "ChatGPT route not applied: invalid configuration or unavailable helper. Run chatgpt_route.py status."
         if event == "SessionStart":
+            try:
+                if _local_vl_enabled(home):
+                    context += ("\nReuse a suitable continuing owner. Apply eligible Muse Ember for public-web research "
+                                "and Drex Decisions for structured choice, predicate or score first. For explicitly local "
+                                "analysis, saved inbox PNG analysis or short local text analysis of authorized public or "
+                                "synthetic material, select LFM3-VL when the policy allows it and the scoped MCP tool "
+                                "reports ready. If unavailable before inference use the "
+                                "existing policy, with independent permission for any external transfer. "
+                                "Read <plugin-root>/skills/task-routing/references/local-vl.md.")
+            except (RoutingError, OSError, ValueError):
+                route_diagnostic = ((route_diagnostic + " ") if route_diagnostic else "") + (
+                    "LFM3-VL route not applied: invalid configuration.")
             try:
                 if load_drex_decisions_config(home):
                     context += ("\nFor new approved typed decisions on public or synthetic text, root selects Drex Max v1.1 "

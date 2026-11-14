@@ -18,3 +18,4 @@ Before cloud model selection involving credentials, follow [local authentication
 The opt-in [Haiku API route](references/haiku-api.md) provides root-owned, approved text proposals; the parent applies edits and tests.
 
 Root owns the opt-in routes for the [Muse pilot](references/muse-pilot.md), [Muse public-web research](references/muse-web-research.md), and [Drex Decisions](references/drex-decisions.md) for bounded text judgments.
+For bounded local text and image analysis, root can select the [LFM3-VL extension](references/local-vl.md) when it is enabled and ready.
