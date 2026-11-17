@@ -59,7 +59,7 @@ function control({ present = () => true, text = () => "", attribute = () => null
 function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = false,
   quotaAfterReply = false, quotaBeforeReply = false, runningAtQuota = false, changedModel = false,
   menuNotice = null,
-  switches = null, temporaryUrl = "https://chatgpt.com/?temporary-chat=true",
+  switches = null, navigationRole = "button", directIndicator = true, temporaryUrl = "https://chatgpt.com/?temporary-chat=true",
   newMarkup = false, badge = true, oldHeading = false, wrongReplyHash = false, wrongUserHash = false,
   conversationUrl = "https://chatgpt.com/c/12345678-1234-1234-1234-123456789abc?temporary-chat=true",
   timeoutMs = 1_000, waitTimeouts = 0, stopWaitTimeouts = 0, waitDenied = false,
@@ -193,6 +193,8 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
       if (role === "textbox") return control({
         text: () => state.composer, fill: text => { state.composer = text; },
       });
+      if (["Chat", "Work"].includes(name) && role !== navigationRole)
+        return control({ present: () => false });
       const label = Object.keys(chatButtons).find(key => typeof name === "string" ? name === key : name?.test(key));
       if (state.phases.includes("dispatch") && ["パーソナライズ", "パーソナライズなし"].includes(label)) {
         state.modeObservedAfterDispatch = true;
@@ -259,7 +261,12 @@ function fixture({ limited = false, ambiguousClick = false, wrongSavedHash = fal
           ? (state.forceUrl ?? (state.sent && !transitionDuringWait ? (changedDestination && state.ready ? "https://chatgpt.com/c/other" :
             newMarkup ? conversationUrl : sentUrl) : temporaryUrl))
           : url,
-        goto: async next => { state.gotos.push(next); url = next; },
+        goto: async next => {
+          state.gotos.push(next);
+          url = next;
+          if (id === "1" && next === "https://chatgpt.com/?temporary-chat=true" && directIndicator)
+            state.temporary = true;
+        },
         async pressKey(_, key) {
           assert.equal(state.menu, true);
           if (key === "Escape") state.menu = false;
@@ -298,6 +305,19 @@ test("temporary mode lost before model selection blocks selection and send", asy
   assert.equal(state.power, 3);
   assert.equal(state.sent, 0);
   assert.equal(state.menu, false);
+});
+
+test("checkbox navigation uses the fixed temporary entry only in ordinary Chat", async () => {
+  const { run, state } = fixture({ navigationRole: "checkbox" });
+  await run();
+  assert.equal(state.sent, 1);
+  assert.equal(state.gotos[1], "https://chatgpt.com/?temporary-chat=true");
+  for (const options of [{ switches: () => "work" }, { nav: "work" },
+    { directIndicator: false }, { oldHeading: true }]) {
+    const denied = fixture({ navigationRole: "checkbox", ...options });
+    await denied.run();
+    assert.equal(denied.state.sent, 0);
+  }
 });
 
 test("both switches may disappear only after explicit Chat and temporary selection", async () => {
