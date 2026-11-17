@@ -1,5 +1,9 @@
 # 変更履歴
 
+## 0.34.3
+
+- Liquid判定前のstatusで専用presetを検証し、旧providerのstatusを新依頼へ流用しない。
+
 ## 0.34.2
 
 - 型付き判定の候補を Liquid d1.2-ultra に移行し、旧helperの新規送信を停止し、既存依頼を元のproviderで照合。

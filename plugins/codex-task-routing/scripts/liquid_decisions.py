@@ -68,7 +68,8 @@ def prepare(facts: dict, enabled: bool) -> dict:
         if status.get("status") in ("unavailable", "waiting_for_local_worker"):
             return {"ready": False, "next_action": "reconcile_existing_request"}
         payload, digest = request_binding(facts["request"])
-        if status.get("requestSha256") != digest or status.get("valuesReturned") is not False:
+        if (status.get("preset") != "liquid-decisions-local" or status.get("requestSha256") != digest
+                or status.get("valuesReturned") is not False):
             raise ValueError("decision status does not match request")
         if status.get("stage") == "completed":
             return {"ready": False, "next_action": "review_existing_result"}
