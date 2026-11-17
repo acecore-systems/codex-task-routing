@@ -313,15 +313,32 @@ const runProHandoff = (() => {
     return exact;
   }
 
+  async function chatNavigation(pw) {
+    const controls = await Promise.all(["checkbox", "button"].map(async role => {
+      const chat = visible(pw.getByRole(role, { name: "Chat", exact: true }));
+      const work = visible(pw.getByRole(role, { name: "Work", exact: true }));
+      return { role, chat, work, chatCount: await chat.count(), workCount: await work.count() };
+    }));
+    const present = controls.filter(item => item.chatCount || item.workCount);
+    if (present.length === 0) return { state: "absent" };
+    if (present.length !== 1 || present[0].chatCount !== 1 || present[0].workCount !== 1)
+      return { state: "ambiguous" };
+    const { role, chat, work } = present[0];
+    async function selected(locator) {
+      if (role === "button") return locator.getAttribute("aria-pressed");
+      const checked = await locator.getAttribute("aria-checked");
+      return checked ?? await locator.evaluate(element =>
+        element instanceof HTMLInputElement && element.type === "checkbox" ? String(element.checked) : null);
+    }
+    const [chatSelected, workSelected] = await Promise.all([selected(chat), selected(work)]);
+    const state = chatSelected === "true" && workSelected === "false" ? "chat" :
+      chatSelected === "false" && workSelected === "true" ? "work" : "ambiguous";
+    return { role, chat, state };
+  }
+
   async function ordinaryChat(pw, allowMissing = false) {
-    const chat = button(pw, "Chat");
-    const work = button(pw, "Work");
-    const chatCount = await chat.count();
-    const workCount = await work.count();
-    if (allowMissing && chatCount === 0 && workCount === 0) return true;
-    return chatCount === 1 && workCount === 1 &&
-      await chat.getAttribute("aria-pressed") === "true" &&
-      await work.getAttribute("aria-pressed") === "false";
+    const { state } = await chatNavigation(pw);
+    return state === "chat" || (allowMissing && state === "absent");
   }
 
   async function temporaryChatContext(tab, { phase = "dispatch" } = {}) {
@@ -377,20 +394,19 @@ const runProHandoff = (() => {
   async function openTemporary(tab) {
     await tab.goto(chatUrl);
     const pw = tab.playwright;
-    const chat = button(pw, "Chat");
-    await chat.waitFor({ state: "visible", timeoutMs: uiTimeout });
-    const work = button(pw, "Work");
-    if (await chat.getAttribute("aria-pressed") === "false" && await work.count() === 1 &&
-        await work.getAttribute("aria-pressed") === "true") {
-      await chat.click({ timeoutMs: uiTimeout });
-    }
-    if (!await ordinaryChat(pw)) return false;
-    // The model picker appears after the Chat controls are ready for input.
     await button(pw, pickerName).waitFor({ state: "visible", timeoutMs: uiTimeout });
+    const navigation = await chatNavigation(pw);
     const enabled = button(pw, temporaryOn);
-    if (await enabled.count() === 0) {
-      const toggle = await observedButton(pw, button(pw, temporaryOff));
-      await toggle.click({ timeoutMs: uiTimeout });
+    if (navigation.role === "checkbox") {
+      if (navigation.state !== "chat") return false;
+      await tab.goto("https://chatgpt.com/?temporary-chat=true");
+    } else {
+      if (navigation.state === "work") await navigation.chat.click({ timeoutMs: uiTimeout });
+      if (!await ordinaryChat(pw)) return false;
+      if (await enabled.count() === 0) {
+        const toggle = await observedButton(pw, button(pw, temporaryOff));
+        await toggle.click({ timeoutMs: uiTimeout });
+      }
     }
     await enabled.waitFor({ state: "visible", timeoutMs: uiTimeout });
     return await temporaryChatContext(tab) && await pw.locator("main [data-message-author-role]").count() === 0 &&
