@@ -1,11 +1,12 @@
 import json
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "plugins/codex-task-routing/scripts"))
-import drex_decisions as drex
+import liquid_decisions as drex
 
 
 class DrexDecisionsTests(unittest.TestCase):
@@ -33,12 +34,19 @@ class DrexDecisionsTests(unittest.TestCase):
             current = directory / "liquid-decisions.json"
             self.assertFalse(drex.load_config(home))
             legacy.write_text('{"schema_version":1,"enabled":true}', encoding="utf-8")
-            self.assertTrue(drex.load_config(home))
+            self.assertFalse(drex.load_config(home))
             current.write_text('{"schema_version":1,"enabled":false}', encoding="utf-8")
             self.assertFalse(drex.load_config(home))
             current.write_text('{"schema_version":1,"enabled":"true"}', encoding="utf-8")
             with self.assertRaises(drex.RoutingError):
                 drex.load_config(home)
+
+    def test_legacy_helper_stops_without_sending(self):
+        old_helper = Path(__file__).resolve().parents[1] / "plugins/codex-task-routing/scripts/drex_decisions.py"
+        result = subprocess.run([sys.executable, str(old_helper), "prepare"], capture_output=True, text=True, check=False)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stdout, "")
+        self.assertEqual(json.loads(result.stderr), {"error": "drex_route_retired", "next_action": "reconcile_existing_with_nace_tool"})
 
     def test_status_then_one_run_for_the_bound_request(self):
         lookup = drex.prepare(self.facts, True)

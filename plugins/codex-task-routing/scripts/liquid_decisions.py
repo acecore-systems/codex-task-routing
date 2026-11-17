@@ -13,7 +13,6 @@ import sys
 from routing_core.common import RoutingError, _absolute, _assert_safe_ancestors, _canonical_json, _load_json
 
 CONFIG_RELATIVE = Path("codex-task-routing") / "liquid-decisions.json"
-LEGACY_CONFIG_RELATIVE = Path("codex-task-routing") / "drex-decisions.json"
 MODEL = "d1.2-ultra"
 TOOL = "local_auth_liquid_decisions"
 APPROVALS = ("host_authorized", "target_authorized", "materials_authorized", "cost_authorized")
@@ -30,9 +29,7 @@ ANSWER_FIELDS = {"name", "type", "choice", "probability", "score", "confidence",
 def load_config(home: Path) -> bool:
     path = _assert_safe_ancestors(_absolute(home) / CONFIG_RELATIVE)
     if not os.path.lexists(path):
-        path = _assert_safe_ancestors(_absolute(home) / LEGACY_CONFIG_RELATIVE)
-        if not os.path.lexists(path):
-            return False
+        return False
     config = _load_json(path, "Liquid Decisions configuration", limit=4096)
     if (set(config) != {"schema_version", "enabled"} or type(config["schema_version"]) is not int
             or config["schema_version"] != 1 or type(config["enabled"]) is not bool):

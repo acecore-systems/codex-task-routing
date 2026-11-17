@@ -1,3 +1,3 @@
-# 移行済みの定型判定
+# Drex 経路の移行
 
-[Liquid Decisions の設定と実行手順](liquid-decisions.md)を参照してください。既存の設定ファイルと helper パスは互換入口として維持します。
+旧 helper は新規送信を停止します。既存依頼は元の Nace tool で同じ入力と hash を使って照合します。新規依頼には [Liquid Decisions](liquid-decisions.md) を使用します。

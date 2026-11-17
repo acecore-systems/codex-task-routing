@@ -2,7 +2,7 @@
 
 親は、公開・合成テキストの分類、明文化した条件の判定、基準付き採点を Liquid d1.2-ultra に割り当てられます。対象は、材料と設問がそろい、選択肢・確率・点数で回答できる新規作業です。適任の担当が継続中の場合は引き続きその担当が進めます。公開 Web の調査は Muse Ember の経路を使います。最終判断や実行操作は親が扱います。[Liquid Decisions API](https://docs.liquid.ai/lfm/models/d1)
 
-既定は無効です。Codex ホームの `codex-task-routing/liquid-decisions.json` に `{"schema_version":1,"enabled":true}` を置くと、開始フックが親へ候補を案内します。別途、`local_auth_liquid_decisions` を提供する Local Auth が必要です。設定済みコピーで Liquid 専用の設定と保存済みキーを使います。新設定がない場合は従来の `drex-decisions.json` の有効状態を継承します。フックは設定を読み、案内だけを返します。
+既定は無効です。Codex ホームの `codex-task-routing/liquid-decisions.json` に `{"schema_version":1,"enabled":true}` を置くと、開始フックが親へ候補を案内します。別途、`local_auth_liquid_decisions` を提供する Local Auth が必要です。設定済みコピーで Liquid 専用の設定と保存済みキーを使います。従来の `drex-decisions.json` は新経路を有効化しません。既存Drex依頼は元のNace toolと同じ入力・hashで状態照合し、未確定の結果をLiquidへ転送・再送しません。新規依頼だけをLiquidで開始します。フックは設定を読み、案内だけを返します。
 
 ### 準備と受入
 

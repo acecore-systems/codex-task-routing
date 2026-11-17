@@ -424,7 +424,7 @@ class RoutingTestCase(unittest.TestCase):
             return hook(event)["hookSpecificOutput"]["additionalContext"]
 
         self.assertNotIn("Liquid d1.2-ultra", context("SessionStart"))
-        config = self.home / "codex-task-routing" / "drex-decisions.json"
+        config = self.home / "codex-task-routing" / "liquid-decisions.json"
         config.write_text('{"schema_version":1,"enabled":true}', encoding="utf-8")
         self.assertIn("Liquid d1.2-ultra", context("SessionStart"))
         self.assertNotIn("Liquid d1.2-ultra", context("SubagentStart"))

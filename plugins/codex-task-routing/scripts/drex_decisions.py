@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Compatibility entry point for the Liquid Decisions route."""
-from liquid_decisions import *  # noqa: F401,F403
-from liquid_decisions import main
+"""Drex helper retired; preserve existing requests for reconciliation."""
+import json
+import sys
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    print(json.dumps({"error": "drex_route_retired", "next_action": "reconcile_existing_with_nace_tool"}), file=sys.stderr)
+    raise SystemExit(1)
