@@ -423,15 +423,15 @@ class RoutingTestCase(unittest.TestCase):
         def context(event):
             return hook(event)["hookSpecificOutput"]["additionalContext"]
 
-        self.assertNotIn("Drex Max v1.1", context("SessionStart"))
-        config = self.home / "codex-task-routing" / "drex-decisions.json"
+        self.assertNotIn("Liquid d1.2-ultra", context("SessionStart"))
+        config = self.home / "codex-task-routing" / "liquid-decisions.json"
         config.write_text('{"schema_version":1,"enabled":true}', encoding="utf-8")
-        self.assertIn("Drex Max v1.1", context("SessionStart"))
-        self.assertNotIn("Drex Max v1.1", context("SubagentStart"))
+        self.assertIn("Liquid d1.2-ultra", context("SessionStart"))
+        self.assertNotIn("Liquid d1.2-ultra", context("SubagentStart"))
         config.write_text('{"schema_version":1,"enabled":true,"enabled":false}', encoding="utf-8")
         result = hook("SessionStart")
-        self.assertNotIn("Drex Max v1.1", result["hookSpecificOutput"]["additionalContext"])
-        self.assertIn("Drex Decisions route not applied", result["systemMessage"])
+        self.assertNotIn("Liquid d1.2-ultra", result["hookSpecificOutput"]["additionalContext"])
+        self.assertIn("Liquid Decisions route not applied", result["systemMessage"])
 
     @unittest.skipUnless(hasattr(os, "symlink"), "symlinks are unsupported")
     def test_symlink_output_is_rejected(self) -> None:
