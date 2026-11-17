@@ -22,7 +22,7 @@ class DrexDecisionsTests(unittest.TestCase):
             **dict.fromkeys(drex.APPROVALS, True),
         }
         self.payload, self.digest = drex.request_binding(self.request)
-        self.status = {"requestSha256": self.digest, "stage": "not_started",
+        self.status = {"preset": "liquid-decisions-local", "requestSha256": self.digest, "stage": "not_started",
                        "credentialPresent": True, "valuesReturned": False}
 
     def test_legacy_config_migrates_and_new_config_wins(self):
@@ -65,6 +65,9 @@ class DrexDecisionsTests(unittest.TestCase):
         })
         with self.assertRaises(ValueError):
             drex.prepare({**self.facts, "status": {**self.status, "requestSha256": "0" * 64}}, True)
+        for foreign in ("nace-drex-local", None):
+            with self.subTest(preset=foreign), self.assertRaises(ValueError):
+                drex.prepare({**self.facts, "status": {**self.status, "preset": foreign}}, True)
 
     def test_disabled_approval_and_receipt_states(self):
         self.assertFalse(drex.prepare(self.facts, False)["ready"])
