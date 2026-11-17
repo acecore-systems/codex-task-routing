@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "plugins/codex-task-routing/scripts"))
@@ -23,10 +24,26 @@ class DrexDecisionsTests(unittest.TestCase):
         self.status = {"requestSha256": self.digest, "stage": "not_started",
                        "credentialPresent": True, "valuesReturned": False}
 
+    def test_legacy_config_migrates_and_new_config_wins(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            directory = home / "codex-task-routing"
+            directory.mkdir()
+            legacy = directory / "drex-decisions.json"
+            current = directory / "liquid-decisions.json"
+            self.assertFalse(drex.load_config(home))
+            legacy.write_text('{"schema_version":1,"enabled":true}', encoding="utf-8")
+            self.assertTrue(drex.load_config(home))
+            current.write_text('{"schema_version":1,"enabled":false}', encoding="utf-8")
+            self.assertFalse(drex.load_config(home))
+            current.write_text('{"schema_version":1,"enabled":"true"}', encoding="utf-8")
+            with self.assertRaises(drex.RoutingError):
+                drex.load_config(home)
+
     def test_status_then_one_run_for_the_bound_request(self):
         lookup = drex.prepare(self.facts, True)
         self.assertEqual(lookup["next_action"], "check_request_status")
-        self.assertEqual(lookup["tool"], "local_auth_nace_decisions")
+        self.assertEqual(lookup["tool"], "local_auth_liquid_decisions")
         self.assertEqual(lookup["arguments"], {
             "operation": "status", "requestSha256": self.digest, "requestJson": self.payload.decode("utf-8"),
         })
@@ -79,8 +96,8 @@ class DrexDecisionsTests(unittest.TestCase):
             {**empty, "name": "rating", "type": "score", "score": 0.25},
         ]
         result = {
-            "preset": "nace-drex-local", "requestSha256": drex.request_binding(request)[1],
-            "model": "drex-max-v1.1", "stage": "completed", "answers": answers,
+            "preset": "liquid-decisions-local", "requestSha256": drex.request_binding(request)[1],
+            "model": "d1.2-ultra", "stage": "completed", "answers": answers,
             "inputTokens": 10, "elapsedMs": 30, "credentialPresent": None,
             "errorCategory": None, "valuesReturned": False,
         }
