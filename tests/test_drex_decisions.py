@@ -27,7 +27,7 @@ class DrexDecisionsTests(unittest.TestCase):
 
     def test_legacy_config_migrates_and_new_config_wins(self):
         with tempfile.TemporaryDirectory() as tmp:
-            home = Path(tmp)
+            home = Path(tmp).resolve()
             directory = home / "codex-task-routing"
             directory.mkdir()
             legacy = directory / "drex-decisions.json"
