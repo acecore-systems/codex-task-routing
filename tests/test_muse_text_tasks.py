@@ -55,7 +55,7 @@ class MuseTextTasksTest(unittest.TestCase):
 
     def test_only_root_start_hook_opts_in(self):
         with tempfile.TemporaryDirectory() as path:
-            home = Path(path)
+            home = Path(path).resolve()
             phrase = "prefer Muse Ember for bounded summaries"
 
             def context(event):
