@@ -1,5 +1,9 @@
 # 変更履歴
 
+## 0.34.5
+
+- 承認済み公開・合成資料の短い要約・抽出・比較・整形を、opt-in の Muse Ember 専用経路へ振り分けます。専用 adapter と同じ入力ハッシュの状態を確認します。
+
 ## 0.34.4
 
 - 親の推奨起動設定を GPT-6.2 Astra/high、Astra/xhigh、Sol/xhigh に更新。Astra/high を第一候補とします。

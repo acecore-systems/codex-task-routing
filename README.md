@@ -13,6 +13,7 @@ Acecoreが日常利用で改善している分担原則を既定値として同�
 | 子 | GPT-6.2 Sol/low | 通常の実装・修正・テスト |
 | 子 | GPT-6.2 Sol/high | 難題の実行 |
 | 別経路 | Muse Ember/max | 承認済みの公開Web調査の第一候補。要opt-in |
+| 別経路 | Muse Ember/max | 承認済み公開・合成資料の短い要約・抽出・比較・整形。要opt-in |
 | 子 | GPT-6 Luna/max | Emberの対象外・送信前に利用できない調査、定型取得 |
 | 子 | GPT-6.1 Terra/high | 許可された孫委譲・明示選択 |
 | 子 | GPT-6.2 Astra/xhigh | 必要な限定的専門判断 |
@@ -26,7 +27,7 @@ Acecoreが日常利用で改善している分担原則を既定値として同�
 
 受入条件と完了までに必要な工程から担当を選びます。テスト・失敗の切り分け・修正・再試験を含む通常工程はSol/low、難題の実行はSol/highが候補です。分離できる公開Webの証拠収集は、親が[Emberの利用条件](plugins/codex-task-routing/skills/task-routing/references/muse-web-research.md)を確認します。資料へのアクセスと階層条件が合えばLunaを使い、重要な判断は親へ返します。
 
-Emberの非Web用途は、明示承認済みの公開・合成テキストの要約、既知項目の抽出、整理・比較、短い整形を対象とする[別契約](plugins/codex-task-routing/skills/task-routing/references/muse-text-tasks.md)として整理しています。0.34.4では常用の実行経路未提供で、Local Authの反復利用adapterの実装・稼働は未確認です。完了済みの単回pilotを再利用せず、Web経路の検索・引用要件も維持します。Liquidの型付き判定、LFM3-VLのローカル分析、Proの相談、Cloudの独立repo工程を一律に置き換えません。
+0.34.5で、既に取得した公開・合成テキストの短い要約・抽出・比較・整形に[専用の Ember 経路](plugins/codex-task-routing/skills/task-routing/references/muse-text-tasks.md)を追加します。専用 MCP の状態と承認を確認し、実行環境ごとに有効化します。Liquidの型付き判定、LFM3-VLのローカル分析、Proの相談、Cloudの独立repo工程は対象に応じて選びます。
 
 ローカル認証経路は一般的な実装・文章作成の振り分け先ではありません。実際のモデル・対応工程・本人操作待ちはMCPで確認し、接続済み・受付済みだけでは認証成功と扱いません。
 

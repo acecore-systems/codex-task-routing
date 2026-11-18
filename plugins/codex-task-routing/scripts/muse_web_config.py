@@ -11,14 +11,14 @@ from routing_core.common import RoutingError, _absolute, _assert_safe_ancestors,
 CONFIG_RELATIVE = Path("codex-task-routing") / "muse-web.json"
 
 
-def load_config(home):
-    path = _assert_safe_ancestors(_absolute(home) / CONFIG_RELATIVE)
+def load_config(home, *, relative=CONFIG_RELATIVE):
+    path = _assert_safe_ancestors(_absolute(home) / relative)
     if not os.path.lexists(path):
         return {"schema_version": 1, "enabled": False, "state": "absent"}
-    config = _load_json(path, "Muse public web research route configuration", limit=4096)
+    config = _load_json(path, "Muse route configuration", limit=4096)
     if (set(config) != {"schema_version", "enabled"} or type(config["schema_version"]) is not int
             or config["schema_version"] != 1 or type(config["enabled"]) is not bool):
-        raise RoutingError("invalid Muse public web research route configuration")
+        raise RoutingError("invalid Muse route configuration")
     return {**config, "state": "configured"}
 
 
