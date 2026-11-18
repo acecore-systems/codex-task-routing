@@ -1,5 +1,11 @@
 # 変更履歴
 
+## 0.34.4
+
+- 親の推奨起動設定を GPT-6.2 Astra/high、Astra/xhigh、Sol/xhigh に更新。Astra/high を第一候補とします。
+- 通常の子は GPT-6.2 Sol/low、難題の子は GPT-6.2 Sol/high。個別の設定キーで上書きできます。
+- 承認済みの公開 Web 調査は Muse Ember を優先します。対象外や送信前に利用できない調査は、必要なアクセスを持つ Luna を候補とします。
+
 ## 0.34.3
 
 - Liquid判定前のstatusで専用presetを検証し、旧providerのstatusを新依頼へ流用しない。

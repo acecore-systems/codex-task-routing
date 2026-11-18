@@ -36,7 +36,7 @@ def main():
     sol = packaged_defaults["models"]["sol"]
     override_effort = sol["max_effort"] if sol["max_effort"] != sol["default_effort"] else sol["min_effort"]
     assert override_effort != sol["default_effort"], "The smoke test needs a non-default Sol effort"
-    sol_context = f"Sol={sol['id']} ({override_effort})"
+    sol_context = f"Sol (difficult)={sol['id']} ({override_effort})"
     guidance = home / "AGENTS.md"
     guidance.write_text("Use concise answers.\n", encoding="utf-8")
     config_file = home / "config.toml"

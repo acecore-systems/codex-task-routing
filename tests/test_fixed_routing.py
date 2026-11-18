@@ -118,18 +118,22 @@ class FixedRoutingTests(unittest.TestCase):
         self.assertEqual(json.loads(output.getvalue())['route'], 'not_ready')
         self.assertEqual(before, [p.read_bytes() for p in paths])
 
-    def test_fixed_defaults_and_child_hook_uses_sol_6_1(self):
+    def test_fixed_defaults_and_child_hook_use_gpt_6_2_presets(self):
         policy = routing.load_policy(codex_home=self.home)
         self.assertEqual({k:v['default_effort'] for k,v in policy.config['models'].items()},
-                         dict(luna='max', terra='xhigh', sol='high', astra='xhigh', terra61='high'))
+                         dict(luna='max', terra='xhigh', sol_routine='low', sol='high', astra='xhigh', terra61='high'))
         self.assertEqual({k:v['id'] for k,v in policy.config['models'].items()},
                          dict(luna='gpt-6-luna', terra='gpt-6.1-sol',
-                              sol='gpt-6.1-sol', astra='gpt-6-astra', terra61='gpt-6.1-terra'))
+                              sol_routine='gpt-6.2-sol', sol='gpt-6.2-sol',
+                              astra='gpt-6.2-astra', terra61='gpt-6.1-terra'))
         effective = policy.render_template(policy.templates['effective.md'])
         self.assertIn('| Terra子（terra61） | gpt-6.1-terra | high |', effective)
         self.assertNotIn('gpt-5.6', effective)
         self.assertNotIn('gpt-6-sol', effective)
-        self.assertIn('Sol/max', effective)
+        self.assertIn('| Sol子（通常） | gpt-6.2-sol | low |', effective)
+        self.assertIn('| Sol子（難題） | gpt-6.2-sol | high |', effective)
+        for choice in ('Astra/high（第一候補）', 'GPT-6.2 Astra/xhigh', 'GPT-6.2 Sol/xhigh'):
+            self.assertIn(choice, effective)
         self.assertNotIn('GPT-6.1 Sol/xhigh', effective)
         for name, text in policy.templates.items():
             self.assertNotIn('.min_effort}}', text)
@@ -138,7 +142,9 @@ class FixedRoutingTests(unittest.TestCase):
         context = child['hookSpecificOutput']['additionalContext']
         self.assertIn('Terra=gpt-6.1-terra (high)', context)
         self.assertIn('Luna=gpt-6-luna (max)', context)
-        self.assertIn('Sol=gpt-6.1-sol (high)', context)
+        self.assertIn('Sol (routine)=gpt-6.2-sol (low)', context)
+        self.assertIn('Sol (difficult)=gpt-6.2-sol (high)', context)
+        self.assertIn('Astra=gpt-6.2-astra (xhigh)', context)
         self.assertNotIn('gpt-5.6', context)
         self.assertNotIn('gpt-6-sol', context)
         self.assertIn('same-model delegation', context)
@@ -146,9 +152,9 @@ class FixedRoutingTests(unittest.TestCase):
     def test_generated_owner_policy_has_no_conflicting_parent_defaults(self):
         # Contract checks of generated instructions, not model-behavior tests.
         policy = routing.load_policy(codex_home=self.home)
-        self.assertEqual(policy.config['policy_revision'], '2026-11-11-execution-owner')
+        self.assertEqual(policy.config['policy_revision'], '2026-11-18-gpt-6-2')
         documents = policy.rendered_documents()
-        obsolete = ('GPT-6.1 Sol/xhigh', '参考基準は親Sol/xhigh',
+        obsolete = ('GPT-6.1 Sol/xhigh', 'Sol/max', '通常の実装・修正はTerra/', '参考基準は親Sol/xhigh',
                     '通常作業は親で完結する', '通常工程は親で完結し',
                     '通常の調査・実装・検証と進行は親が完結する',
                     '通常は親が引き取り', '欠測の解釈は親を標準とする')
@@ -213,6 +219,8 @@ class FixedRoutingTests(unittest.TestCase):
         policy = routing.load_policy(codex_home=self.home)
         self.assertEqual(policy.config['models']['sol']['id'], 'gpt-6-sol')
         self.assertEqual(policy.config['models']['sol']['default_effort'], 'xhigh')
+        self.assertEqual(policy.config['models']['sol_routine']['id'], 'gpt-6.2-sol')
+        self.assertEqual(policy.config['models']['sol_routine']['default_effort'], 'low')
         self.assertIn('gpt-6-sol', policy.render_template(policy.templates['effective.md']))
         self.assertEqual(before, path.read_bytes())
         self.assertFalse((self.home/'config.toml').exists())
@@ -222,6 +230,7 @@ class FixedRoutingTests(unittest.TestCase):
         path.parent.mkdir()
         path.write_text(json.dumps({'schema_version': 1, 'models': {
             'luna': {'default_effort': 'xhigh'},
+            'sol_routine': {'default_effort': 'medium'},
             'sol': {'default_effort': 'high'},
             'astra': {'default_effort': 'max'},
         }}), encoding='utf-8')
@@ -232,14 +241,16 @@ class FixedRoutingTests(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertNotIn('Luna/max', documents[name])
                 self.assertNotIn('Astra/medium', documents[name])
+                self.assertIn('Sol/medium', documents[name])
                 self.assertIn('Sol/high', documents[name])
                 self.assertIn('Luna/xhigh', documents[name])
                 self.assertIn('Astra/max', documents[name])
         status = routing.status_payload(codex_home=self.home, cwd=self.home)
         self.assertEqual(status['configured_child_models'], {
             'luna': {'id': 'gpt-6-luna', 'default_effort': 'xhigh'},
-            'sol': {'id': 'gpt-6.1-sol', 'default_effort': 'high'},
-            'astra': {'id': 'gpt-6-astra', 'default_effort': 'max'},
+            'sol_routine': {'id': 'gpt-6.2-sol', 'default_effort': 'medium'},
+            'sol': {'id': 'gpt-6.2-sol', 'default_effort': 'high'},
+            'astra': {'id': 'gpt-6.2-astra', 'default_effort': 'max'},
             'terra61': {'id': 'gpt-6.1-terra', 'default_effort': 'high'},
         })
         self.assertEqual(status['host']['runtime_model'], 'unknown')
@@ -248,11 +259,9 @@ class FixedRoutingTests(unittest.TestCase):
         for event in ('SessionStart', 'SubagentStart'):
             context = routing.hook_payload(event=event, source='startup',
                 codex_home=self.home, cwd=self.home)['hookSpecificOutput']['additionalContext']
-            if event == 'SessionStart':
-                self.assertIn('Sol=gpt-6.1-sol (high)', context)
-                self.assertNotIn('Luna/max', context)
-            else:
-                self.assertIn('Sol=gpt-6.1-sol (high)', context)
+            self.assertIn('Sol (routine)=gpt-6.2-sol (medium)', context)
+            self.assertIn('Sol (difficult)=gpt-6.2-sol (high)', context)
+            self.assertNotIn('Luna/max', context)
         self.assertEqual(before, path.read_bytes())
         self.assertFalse((self.home/'config.toml').exists())
 
@@ -310,8 +319,10 @@ class FixedRoutingTests(unittest.TestCase):
         self.assertNotIn('terra', status['configured_child_models'])
         self.assertIsNone(status['override_review'])
         self.assertFalse((self.home / 'codex-task-routing/cache').exists())
-        for text in routing.load_policy(codex_home=self.home).rendered_documents().values():
-            self.assertIn('Terra/max', text)
+        documents = routing.load_policy(codex_home=self.home).rendered_documents()
+        self.assertIn('| Terra子（terra61） | gpt-6.1-terra | max |', documents['effective.md'])
+        self.assertIn('Terra/max', documents['model-routing-policy.md'])
+        for text in documents.values():
             self.assertNotIn('gpt-5.6-terra', text)
         for event in ('SessionStart', 'SubagentStart'):
             context = routing.hook_payload(event=event, source='startup',
@@ -351,7 +362,7 @@ class FixedRoutingTests(unittest.TestCase):
                 self.assertIn('read effective.md before routing', context)
                 self.assertIn('A plan is not delegation', context)
                 self.assertIn('call the actual delegation tool', context)
-                self.assertNotIn('Terra is the default for ordinary', context)
+                self.assertNotIn('Use Sol (routine) for ordinary', context)
                 self.assertIn("a standard child's actual access and suitability", context)
                 self.assertIn('apply the effective principles and host limits', context)
                 self.assertNotIn('Do not retain ordinary implementation merely', context)
@@ -416,7 +427,7 @@ class FixedRoutingTests(unittest.TestCase):
             self.assertIn('本格的な調査・実装の前', policy.config['principles'][key])
             self.assertIn('計画や推薦だけを委譲済みとせず', policy.config['principles'][key])
 
-    def test_terra_default_policy_is_consistent_across_rendered_and_hook_contexts(self):
+    def test_gpt_6_2_and_ember_policy_is_consistent_across_rendered_and_hook_contexts(self):
         policy = routing.load_policy(codex_home=self.home)
         docs = policy.rendered_documents()
         for name in ('effective.md', 'model-routing-policy.md',
@@ -424,26 +435,40 @@ class FixedRoutingTests(unittest.TestCase):
             with self.subTest(document=name):
                 self.assertIn('既定', docs[name])
                 self.assertNotIn('同列候補', docs[name])
+                self.assertIn('Sol/low', docs[name])
+                self.assertIn('Sol/high', docs[name])
+                self.assertIn('Muse Ember', docs[name])
                 self.assertNotIn('Sol/Terra間の再委譲', docs[name])
         summary = policy.config['principles']['summary']
         for text in ('Sol子→Terra/Luna', 'Terra子→Luna', 'TerraからSolへの再委譲',
                      '難しい判断・実装を含む調査', '重い判断はrootへ返して', '通常の実装判断・修正は同じ担当'):
             self.assertIn(text, summary)
         self.assertIn('方式選択・合意前提の変更は親が判断', docs['effective.md'])
-        self.assertIn('通常の実装判断はTerraが行う', docs['effective.md'])
+        self.assertIn('通常の実装判断は担当のSolが行う', docs['effective.md'])
         self.assertIn('難題の実行はSol', docs['effective.md'])
         classification = policy.config['principles']['policy_classification']
         self.assertIn('Cloud', classification)
         self.assertIn('通常Chat Pro', classification)
-        self.assertIn('Terra/{{models.terra61.default_effort}}', classification)
+        self.assertIn('Sol/{{models.sol_routine.default_effort}}', classification)
+        config_path = self.home / 'codex-task-routing' / 'muse-web.json'
+        config_path.parent.mkdir(exist_ok=True)
+        disabled = routing.hook_payload(event='SessionStart', source='startup',
+            codex_home=self.home, cwd=self.home)['hookSpecificOutput']['additionalContext']
+        self.assertNotIn('root checks Muse Ember status and prepare', disabled)
+        config_path.write_text('{"schema_version":1,"enabled":true}', encoding='utf-8')
         for event in ('SessionStart', 'SubagentStart'):
             hook = routing.hook_payload(event=event, source='startup',
                 codex_home=self.home, cwd=self.home)
-            self.assertIn('hookSpecificOutput', hook)
-            self.assertLessEqual(len(hook['hookSpecificOutput']['additionalContext'].encode("utf-8")),
-                                 routing.MAX_ADDITIONAL_CONTEXT_BYTES)
+            context = hook['hookSpecificOutput']['additionalContext']
+            self.assertLessEqual(len(context.encode("utf-8")), routing.MAX_ADDITIONAL_CONTEXT_BYTES)
+            self.assertEqual('root checks Muse Ember status and prepare' in context,
+                             event == 'SessionStart')
+            if event == 'SessionStart':
+                self.assertIn('Use Sol (routine) for ordinary', context)
+                self.assertIn('Sol (difficult) for difficult execution', context)
+                self.assertIn('Never resend uncertain results', context)
 
-    def test_terra_default_roles_do_not_expand_chat_ownership(self):
+    def test_sol_presets_do_not_expand_delegation_or_chat_ownership(self):
         policy = routing.load_policy(codex_home=self.home)
         hierarchy = policy.config['principles']['policy_hierarchy']
         self.assertIn('TerraからSolへの直接再委譲', hierarchy)
@@ -460,8 +485,8 @@ class FixedRoutingTests(unittest.TestCase):
         self.assertIn('Terra child to Luna', context)
         self.assertIn('Luna children and all grandchildren cannot delegate', context)
         self.assertIn('No same-role, higher-role or same-model delegation', context)
-        self.assertIn('Terra ordinary implementation and fixes', context)
-        self.assertIn('Sol difficult execution', context)
+        self.assertIn('Both Sol presets use the assigned role sol', context)
+        self.assertIn('return the Ember route to root', context)
         self.assertIn('host restrictions', context)
         self.assertIn('Check role/depth', context)
 
