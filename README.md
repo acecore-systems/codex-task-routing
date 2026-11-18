@@ -6,15 +6,16 @@
 
 Acecoreが日常利用で改善している分担原則を既定値として同梱します。親のモデル・effortを維持し、引継ぎ、同じ担当の継続、重要なレビューまで含めて、品質と総利用負担を考慮します。次回送信のモデル選択を勧める機能はありません。節約率は未実証です。
 
-推奨する開始設定は **Sol/max** です。親は利用者が選びます。難しい判断や実装を伴う調査では、分離できる証拠収集をLunaに任せ、判断が必要な点を親に返します。Sol親からSol子への委譲は、難題のまとまった工程を分けることで具体的な利点がある場合に限ります。
+新規セッションでは **GPT-6.2 Astra/high** を第一候補とし、**GPT-6.2 Astra/xhigh** と **GPT-6.2 Sol/xhigh** も選べます。親のモデルとeffortは利用者が選びます。Sol親からSol子への委譲は、まとまった工程を分ける具体的な利点があり、ホストが許す場合に検討します。
 
 | 担当 | 既定 | 役割 |
 | --- | --- | --- |
-| 親 | 推奨 Sol/max | 利用者が選択。判断・優先順位・受入を担当 |
-| 子 | GPT-6 Luna/max | 調査・証拠収集 |
-| 子 | GPT-6.1 Terra/high | 通常の実装・修正 |
-| 子 | GPT-6.1 Sol/high | 難題の実行 |
-| 子 | GPT-6 Astra/xhigh | 必要な限定的専門判断 |
+| 子 | GPT-6.2 Sol/low | 通常の実装・修正・テスト |
+| 子 | GPT-6.2 Sol/high | 難題の実行 |
+| 別経路 | Muse Ember/max | 承認済みの公開Web調査の第一候補。要opt-in |
+| 子 | GPT-6 Luna/max | Emberの対象外・送信前に利用できない調査、定型取得 |
+| 子 | GPT-6.1 Terra/high | 許可された孫委譲・明示選択 |
+| 子 | GPT-6.2 Astra/xhigh | 必要な限定的専門判断 |
 | 別経路 | 通常Chat Pro | 許可・資料・アクセスがそろう相談の第一候補 |
 | 任意の別経路 | Haiku API / xhigh | 明示opt-in、ホスト・対象・資料送信・local-auth adapterの条件を満たす提案 |
 | ローカル認証経路 | local-auth-lfm | 秘密を扱う登録済み認証工程 |
@@ -23,13 +24,13 @@ Acecoreが日常利用で改善している分担原則を既定値として同�
 
 調査→修正→テスト→明示承認済みPR→合意した対象の指摘対応→必要な再検証を、同じ担当の完了単位にします。通常の追加指示や範囲内修正のたびに新しいSol/Terraを起動せず、最新revision・差分・到達点・残条件を保持して継続します。合意済み設計の変更、新たな権限、範囲拡大、重大な影響、未解消の矛盾、検証不能は親へ返します。未到着のレビューを対応済みにせず、PR作成の承認からマージ・本番反映を推定しません。
 
-「確認」「調査」という入口の語だけでなく、受入条件と完了までに必要な工程から担当を選びます。既定方針では、テスト・失敗の切り分け・通常修正・再試験を含む普通の検証はTerra/high、難題はSol/highを所有者の候補とします。標準階層・アクセス・並列または直列の委譲条件がそろう場合、TerraまたはSolの担当自身が、分離できる証拠収集だけをLuna/maxへ渡せます。常に子や孫を起動する意味ではなく、有効なoverrideとホスト制約を優先します。
+受入条件と完了までに必要な工程から担当を選びます。テスト・失敗の切り分け・修正・再試験を含む通常工程はSol/low、難題の実行はSol/highが候補です。分離できる公開Webの証拠収集は、親が[Emberの利用条件](plugins/codex-task-routing/skills/task-routing/references/muse-web-research.md)を確認します。資料へのアクセスと階層条件が合えばLunaを使い、重要な判断は親へ返します。
 
 ローカル経路は一般的な実装・文章作成の振り分け先ではありません。実際のモデル・対応工程・本人操作待ちはMCPで確認し、接続済み・受付済みだけでは認証成功と扱いません。
 
 0.26.0は、別途インストール済みClaude Code CLIによる[任意のHaiku API経路](plugins/codex-task-routing/skills/task-routing/references/haiku-api.md)を追加します。既定オフ、root所有で、標準子に限定されたホストでは計画までです。API実行や実費、品質・能力比較は未検証です。
 
-旧`terra`キーはschema 1の既存overrideの読取り互換用です。分担候補には出しません。新しいTerra 6.1の候補キーは`terra61`で、旧overrideを自動移行しません。実際のモデル利用可否・対象適合・既存担当の継続を確認し、性能・費用の優劣は推定しません。同モデルへの無用な移管を避けます。標準孫は割当て役割としてAstra子→Sol/Terra/Luna、Sol子→Terra/Luna、Terra子→Lunaまで。Solはホストの並列・直列許可と深さを満たす場合に通常実装をTerraへ委譲し、成果をレビュー・統合します。Terra→Sol、Luna子・孫から先と同モデル/上位役割は禁止し、役割・深さ不明はrootへ返します。これは一般的なモデル性能順位ではありません。min/max設定は互換性のため残し、自動選定は有効なdefault_effortに固定します。既存overrideと他モデル親は保持します。並列分担には委譲する担当自身の独立作業が必要で、直列の専門委譲は具体的な追加価値とホストの許可を確認した場合だけ使います。
+旧`terra`キーはschema 1の既存overrideの読取り互換用です。分担候補には出しません。Terra 6.1の設定キーは`terra61`で、旧overrideを自動移行しません。実際のモデル利用可否・対象適合・既存担当の継続を確認し、性能・費用の優劣は推定しません。同モデルへの無用な移管を避けます。標準孫は割当て役割としてAstra子→Sol/Terra/Luna、Sol子→Terra/Luna、Terra子→Lunaまで。Solはホストの並列・直列許可と深さを満たす場合に独立した実装工程をTerraへ委譲し、成果をレビュー・統合します。Terra→Sol、Luna子・孫から先と同モデル/上位役割は禁止し、役割・深さ不明はrootへ返します。これは一般的なモデル性能順位ではありません。min/max設定は互換性のため残し、自動選定は有効なdefault_effortに固定します。既存overrideと他モデル親は保持します。並列分担には委譲する担当自身の独立作業が必要で、直列の専門委譲は具体的な追加価値とホストの許可を確認した場合だけ使います。
 
 ## 導入
 
@@ -92,11 +93,11 @@ python plugins/codex-task-routing/scripts/routing.py render --output-dir outputs
 
 ## 設定を変更する
 
-上書きは `$CODEX_HOME/codex-task-routing/overrides.json` へ保存します。`CODEX_HOME` が未設定なら `~/.codex` です。上書きがなければ作者の既定値を使います。旧版の`luna`・`sol`の`id`を5.6系や旧`gpt-6-sol`へ固定した上書きは自動で書き換えないため、移行時に`status --json`の適用キーを確認してください。Solの旧ID指定は`gpt-6.1-sol`へ変更してください。プラグインの更新・解除でこの上書きファイルを編集・削除しません。
+上書きは `$CODEX_HOME/codex-task-routing/overrides.json` へ保存します。`CODEX_HOME` が未設定なら `~/.codex` です。通常向けの設定キーは `models.sol_routine`、難題向けは既存の `models.sol` です。どちらも割当て役割は `sol` です。旧版で固定したmodel IDやeffortは引き継がれるため、6.2の既定へ寄せる場合は `status --json` の適用キーを確認し、対象の指定だけを見直します。
 
 `status --json` の `configured_child_models` で、上書き適用後の子のモデルIDと固定effortを確認できます。これは実行時の指定値であり、実際にそのモデルで動いた証明ではありません。親の実設定は `host.runtime_model` / `host.runtime_effort` と区別し、取得できない場合は `unknown` のままにします。
 
-Sol子を配布版の既定値変更にかかわらず `max` に固定する場合は、次のように指定します。
+難題向けSol子を配布版の既定値変更にかかわらず `max` に固定する場合は、次のように指定します。
 
 ```json
 {
@@ -107,7 +108,7 @@ Sol子を配布版の既定値変更にかかわらず `max` に固定する場�
 }
 ```
 
-Terraの個別設定は新キー`models.terra61`に指定します。`principles.summary`等の文章overrideは更新後も古い内容を保持し得るため、`status --json`の`override_review`と両フックの案内に従い、新しい候補表・役割・Chat境界との整合を確認します。設定や稼働プラグインは自動で書き換えません。0.21.0の検証範囲は[検証記録](docs/validation-0.21.0.md)を参照してください。
+Terraの個別設定はキー`models.terra61`に指定します。`principles.summary`等の文章overrideは更新後も古い内容を保持し得るため、`status --json`の`override_review`と両フックの案内に従い、新しい候補表・役割・Chat境界との整合を確認します。設定や稼働プラグインは自動で書き換えません。
 
 これは使い方の例で、既定値を下げる推奨ではありません。原則自体も `principles.summary` や対応する詳細節を置き換えて変更できます。[設定の詳細](plugins/codex-task-routing/skills/task-routing/references/configuration.md)
 

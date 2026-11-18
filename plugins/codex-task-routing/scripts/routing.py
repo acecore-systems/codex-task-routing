@@ -92,9 +92,12 @@ WINDOWS_TRANSIENT_RENAME_WINERRORS = frozenset({5, 32, 33})
 
 MODEL_FIELDS = ("id", "min_effort", "default_effort", "max_effort")
 # The terra key remains for schema-v1 override compatibility; it is never routed.
-REQUIRED_MODEL_ROLES = ("luna", "terra", "sol", "terra61", "astra")
-ACTIVE_MODEL_ROLES = ("luna", "sol", "terra61", "astra")
-MODEL_LABELS = {"luna": "Luna", "sol": "Sol", "terra61": "Terra", "astra": "Astra"}
+REQUIRED_MODEL_ROLES = ("luna", "terra", "sol_routine", "sol", "terra61", "astra")
+ACTIVE_MODEL_ROLES = ("sol_routine", "sol", "luna", "terra61", "astra")
+MODEL_LABELS = {
+    "sol_routine": "Sol (routine)", "sol": "Sol (difficult)",
+    "luna": "Luna", "terra61": "Terra", "astra": "Astra",
+}
 ROUTING_PRINCIPLE_KEYS = frozenset({
     "summary", "policy_intro", "policy_effort", "policy_classification",
     "policy_test_image", "policy_originals", "policy_retrieval", "policy_escalation",
@@ -622,7 +625,7 @@ def _override_review(policy: Policy) -> dict[str, Any] | None:
     return {
         "keys": keys,
         "reason": "custom_routing_principles_replace_current_defaults",
-        "hint": "Review custom routing text against terra61, current role/Chat and observation campaign boundaries; overrides are preserved, not migrated or semantically validated.",
+        "hint": "Review custom routing text against sol_routine, sol, Muse Ember and current role/Chat and observation boundaries; overrides are preserved, not migrated or semantically validated.",
     }
 
 
@@ -869,12 +872,12 @@ def hook_payload(
             if campaign is not None else "campaign=None"
         )
         review = _override_review(policy)
+        model_matrix = "; ".join(
+            f"{MODEL_LABELS[role]}={policy.config['models'][role]['id']} "
+            f"({policy.config['models'][role]['default_effort']})"
+            for role in ACTIVE_MODEL_ROLES
+        )
         if event == "SessionStart":
-            model_matrix = "; ".join(
-                f"{MODEL_LABELS[role]}={policy.config['models'][role]['id']} "
-                f"({policy.config['models'][role]['default_effort']})"
-                for role in ACTIVE_MODEL_ROLES
-            )
             context = "\n".join(
                 [
                     f"Codex Task Routing manifest {policy.version}; policy hash {policy.content_hash}.",
@@ -893,8 +896,10 @@ def hook_payload(
                      "apply the effective principles and host limits when deciding. "
                      "Return unresolved contradictions to root." if review else
                      "Delegate scope, authority, tests, acceptance and return conditions. Parent owns priorities, "
-                     "architecture, acceptance and important exceptions. Default to Luna for investigation, Terra for ordinary "
-                     "implementation and fixes, and Sol for difficult execution. Consult eligible Pro; use Astra only when needed. "
+                     "architecture, acceptance and important exceptions. For new public-web research, prefer eligible Muse "
+                     "Ember; use Luna for other research or pre-dispatch fallback if suitable. Use Sol (routine) for ordinary "
+                     "implementation, fixes and tests, and Sol (difficult) for difficult execution. Consult eligible Pro; "
+                     "use Astra only when needed. "
                      "Parallel work needs useful independent parent work; serial specialist delegation needs host "
                      "permission and added value. Local-resource needs alone do not rule out a suitable child. "
                      "Do not retain ordinary implementation merely to create independent parent work. "
@@ -912,11 +917,6 @@ def hook_payload(
                 ]
             )
         else:
-            model_matrix = "; ".join(
-                f"{MODEL_LABELS[role]}={policy.config['models'][role]['id']} "
-                f"({policy.config['models'][role]['default_effort']})"
-                for role in ACTIVE_MODEL_ROLES
-            )
             context = "\n".join(
                 [
                     f"Codex Task Routing manifest {policy.version}; policy hash {policy.content_hash}.",
@@ -925,7 +925,9 @@ def hook_payload(
                     f"Configured child-routing reference only; it does not change the parent: {model_matrix}.",
                     ("Custom principles replace the bundled summary; read effective.md before routing. " if review else
                      "Keep the agreed complete unit through ordinary fixes, tests and authorized PR work. "
-                     "Luna handles investigation, Terra ordinary implementation and fixes, and Sol difficult execution; consult eligible Pro and use Astra only when needed. A recorded "
+                     "Both Sol presets use the assigned role sol. For eligible public-web research, return the Ember "
+                     "route to root; Luna covers other research or pre-dispatch fallback when suitable. Consult eligible Pro "
+                     "and use Astra only when needed. A recorded "
                      "capability gap, difficult judgment and important exceptions return to the parent. "
                      "Allowed standard grandchildren: Astra child to Sol/Terra/Luna; Sol child to Terra/Luna; "
                      "Terra child to Luna; Luna children and all grandchildren cannot delegate. "

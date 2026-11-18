@@ -464,7 +464,7 @@ class ExecutionOwnerPolicyTests(unittest.TestCase):
     def test_default_checkpoint_reaches_documents_and_both_start_hooks(self):
         policy = self.routing.load_policy(codex_home=self.home)
         checkpoint = policy.resolve_token('principles.policy_execution_owner')
-        for text in ('Luna/max', 'Terra/high', 'Sol/high', 'Pro', '失敗診断', '再試験',
+        for text in ('Muse Ember', 'Luna/max', 'Sol/low', 'Sol/high', 'Pro', '失敗診断', '再試験',
                      '最小確認', '分離できる通常の調査も先取りせず担当へ渡す', '同時作業数・モデル別使用件数を目的にしない',
                      '現在の実model・effort', '有効な明示override', '完了成果と副作用',
                      '未完了単位だけ', '文章指示を実際のeffort変更と扱わず', '親が先取りする前に',
@@ -482,22 +482,22 @@ class ExecutionOwnerPolicyTests(unittest.TestCase):
     def test_summary_override_keeps_update_visible_and_model_override_effective(self):
         summary = '独自要約：この対象では親が継続し、委譲しない。'
         path = self.override(principles={'summary': summary},
-                             models={'terra61': {'id': 'custom-terra', 'default_effort': 'max'}})
+                             models={'sol_routine': {'id': 'custom-sol', 'default_effort': 'medium'}})
         before = path.read_bytes()
         policy = self.routing.load_policy(codex_home=self.home)
         checkpoint = policy.resolve_token('principles.policy_execution_owner')
         self.assertEqual(policy.config['principles']['summary'], summary)
-        self.assertIn('Terra/max', checkpoint)
+        self.assertIn('Sol/medium', checkpoint)
         self.assertIn('有効な原則overrideを優先', checkpoint)
         self.assertIn('矛盾はrootへ返す', checkpoint)
         effective = policy.rendered_documents()['effective.md']
         self.assertIn(summary, effective)
         self.assertIn(checkpoint, effective)
-        self.assertIn('custom-terra', effective)
+        self.assertIn('custom-sol', effective)
         for event in ('SessionStart', 'SubagentStart'):
             context = self.context(event)['hookSpecificOutput']['additionalContext']
             self.assertIn('execution-owner checkpoint in effective.md', context)
-            self.assertIn('custom-terra (max)', context)
+            self.assertIn('custom-sol (medium)', context)
             self.assertIn('Custom routing principles preserved:', context)
         self.assertEqual(path.read_bytes(), before)
 

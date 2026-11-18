@@ -354,7 +354,7 @@ class ObservationTestCase(unittest.TestCase):
                     self.assertEqual(path.read_bytes(), corrupt)
             path.write_bytes(before)
 
-    def test_parent_requests_and_observed_efforts_support_host_levels(self) -> None:
+    def test_routine_child_low_and_parent_only_ultra_requests(self) -> None:
         policy = self.policy()
         for effort in ("low", "ultra"):
             with self.subTest(effort=effort):
@@ -372,9 +372,10 @@ class ObservationTestCase(unittest.TestCase):
                 child["observed"]["effort"] = effort
                 valid_child_request = child["requested"]["effort"]
                 child["requested"]["effort"] = effort
-                with self.assertRaisesRegex(routing.RoutingError, "requested effort is invalid"):
-                    self.complete(effort, completion, policy=policy)
-                child["requested"]["effort"] = valid_child_request
+                if effort == "ultra":
+                    with self.assertRaisesRegex(routing.RoutingError, "requested effort is invalid"):
+                        self.complete(effort, completion, policy=policy)
+                    child["requested"]["effort"] = valid_child_request
                 self.complete(effort, completion, policy=policy)
                 self.assertEqual(routing.observation_status(
                     codex_home=self.home, policy=policy)["state"], "valid")

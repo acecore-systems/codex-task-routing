@@ -179,7 +179,7 @@ class ChatAuthorizationTests(unittest.TestCase):
         parent.write_text('model = "user-selected-parent"\nmodel_reasoning_effort = "high"\n', encoding='utf-8')
         before = parent.read_bytes()
         policy = routing.load_policy(codex_home=self.home)
-        self.assertEqual(policy.config['models']['sol']['id'], 'gpt-6.1-sol')
+        self.assertEqual(policy.config['models']['sol']['id'], 'gpt-6.2-sol')
         self.assertEqual(policy.config['models']['sol']['default_effort'], 'high')
         self.evaluate()
         self.assertEqual(parent.read_bytes(), before)

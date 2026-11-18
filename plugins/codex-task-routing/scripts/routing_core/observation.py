@@ -28,7 +28,7 @@ MAX_OBSERVATION_REFERENCE_CHARS = 4096
 MAX_OBSERVATION_SCOPE_CHARS = 500
 MAX_OBSERVATION_RUNS = 32
 # Hosts can report efforts outside the plugin's child routing policy.
-OBSERVATION_EFFORTS = frozenset(EFFORT_ORDER) | {"low", "ultra"}
+OBSERVATION_EFFORTS = frozenset(EFFORT_ORDER) | {"ultra"}
 
 
 class Policy(Protocol):

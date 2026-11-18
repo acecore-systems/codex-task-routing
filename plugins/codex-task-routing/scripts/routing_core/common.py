@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 MAX_JSON_BYTES = 512 * 1024
-EFFORT_ORDER = {"medium": 0, "high": 1, "xhigh": 2, "max": 3}
+EFFORT_ORDER = {"low": 0, "medium": 1, "high": 2, "xhigh": 3, "max": 4}
 
 # Fixed diagnostic text only: never interpolate keys, values, paths, or OS errors.
 ERROR_HINTS = {
@@ -17,7 +17,7 @@ ERROR_HINTS = {
     "invalid_json": "Use a UTF-8 JSON object with valid syntax and no duplicate keys.",
     "unsupported_key": "Remove unknown keys; compare model and principle keys with the bundled defaults.",
     "unsupported_schema": "Use the supported schema_version: 1 (an integer).",
-    "unsupported_effort": "Use a supported effort: medium, high, xhigh, or max.",
+    "unsupported_effort": "Use a supported effort: low, medium, high, xhigh, or max.",
     "invalid_effort_range": "Set min_effort <= default_effort <= max_effort.",
     "invalid_template": "Check template references for unknown names, cycles, and excessive expansion; restore damaged bundled templates from the same release.",
     "filesystem_unavailable": "Check that the configured files exist and are readable; do not change unrelated permissions.",
