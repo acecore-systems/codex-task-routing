@@ -38,6 +38,7 @@ from routing_core.common import (
 from haiku_config import load_config as load_haiku_config
 from liquid_decisions import load_config as load_liquid_decisions_config
 from muse_web_config import load_config as load_muse_web_config
+from muse_text_tasks import enabled as muse_text_tasks_enabled
 from routing_core.observation_capture import export_capture, record_baseline, verify_capture, certify_capture
 from routing_core.observation import (
     OBSERVATIONS_RELATIVE, OBSERVATION_LOCK_NAME,
@@ -977,6 +978,16 @@ def hook_payload(
                                 "Read <plugin-root>/skills/task-routing/references/muse-web-research.md.")
             except (RoutingError, OSError, ValueError):
                 route_diagnostic = ((route_diagnostic + " ") if route_diagnostic else "") + "Muse web route not applied: invalid configuration."
+            try:
+                if muse_text_tasks_enabled(home):
+                    context += ("\nFor approved public or synthetic text, prefer Muse Ember for bounded summaries, "
+                                "extraction, comparison or formatting without external tools when eligible. "
+                                "Keep continuing owners and dedicated Web, Liquid and explicitly local routes. "
+                                "Root checks the dedicated adapter and same-hash status; follow "
+                                "<plugin-root>/skills/task-routing/references/muse-text-tasks.md.")
+            except (RoutingError, OSError, ValueError):
+                route_diagnostic = ((route_diagnostic + " ") if route_diagnostic else "") + (
+                    "Muse text tasks not applied: invalid configuration.")
             try:
                 haiku_config = load_haiku_config(home)
                 if haiku_config["enabled"]:

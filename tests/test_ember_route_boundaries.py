@@ -102,12 +102,12 @@ class EmberRouteBoundaryTests(unittest.TestCase):
         self.assertIn('通常実装はSol/low', readme)
         self.assertIn('complete routine Sol unit', guide)
 
-    def test_non_web_contract_is_linked_and_explicitly_not_operational(self):
+    def test_non_web_contract_is_linked_and_requires_the_dedicated_adapter(self):
         contract = REFERENCES / 'muse-text-tasks.md'
         self.assertTrue(contract.is_file())
         content = contract.read_text(encoding='utf-8')
-        self.assertIn('常用の実行経路未提供', content)
-        self.assertIn('実装・稼働は未確認', content)
+        self.assertIn('local_auth_muse_ember_text_task', content)
+        self.assertIn('publicTextTasksEnabled:true', content)
         for name in ('Liquid', 'LFM3-VL', 'Pro', 'Cloud'):
             self.assertIn(name, content)
         for path in (ROOT / 'README.md', PLUGIN / 'skills/task-routing/SKILL.md',

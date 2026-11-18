@@ -18,4 +18,4 @@ Before cloud model selection involving credentials, follow [local authentication
 The opt-in [Haiku API route](references/haiku-api.md) provides root-owned, approved text proposals; the parent applies edits and tests.
 
 Root owns opt-in [Muse pilot](references/muse-pilot.md), [Muse Web](references/muse-web-research.md), [Liquid](references/liquid-decisions.md) and ready [LFM3-VL](references/local-vl.md).
-[Non-Web Ember](references/muse-text-tasks.md) is not operational; keep the pilot and Web gates.
+Use eligible [Ember text tasks](references/muse-text-tasks.md) for approved supplied text.
