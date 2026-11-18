@@ -7,3 +7,5 @@
 専用 MCP `local_auth_muse_web_research` に `operation:status` と入力 UTF-8 SHA-256 `promptSha256` を渡し、結果を planner の `status` に渡す。`muse_web_research.py prepare --facts <JSON>` の facts は schema_version:1、actor:root、explicit_opt_in、host_authorized、target_authorized、materials_authorized、cost_authorized、data_class:public、purpose:public_web_research、prompt、prompt_sha256、status を含む。真偽は親が確認し、planner は外部に送信しない。成功時の arguments を親が実 MCP に一度だけ渡す。各入力は承認範囲内でのみ実施し、intent、失敗、不明、完了の同一入力は再送しない。run のタイムアウト時は同じ hash の status を先に確認する。
 
 受け取った result と元 hash を `muse_web_research.py verify --facts <JSON>` に渡す。完了した検索呼出しと本文に紐づく URL citation を検証し、内容の正確性や出典の信頼性は親が確認する。max を要求し、provider が別の effort を明示した結果は拒否する。effort が省略された場合は観測不明として報告する。status は本文を返さず結果不明の回収を保証しない。Local Auth は固定 Responses endpoint と専用鍵・固定 web_search プロファイルの通信、journal だけを担当する。検索指示、本文、出典と最終受入は Routing が扱う。web_search は最大3回の呼出しであり、検索クエリ数や費用の上限ではない。
+
+非Webの要約・抽出・整形はこの経路の対象外。[非Webテキスト作業の別契約と未完了条件](muse-text-tasks.md)に従い、purposeを公開Web調査と偽ったり、検索・引用検証を削除したりして通さない。Web経路の有効化・承認・statusは非Web常用adapterの存在や送信許可を証明しない。

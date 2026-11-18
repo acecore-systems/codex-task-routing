@@ -19,3 +19,4 @@ The opt-in [Haiku API route](references/haiku-api.md) provides root-owned, appro
 
 Root owns the opt-in routes for the [Muse pilot](references/muse-pilot.md), [Muse public-web research](references/muse-web-research.md), and [Liquid Decisions](references/liquid-decisions.md) for bounded text judgments.
 For bounded local text and image analysis, root can select the [LFM3-VL extension](references/local-vl.md) when it is enabled and ready.
+Ember [non-Web text tasks](references/muse-text-tasks.md) are a separate, non-executable contract in 0.34.4; do not reset a completed pilot, weaken Web gates, or assume a recurring adapter exists.

@@ -26,7 +26,9 @@ Acecoreが日常利用で改善している分担原則を既定値として同�
 
 受入条件と完了までに必要な工程から担当を選びます。テスト・失敗の切り分け・修正・再試験を含む通常工程はSol/low、難題の実行はSol/highが候補です。分離できる公開Webの証拠収集は、親が[Emberの利用条件](plugins/codex-task-routing/skills/task-routing/references/muse-web-research.md)を確認します。資料へのアクセスと階層条件が合えばLunaを使い、重要な判断は親へ返します。
 
-ローカル経路は一般的な実装・文章作成の振り分け先ではありません。実際のモデル・対応工程・本人操作待ちはMCPで確認し、接続済み・受付済みだけでは認証成功と扱いません。
+Emberの非Web用途は、明示承認済みの公開・合成テキストの要約、既知項目の抽出、整理・比較、短い整形を対象とする[別契約](plugins/codex-task-routing/skills/task-routing/references/muse-text-tasks.md)として整理しています。0.34.4では常用の実行経路未提供で、Local Authの反復利用adapterの実装・稼働は未確認です。完了済みの単回pilotを再利用せず、Web経路の検索・引用要件も維持します。Liquidの型付き判定、LFM3-VLのローカル分析、Proの相談、Cloudの独立repo工程を一律に置き換えません。
+
+ローカル認証経路は一般的な実装・文章作成の振り分け先ではありません。実際のモデル・対応工程・本人操作待ちはMCPで確認し、接続済み・受付済みだけでは認証成功と扱いません。
 
 0.26.0は、別途インストール済みClaude Code CLIによる[任意のHaiku API経路](plugins/codex-task-routing/skills/task-routing/references/haiku-api.md)を追加します。既定オフ、root所有で、標準子に限定されたホストでは計画までです。API実行や実費、品質・能力比較は未検証です。
 
@@ -114,7 +116,7 @@ Terraの個別設定はキー`models.terra61`に指定します。`principles.su
 
 ## 任意機能
 
-### Drex に定型判定を割り当てる
+### Liquid に定型判定を割り当てる
 
 公開・合成テキストの分類、条件判定、基準付き採点を、親が Liquid d1.2-ultra に割り当てられます。既定は無効です。対応する Local Auth を用意し、[Liquid の設定と実行手順](plugins/codex-task-routing/skills/task-routing/references/liquid-decisions.md)に従って有効にします。
 
@@ -157,7 +159,7 @@ helperは送信しません。rootが新方針と現在のホスト許可・対�
 
 通常ChatのProはWork/Codexと別枠ですが、親の準備・操作・検収はCodex側に残ります。Proには契約別の上限があり、無制限ではありません。モデルや残量は実際のUIで確認し、第三者ツール固有の料金まで無料と扱いません。[公式の利用枠](https://help.openai.com/en/articles/20001354)、[Work/Codexの共有枠](https://learn.chatgpt.com/docs/pricing)。
 
-相談は有効なrootまたはroot直下Sol子のbrowser経路で、許可・資料・実アクセスがそろう場合にProを優先します。調査はLuna、通常実装はTerra、難題の実行はSolを候補とし、必要なときだけAstraを検討します。既存担当と認可境界を維持します。
+相談は有効なrootまたはroot直下Sol子のbrowser経路で、許可・資料・実アクセスがそろう場合にProを優先します。承認済み公開Web調査は適用条件を満たすEmber、対象外や送信前に利用できない調査はアクセスを持つLuna、通常実装はSol/low、難題の実行はSol/highを候補とし、必要なときだけAstraを検討します。既存担当と認可境界を維持します。
 
 Pro $200の週次枠を積極活用する運用ですが、契約価格だけで経路を有効化しません。[最新上限・送受信方法の許可・比較計画](plugins/codex-task-routing/skills/task-routing/references/chat-limits.md)を確認してください。送信直前は`chat_plan.py --live`で新しい観測を照合し、上限・モデル変更・許可不明で停止します。自動抽出に関する例外の許可は本プラグインでは確認していません。
 
@@ -301,7 +303,7 @@ codex plugin remove codex-task-routing@codex-task-routing
 ## トラブル対応
 
 - **新しいタスクに方針が表示されない:** `/hooks` でフックの存在と信頼状態を確認します。スキルの検出だけでは常時適用されません。フック定義が変わった後は再確認が必要な場合があります。
-- **`status --json` がエラーを返す:** `error_code` で原因の種類を、`hint` で秘密値を含まない対処を確認します。既存の `error` フィールドも互換性のため維持します。設定ファイルを自動修正する診断ではありません。各コードの意味は[設定の詳細](plugins/codex-task-routing/skills/task-routing/references/configuration.md)を参照してください。
+- **`status --json` がエラーを返す:** `error_code` で原因の種類を秘密値を含まない形で確認します。`hint` で秘密値を含まない対処を確認します。既存の `error` フィールドも互換性のため維持します。設定ファイルを自動修正する診断ではありません。各コードの意味は[設定の詳細](plugins/codex-task-routing/skills/task-routing/references/configuration.md)を参照してください。
 - **既存の分担指示との競合が表示される:** Codexホームや作業先の `AGENTS.md` / `AGENTS.override.md` に既知の分担指示があると、二重適用を防ぐためフックは新方針を追加しません。旧指示を自動削除しないため、バックアップして対象の分担節だけ移行し、新しいタスクで適用を確認します。異なる表現の類似方針をすべて機械検出できるわけではありません。
 - **要求したモデルやeffortで動いたか不明:** `status` の要求値だけでは実行を証明できません。子の起動時のツールと実行結果を確認します。モデルとeffortの利用可否はホストごとに異なります。
 - **通常Chat経路が有効にならない:** `chatgpt.json`、新しいタスクのフック表示、ログイン済みBrowser、UIの `Pro` 表示を順に確認します。上限・モデル変更・許可不明の場合は送信しません。
