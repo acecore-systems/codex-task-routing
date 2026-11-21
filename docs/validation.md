@@ -1,5 +1,9 @@
 # 検証記録
 
+## 0.36.0: Redmine のターン同期
+
+Windows の専用チェックアウトで、旧 `AGENT_TOOLKIT_ROOT` の解決、親イベントの絞り込み、認証環境と会話本文の除外、Stop 継続識別子の抽出、配布物を確認しました。共有 CLI の関連付け、再開、重複抑止、未確認書き込みの読み戻しは、Agent Toolkit 側の模擬 REST テストで確認します。配布検査には実機のフック信頼と Redmine 接続は含まれません。
+
 ## 0.35.0: Redmine の作業記録
 
 Windows の専用チェックアウトで、SessionStart の startup・resume・clear・compact、SubagentStart、カスタム原則の上書きと案内の共存、フック文量と配布ファイルの確認を行いました。Python は 537 件実行し、POSIX 専用の 6 件をスキップしました。プラグインのオフライン検証の範囲は、起動時の手順案内と配布物です。
