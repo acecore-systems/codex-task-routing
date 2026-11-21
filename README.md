@@ -27,7 +27,7 @@ Acecoreが日常利用で改善している分担原則を既定値として同�
 
 受入条件と完了までに必要な工程から担当を選びます。テスト・失敗の切り分け・修正・再試験を含む通常工程はSol/low、難題の実行はSol/highが候補です。分離できる公開Webの証拠収集は、親が[Emberの利用条件](plugins/codex-task-routing/skills/task-routing/references/muse-web-research.md)を確認します。資料へのアクセスと階層条件が合えばLunaを使い、重要な判断は親へ返します。
 
-継続作業では、設定済みの agent-toolkit と作業に結び付いた Issue 参照があれば、[Redmine の作業記録](plugins/codex-task-routing/skills/task-routing/references/task-memory.md)から到達点・受入・次の作業を引き継げます。親が節目を受け入れてから更新します。
+設定済みの agent-toolkit を使い、親が継続作業の到達点・受入・次の作業を毎ターン確認します。記録の準備と回復手順は [Redmine の作業記録](plugins/codex-task-routing/skills/task-routing/references/task-memory.md)を参照してください。
 
 0.34.5で、既に取得した公開・合成テキストの短い要約・抽出・比較・整形に[専用の Ember 経路](plugins/codex-task-routing/skills/task-routing/references/muse-text-tasks.md)を追加します。専用 MCP の状態と承認を確認し、実行環境ごとに有効化します。Liquidの型付き判定、LFM3-VLのローカル分析、Proの相談、Cloudの独立repo工程は対象に応じて選びます。
 

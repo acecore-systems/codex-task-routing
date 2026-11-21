@@ -32,6 +32,7 @@ def check():
     assert (PLUGIN / 'scripts/drex_decisions.py').is_file()
     assert (PLUGIN / 'scripts/liquid_decisions.py').is_file()
     assert (PLUGIN / 'scripts/chat_browser.js').is_file()
+    assert (PLUGIN / 'scripts/redmine_turn_hook.py').is_file()
     expected_events = {'SessionStart', 'SubagentStart', 'PreToolUse', 'PreModelRequest',
                        'PostModelRequest', 'Stop', 'Interrupt', 'SubagentStop', 'UserPromptSubmit'}
     assert set(hooks) == expected_events
@@ -40,6 +41,7 @@ def check():
     capture_command = "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','capture_hook.py'),run_name='__main__')\""
     reminder_command = "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','parent_guard.py'),run_name='__main__')\""
     large_read_command = "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','large_read_guard.py'),run_name='__main__')\""
+    task_memory_command = "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ['PLUGIN_ROOT'],'scripts','redmine_turn_hook.py'),run_name='__main__')\""
     assert len(hooks['PreToolUse']) == 3
     assert hooks['PreToolUse'][0]['matcher'] == 'spawn_agent|Agent'
     assert [h['command'] for h in hooks['PreToolUse'][0]['hooks']] == [guard_command]
@@ -51,9 +53,9 @@ def check():
         'SessionStart': [routing_command],
         'SubagentStart': [routing_command, capture_command, reminder_command],
         'SubagentStop': [capture_command, reminder_command],
-        'UserPromptSubmit': [capture_command + ' prompt', reminder_command],
+        'UserPromptSubmit': [capture_command + ' prompt', reminder_command, task_memory_command],
         'PreModelRequest': [capture_command], 'PostModelRequest': [capture_command],
-        'Stop': [capture_command, reminder_command], 'Interrupt': [reminder_command],
+        'Stop': [capture_command, reminder_command, task_memory_command], 'Interrupt': [reminder_command],
     }
     for event, groups in hooks.items():
         if event != 'PreToolUse':
