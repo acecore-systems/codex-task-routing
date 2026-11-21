@@ -24,6 +24,7 @@ def check():
         assert (PLUGIN / name).is_file(), name
     for removed in ['scripts/cloud_run.py', 'skills/task-routing/references/cloud-transport.md']:
         assert not (PLUGIN / removed).exists(), removed
+    assert (PLUGIN / 'skills/task-routing/references/task-memory.md').is_file()
     assert (PLUGIN / 'skills/task-routing/references/native-cloud.md').is_file()
     assert (PLUGIN / 'skills/task-routing/references/drex-decisions.md').is_file()
     assert (PLUGIN / 'skills/task-routing/references/liquid-decisions.md').is_file()

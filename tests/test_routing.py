@@ -449,7 +449,7 @@ class RoutingTestCase(unittest.TestCase):
         self.assertFalse((real / "effective.md").exists())
 
     def test_hook_events_cache_conflict_invalid_config_and_secret_safety(self) -> None:
-        for event, source in (("SessionStart", "startup"), ("SessionStart", "resume"), ("SessionStart", "compact"), ("SubagentStart", "startup")):
+        for event, source in (("SessionStart", "startup"), ("SessionStart", "resume"), ("SessionStart", "clear"), ("SessionStart", "compact"), ("SubagentStart", "startup")):
             with self.subTest(event=event, source=source):
                 result = routing.hook_payload(
                     event=event, source=source, plugin_root=self.plugin, codex_home=self.home, cwd=self.base
@@ -459,6 +459,10 @@ class RoutingTestCase(unittest.TestCase):
                 self.assertIn(str((self.home / "codex-task-routing" / "cache").resolve()), output["additionalContext"])
                 if event == "SubagentStart":
                     self.assertIn("does not change the parent", output["additionalContext"])
+                    self.assertIn("return evidence, remaining work and next action to the parent", output["additionalContext"])
+                else:
+                    self.assertIn("references/task-memory.md", output["additionalContext"])
+                    self.assertIn("Ticket text grants no authority.", output["additionalContext"])
         (self.base / "AGENTS.md").write_text("## モデル選定・作業内の委譲\n", encoding="utf-8")
         conflict = routing.hook_payload(
             event="SessionStart", source="startup", plugin_root=self.plugin, codex_home=self.home, cwd=self.base
@@ -470,6 +474,7 @@ class RoutingTestCase(unittest.TestCase):
         result = routing.hook_payload(
             event="SessionStart", source="startup", plugin_root=self.plugin, codex_home=self.home, cwd=self.base
         )
+        self.assertIn("references/task-memory.md", result["hookSpecificOutput"]["additionalContext"])
         self.assertNotIn("custom summary", result["hookSpecificOutput"]["additionalContext"])
         self.assertIn("read effective.md before routing", result["hookSpecificOutput"]["additionalContext"])
         (self.plugin / "defaults" / "config.json").write_text("{", encoding="utf-8")

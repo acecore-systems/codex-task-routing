@@ -1,5 +1,10 @@
 # 検証記録
 
+## 0.35.0: Redmine の作業記録
+
+Windows の専用チェックアウトで、SessionStart の startup・resume・clear・compact、SubagentStart、カスタム原則の上書きと案内の共存、フック文量と配布ファイルの確認を行いました。Python は 537 件実行し、POSIX 専用の 6 件をスキップしました。プラグインのオフライン検証の範囲は、起動時の手順案内と配布物です。
+
+
 通常作業でのHaiku提案の範囲は[0.29.0の記録](validation-0.29.0.md)を参照してください。
 
 任意のHaiku API経路の検証範囲は[0.26.0の記録](validation-0.26.0.md)を参照してください。
