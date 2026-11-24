@@ -33,6 +33,7 @@ def check():
     assert (PLUGIN / 'scripts/liquid_decisions.py').is_file()
     assert (PLUGIN / 'scripts/chat_browser.js').is_file()
     assert (PLUGIN / 'scripts/redmine_turn_hook.py').is_file()
+    assert (PLUGIN / 'scripts/redmine_task_cli.py').is_file()
     expected_events = {'SessionStart', 'SubagentStart', 'PreToolUse', 'PreModelRequest',
                        'PostModelRequest', 'Stop', 'Interrupt', 'SubagentStop', 'UserPromptSubmit'}
     assert set(hooks) == expected_events
@@ -55,7 +56,7 @@ def check():
         'SubagentStop': [capture_command, reminder_command],
         'UserPromptSubmit': [capture_command + ' prompt', reminder_command, task_memory_command],
         'PreModelRequest': [capture_command], 'PostModelRequest': [capture_command],
-        'Stop': [capture_command, reminder_command, task_memory_command], 'Interrupt': [reminder_command],
+        'Stop': [capture_command, reminder_command], 'Interrupt': [reminder_command],
     }
     for event, groups in hooks.items():
         if event != 'PreToolUse':
