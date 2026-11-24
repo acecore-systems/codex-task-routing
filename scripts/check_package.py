@@ -55,7 +55,7 @@ def check():
         'SubagentStop': [capture_command, reminder_command],
         'UserPromptSubmit': [capture_command + ' prompt', reminder_command, task_memory_command],
         'PreModelRequest': [capture_command], 'PostModelRequest': [capture_command],
-        'Stop': [capture_command, reminder_command, task_memory_command], 'Interrupt': [reminder_command],
+        'Stop': [capture_command, reminder_command], 'Interrupt': [reminder_command],
     }
     for event, groups in hooks.items():
         if event != 'PreToolUse':

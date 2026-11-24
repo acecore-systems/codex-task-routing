@@ -3,17 +3,26 @@
 import json
 import os
 from pathlib import Path
-import re
 import subprocess
 import sys
 
 
 MAX_INPUT = 1024 * 1024
-FAILURE = {'systemMessage': 'Redmine turn check is unavailable. Verify the local Agent Toolkit and state directory.'}
+
+
+def prompt_context(context):
+    return {'hookSpecificOutput': {'hookEventName': 'UserPromptSubmit', 'additionalContext': context}}
+
+
+FAILURE = prompt_context(
+    'Redmine turn sync is unavailable. For continuing work that needs Redmine, verify the local Agent Toolkit '
+    'and state directory, and report the unresolved blocker once if it has not been reported for this task. '
+    'For a standalone request, continue normally.'
+)
 
 
 def run(payload, script):
-    if not isinstance(payload, dict) or payload.get('hook_event_name') not in ('UserPromptSubmit', 'Stop'):
+    if not isinstance(payload, dict) or payload.get('hook_event_name') != 'UserPromptSubmit':
         return {}
     if payload.get('agent_id') not in (None, ''):
         return {}
@@ -21,12 +30,8 @@ def run(payload, script):
         return {}
     if not script.is_absolute() or script.name != 'redmine-task-memory.ts' or not script.is_file():
         return FAILURE
-    fields = ('hook_event_name', 'session_id', 'turn_id', 'stop_hook_active')
-    metadata = {key: payload[key] for key in fields if key in payload}
-    prompt = payload.get('prompt')
-    marker = re.match(r'^Redmine task-memory check \(([a-f0-9]{32})\)\. ', prompt) if isinstance(prompt, str) else None
-    if marker:
-        metadata['continuation_token'] = marker[1]
+    fields = ('hook_event_name', 'session_id', 'turn_id')
+    metadata = {key: payload[key] for key in fields}
     name = 'node.exe' if os.name == 'nt' else 'node'
     node = next((directory / name for directory in map(Path, os.get_exec_path())
                  if directory.is_absolute() and (directory / name).is_file()), None)
@@ -39,7 +44,14 @@ def run(payload, script):
     if result.returncode != 0 or len(result.stdout) > 8192:
         return FAILURE
     value = json.loads(result.stdout)
-    return value if isinstance(value, dict) else FAILURE
+    if value == {}:
+        return {}
+    output = value.get('hookSpecificOutput') if isinstance(value, dict) else None
+    if isinstance(output, dict) and output.get('hookEventName') == 'UserPromptSubmit':
+        context = output.get('additionalContext')
+        if isinstance(context, str) and context.strip():
+            return prompt_context(context)
+    return FAILURE
 
 
 def main():
@@ -51,7 +63,11 @@ def main():
         script = Path(root) / 'scripts' / 'redmine-task-memory.ts'
     try:
         raw = sys.stdin.buffer.read(MAX_INPUT + 1)
-        value = run(json.loads(raw), Path(script)) if len(raw) <= MAX_INPUT else FAILURE
+        payload = json.loads(raw) if len(raw) <= MAX_INPUT else None
+    except (OSError, UnicodeError, ValueError):
+        return
+    try:
+        value = run(payload, Path(script))
     except (OSError, UnicodeError, ValueError, subprocess.SubprocessError):
         value = FAILURE
     if value:

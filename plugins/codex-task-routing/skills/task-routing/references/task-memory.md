@@ -8,7 +8,7 @@ Redmine を継続作業の進捗・受入・再開の正本にする。実装、
 
 1. **開始・再開**。親はユーザー入力時のフックで案内された `node <agent-toolkit>/scripts/redmine-task-memory.ts turn <ハンドル>` を使う。JSON は標準入力に渡す。初回と案件を切り替えるときは `{"action":"attach","reference":"<ref>"}`。参照は Redmine ID・設定済みサーバーの Issue URL・紐づけ済みの GitHub Issue URL。再開する場合は `{"action":"resume"}`。同じディレクトリにある別セッションの紐づけは引き継がない。既存の作業ツリーと検証結果を再確認する。`task.humanContext.reviewNeeded` が真なら、新しい説明・状態・注記を確認する。初回の `uninitialized` では目的・現在地・次の作業を最初の記録に含める。
 2. **引き継ぎ**。到達点・合意した受入条件・次の作業を短く渡す。実行担当は検証結果、未確認事項、次の作業を親に返す。子や外部委譲先にハンドルを渡したり、Redmine の更新を任せたりしない。
-3. **各ターンの終了**。親が根拠を確認した事実を `{"action":"record","summary":{...}}` にまとめる。初回の記録や、依頼・到達点・残作業・待ち理由・受入が変わった場合に更新する。単発や変化がないターンは `{"action":"skip"}`。親は応答の前にこの確認を済ませる。停止時に未確認が見つかった場合は、親が一度だけ確認をやり直す。PR の draft・open・merged 等は参照情報として扱い、マージだけで受入を完了にしたり Issue を閉じたりしない。
+3. **各ターンの終了**。親が根拠を確認した事実を `{"action":"record","summary":{...}}` にまとめる。初回の記録や、依頼・到達点・残作業・待ち理由・受入が変わった場合に更新する。単発や変化がないターンは `{"action":"skip"}`。親は応答の前にこの確認を済ませる。接続や設定の問題で必要な記録ができないときは、親が今回の応答で理由を一度伝える。次の入力で継続するときは最新の状態を確認し、未記録の事実を必要に応じて補う。PR の draft・open・merged 等は参照情報として扱い、マージだけで受入を完了にしたり Issue を閉じたりしない。
 
 `summary` は次の JSON を使う。`expectedRevision` と `expectedObservation` は同じ Issue の確認済みの結果をそのまま使う。
 
@@ -29,7 +29,7 @@ Redmine を継続作業の進捗・受入・再開の正本にする。実装、
 
 ### 導入と手動の再開
 
-ターン同期に対応した共有 agent-toolkit と Node.js 24 以降が必要。信頼済みの絶対パス `AGENT_TOOLKIT_ROOT`、または CLI の絶対パス `REDMINE_TASK_MEMORY_CLI` を既存のローカル設定から使う。状態は既定で `~/.agent-toolkit/redmine-task-memory` に保持する。`REDMINE_TASK_MEMORY_STATE_DIR` で変更する場合はフックと CLI に同じ絶対パスを渡す。フックは識別子と未確認の有無をローカルで管理する。親が選んだ構造化要約だけを通常の CLI 更新で記録する。認証情報、内部 URL、要約を公開 GitHub・公開成果物・未承認の外部経路へ転記しない。
+ターン同期に対応した共有 agent-toolkit と Node.js 24 以降が必要。信頼済みの絶対パス `AGENT_TOOLKIT_ROOT`、または CLI の絶対パス `REDMINE_TASK_MEMORY_CLI` を既存のローカル設定から使う。状態は既定で `~/.agent-toolkit/redmine-task-memory` に保持する。`REDMINE_TASK_MEMORY_STATE_DIR` で変更する場合はフックと CLI に同じ絶対パスを渡す。ユーザー入力時のフックが、識別子と未確認の有無をローカルで管理し、親に応答前の確認を案内する。親が選んだ構造化要約だけを通常の CLI 更新で記録する。認証情報、内部 URL、要約を公開 GitHub・公開成果物・未承認の外部経路へ転記しない。
 
 フックが利用できない場合は、親が `resume <ref>` で再開し、節目を `update <ref>` へ標準入力で渡す。手動の `update` では上記の項目と、同じ節目で変わらない `milestoneId` を使う。Redmine の接続・認証はローカル設定を利用する。フックから利用者の設定や認証を変更しない。
 
