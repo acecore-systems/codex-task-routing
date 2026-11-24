@@ -48,7 +48,9 @@ class RedmineTurnHookTests(unittest.TestCase):
         self.assertEqual(set(result), {'hookSpecificOutput'})
         output = result['hookSpecificOutput']
         self.assertEqual(output['hookEventName'], 'UserPromptSubmit')
-        self.assertEqual(json.loads(output['additionalContext']),
+        instruction, context = output['additionalContext'].split('\n', 1)
+        self.assertIn('redmine_task_cli.py', instruction)
+        self.assertEqual(json.loads(context),
                          {'args': ['turn-hook', 'codex'], 'event': self.metadata, 'credentialPresent': False})
 
     def test_ignores_stop_child_and_unconfigured_events(self):

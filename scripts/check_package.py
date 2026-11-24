@@ -33,6 +33,7 @@ def check():
     assert (PLUGIN / 'scripts/liquid_decisions.py').is_file()
     assert (PLUGIN / 'scripts/chat_browser.js').is_file()
     assert (PLUGIN / 'scripts/redmine_turn_hook.py').is_file()
+    assert (PLUGIN / 'scripts/redmine_task_cli.py').is_file()
     expected_events = {'SessionStart', 'SubagentStart', 'PreToolUse', 'PreModelRequest',
                        'PostModelRequest', 'Stop', 'Interrupt', 'SubagentStop', 'UserPromptSubmit'}
     assert set(hooks) == expected_events

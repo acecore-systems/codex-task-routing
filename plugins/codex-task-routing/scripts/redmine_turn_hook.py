@@ -7,6 +7,11 @@ import subprocess
 import sys
 
 
+# The shipped hook uses runpy, so resolve the sibling module explicitly.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from redmine_task_cli import executable, toolkit_script, valid_script
+
+
 MAX_INPUT = 1024 * 1024
 
 
@@ -28,13 +33,11 @@ def run(payload, script):
         return {}
     if not payload.get('session_id') or not payload.get('turn_id'):
         return {}
-    if not script.is_absolute() or script.name != 'redmine-task-memory.ts' or not script.is_file():
+    if not valid_script(script):
         return FAILURE
     fields = ('hook_event_name', 'session_id', 'turn_id')
     metadata = {key: payload[key] for key in fields}
-    name = 'node.exe' if os.name == 'nt' else 'node'
-    node = next((directory / name for directory in map(Path, os.get_exec_path())
-                 if directory.is_absolute() and (directory / name).is_file()), None)
+    node = executable('node')
     if node is None:
         return FAILURE
     env = {key: value for key, value in os.environ.items()
@@ -50,24 +53,26 @@ def run(payload, script):
     if isinstance(output, dict) and output.get('hookEventName') == 'UserPromptSubmit':
         context = output.get('additionalContext')
         if isinstance(context, str) and context.strip():
-            return prompt_context(context)
+            return prompt_context(
+                'For Redmine CLI operations, run python <plugin-root>/scripts/redmine_task_cli.py from '
+                'the task worktree in place of calling node directly. Pass the same operation, reference or '
+                'handle, and JSON stdin described below. This uses the configured project or approved '
+                'repository mapping.\n' + context
+            )
     return FAILURE
 
 
 def main():
-    script = os.environ.get('REDMINE_TASK_MEMORY_CLI')
-    if not script:
-        root = os.environ.get('AGENT_TOOLKIT_ROOT')
-        if not root:
-            return
-        script = Path(root) / 'scripts' / 'redmine-task-memory.ts'
+    script = toolkit_script()
+    if script is None:
+        return
     try:
         raw = sys.stdin.buffer.read(MAX_INPUT + 1)
         payload = json.loads(raw) if len(raw) <= MAX_INPUT else None
     except (OSError, UnicodeError, ValueError):
         return
     try:
-        value = run(payload, Path(script))
+        value = run(payload, script)
     except (OSError, UnicodeError, ValueError, subprocess.SubprocessError):
         value = FAILURE
     if value:
